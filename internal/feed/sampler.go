@@ -241,6 +241,25 @@ func (s *Sampler) Window(assetID string) (WindowStats, bool) {
 	return ws, true
 }
 
+// TickTail returns up to n most recent ticks for assetID in chronological order.
+// ok=false if the asset is unknown.
+func (s *Sampler) TickTail(assetID string, n int) ([]Tick, bool) {
+	if n <= 0 {
+		return nil, true
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st, ok := s.state[assetID]
+	if !ok {
+		return nil, false
+	}
+	all := st.orderedTicks(s.windowSec)
+	if len(all) <= n {
+		return all, true
+	}
+	return all[len(all)-n:], true
+}
+
 // Snapshot returns a window summary for every asset that has at least one tick.
 func (s *Sampler) Snapshot() []WindowStats {
 	s.mu.Lock()

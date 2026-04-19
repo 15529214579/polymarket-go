@@ -32,7 +32,7 @@
 ## 💤 待启动
 
 ### Phase 2 — 策略层（2 天）
-- [ ] 动量信号检测（N秒涨幅、tick 单调性、主动成交占比）
+- [x] 动量信号检测（N秒涨幅、tick 单调性、主动成交占比）— 04-20 00:42 `internal/strategy/detector.go` 上线，`./bin/bot -mode=detect -markets=10 -window=30` 75s 实测首发信号：LOUD vs Leviatan LCS Game 1 Winner, Δ+4.00pp, tail 4/5 ups, buy_ratio 1.00. 5min per-asset cooldown 生效。
 - [ ] 出场信号（反转、止损、超时）
 - [ ] 仓位管理（单仓去重、总敞口）
 
@@ -73,6 +73,7 @@
 - [x] 2026-04-20 00:02 — Phase 1.1 完成：gamma LoL 市场发现 +  WSS 骨架（commit d5c67b9）
 - [x] 2026-04-20 00:09 — Phase 1.2/1.3 完成：真 WSS dial + book/price_change/last_trade_price 解码 + 本地 orderbook 重建；活 LEC 盘 VIT/GIANTX 实时 bid/ask 跑通
 - [x] 2026-04-20 00:13 — 老板预存启动资金到 Go 钱包：90.405327 USDC.e + 111.030024 POL，Day 0 PnL 基准已锁定（SPEC §5.1）
+- [x] 2026-04-20 00:42 — Phase 2.1 完成：momentum detector 上线并在实盘 LCS Game 1 Winner 触发首个信号（Δ+4pp、tail 4/5、buy_ratio 1.0）
 
 ## ❌ 不做
 
