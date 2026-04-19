@@ -15,17 +15,17 @@
 - [x] OpenClaw 唤醒 cron：`17,47 8-22 * * *`（session-only，需每次开 session 时重装）
 - [x] alert 升级通道：`scripts/alert-dispatch.sh` — 读 state.json 若 alert 非空 → Telegram Bot API 直推老板，2h cooldown、夜间静默、.env.local 存 token（gitignored）。04-19 23:49 端到端验证 ok=true。
 
-### Phase 0 — Bootstrap（1 天内）
-- [x] `go mod init github.com/murphyismurphy/polymarket-go`
+### Phase 0 — Bootstrap ✅
+- [x] `go mod init github.com/15529214579/polymarket-go`
 - [x] 目录骨架：`cmd/bot/`, `internal/{feed,strategy,order,risk,log,config}/`
 - [x] Makefile + .gitignore + build 通过
 - [x] git init + 首个 commit（3d072a7）
-- [ ] 建 github public repo（gh auth 后 push）
-- [ ] golangci-lint 配置
+- [x] github public repo（`github.com/15529214579/polymarket-go`）
+- [ ] golangci-lint 配置（非阻塞）
 
-### Phase 1 — 数据层（下一步，2-3 天）
-- [ ] Polymarket WSS 客户端（自动重连、心跳）
-- [ ] gamma REST 客户端（LoL 市场筛选）
+### Phase 1 — 数据层（进行中）
+- [x] gamma REST 客户端（LoL 市场筛选）— 04-20 00:02 跑通，`./bin/bot -mode=discover` 拉到 59 个活跃 LoL 市场（LPL/LCK/LEC/LCS）
+- [ ] Polymarket WSS 客户端（自动重连、心跳）— 骨架已在 `internal/feed/wss.go`，待真实 dial + 消息解码
 - [ ] orderbook 内存模型（bid/ask 深度、最近成交流）
 - [ ] tick 采样器（1s 粒度，滑窗 60s）
 
@@ -60,6 +60,8 @@
 - [x] 2026-04-19 23:31 — 独立钱包入 Bitwarden（`Polymarket-Go Wallet`）
 - [x] 2026-04-19 23:35 — SPEC.md / TODO.md 初稿
 - [x] 2026-04-19 23:34 — 下单通道敲定 A（自签+broadcast）
+- [x] 2026-04-19 23:58 — PRINCIPLES.md 上线（7 条老板拍板原则持久化到 repo）
+- [x] 2026-04-20 00:02 — Phase 1.1 完成：gamma LoL 市场发现 +  WSS 骨架（commit d5c67b9）
 
 ## ❌ 不做
 
