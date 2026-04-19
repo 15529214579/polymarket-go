@@ -43,6 +43,15 @@
 - [ ] 成交回执轮询 + status 机
 - [ ] Paper mode（同一路径但不发真单，记模拟 fill）
 
+### Phase 3.5 — 半自动点选下单（Hybrid UX，不急）
+> 信号推 DM → 按钮点选 1U / 5U / 10U → 回调触发同一签名路径下单。依赖 Phase 2 信号 + Phase 3 下单。
+- [ ] 信号推送格式：市场 / 方向 / 当前 mid / 触发指标 + 三颗 inline 按钮（1U / 5U / 10U）
+- [ ] callback 接收通道：OpenClaw 把 Telegram callback_query 转发到 5号 session（或走独立 bot webhook → 写入 pending 队列，5号 轮询消费）—— 开工前确认走哪条
+- [ ] 回调 → 下单：复用 Phase 3 签名路径，单仓、去重、超时作废（信号推出 60s 内未点击则按钮过期）
+- [ ] 安全：按钮只对老板 chat_id 生效，callback_data 带 nonce 防重放
+- [ ] Paper 期间：点了按钮走 paper 路径（记模拟 fill）；Day 7 转实盘后按钮直接真下单
+- [ ] 告警：下单成功/失败都回 DM 单条小回执
+
 ### Phase 4 — 风控 + 可观测（1 天）
 - [ ] 日亏损熔断
 - [ ] WSS 断线保护
