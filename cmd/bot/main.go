@@ -14,8 +14,9 @@ import (
 )
 
 func main() {
-	mode := flag.String("mode", "run", "run | discover | feed")
+	mode := flag.String("mode", "run", "run | discover | feed | sample")
 	maxMarkets := flag.Int("markets", 20, "top-N LoL markets by vol24h to subscribe")
+	windowSec := flag.Int("window", 60, "sampler window in seconds")
 	flag.Parse()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -33,6 +34,11 @@ func main() {
 	case "feed":
 		if err := runFeed(ctx, *maxMarkets); err != nil {
 			slog.Error("feed failed", "err", err)
+			os.Exit(1)
+		}
+	case "sample":
+		if err := runSample(ctx, *maxMarkets, *windowSec); err != nil && ctx.Err() == nil {
+			slog.Error("sample failed", "err", err)
 			os.Exit(1)
 		}
 	case "run":
@@ -142,6 +148,96 @@ func runFeed(ctx context.Context, topN int) error {
 					"size", tr.Size,
 					"side", tr.Side,
 				)
+			}
+		}
+	}()
+
+	return ws.Run(ctx)
+}
+
+func runSample(ctx context.Context, topN, windowSec int) error {
+	gc := feed.NewGammaClient()
+	all, err := gc.ListActiveMarkets(ctx, 500)
+	if err != nil {
+		return err
+	}
+	lol := feed.FilterLoL(all)
+	if len(lol) == 0 {
+		return fmt.Errorf("no active LoL markets")
+	}
+	if topN > len(lol) {
+		topN = len(lol)
+	}
+	lol = lol[:topN]
+
+	assetToQ := map[string]string{}
+	var assetIDs []string
+	for _, m := range lol {
+		for _, id := range m.ClobTokenIDs() {
+			if id == "" {
+				continue
+			}
+			assetToQ[id] = m.Question
+			assetIDs = append(assetIDs, id)
+		}
+	}
+	slog.Info("sample.start", "markets", len(lol), "assets", len(assetIDs), "window_sec", windowSec)
+
+	ws := feed.NewWSSClient(assetIDs)
+	sampler := feed.NewSampler(windowSec)
+
+	go func() {
+		if err := sampler.Run(ctx, ws.Books(), ws.Trades()); err != nil && ctx.Err() == nil {
+			slog.Error("sampler exited", "err", err)
+		}
+	}()
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case t, ok := <-sampler.Ticks():
+				if !ok {
+					return
+				}
+				slog.Info("tick",
+					"asset", short(t.AssetID),
+					"q", assetToQ[t.AssetID],
+					"bid", t.BestBid,
+					"ask", t.BestAsk,
+					"mid", t.Mid,
+					"trades", t.Trades,
+					"buy_vol", t.BuyVol,
+					"sell_vol", t.SellVol,
+				)
+			}
+		}
+	}()
+
+	// periodic window summary, every 10s
+	go func() {
+		tk := time.NewTicker(10 * time.Second)
+		defer tk.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-tk.C:
+				for _, w := range sampler.Snapshot() {
+					slog.Info("window",
+						"asset", short(w.AssetID),
+						"q", assetToQ[w.AssetID],
+						"samples", w.Samples,
+						"start_mid", w.StartMid,
+						"end_mid", w.EndMid,
+						"delta_pp", w.DeltaPP,
+						"up", w.Upticks,
+						"down", w.Downticks,
+						"flat", w.Flats,
+						"buy_ratio", w.BuyRatio,
+					)
+				}
 			}
 		}
 	}()

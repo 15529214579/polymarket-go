@@ -27,7 +27,7 @@
 - [x] gamma REST 客户端（LoL 市场筛选）— 04-20 00:02 跑通，`./bin/bot -mode=discover` 拉到 59 个活跃 LoL 市场（LPL/LCK/LEC/LCS）
 - [x] Polymarket WSS 客户端（自动重连、心跳、book/price_change/last_trade_price 解码）— 04-20 00:09 跑通，`./bin/bot -mode=feed -markets=8` 20s 采到 44 book + 2 trade 事件，VIT/GIANTX 活局 mid 0.83/0.84 稳定
 - [x] orderbook 内存模型（bid/ask 深度、最近成交流）— 在 WSS 客户端内，price_change 增量合并到本地 bookState
-- [ ] tick 采样器（1s 粒度，滑窗 60s）— 下一步（Phase 1.4）
+- [x] tick 采样器（1s 粒度，滑窗 60s）— 04-20 00:30 跑通，`./bin/bot -mode=sample -markets=8 -window=20` 25s 内采 352 tick + 32 window summary，VIT vs GIANTX LEC Game 2 实时 mid 0.175 跟盘。单测 3 个全过。**Phase 1 完成。**
 
 ## 💤 待启动
 
