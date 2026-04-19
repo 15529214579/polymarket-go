@@ -4,19 +4,32 @@
 
 ## 🛠 进行中
 
+### P00 — 自我迭代工具（最高优先级）✅
+> 没这个我醒不过来，先做。cron + heartbeat 是后续所有 phase 能自我推进的前提。
+
+- [x] `scripts/heartbeat.sh`：单次自检（git/build/uncommitted/开放 TODO/最近日志）
+- [x] `scripts/cron-poke.sh`：周期入口，写日志 + 更新 state.json + 计算 alert
+- [x] macOS crontab 注册：每 30 min（分 7/37 off-peak），写 `/tmp/polymarket-go-cron.log`
+- [x] 夜间静默（00:00-07:59 SGT）：quiet_window 标记，不触发 alert 升级
+- [x] `state.json`：last_heartbeat / last_commit / uncommitted / ticks_no_progress / alert
+- [x] OpenClaw 唤醒 cron：`17,47 8-22 * * *`（session-only，需每次开 session 时重装）
+- [ ] alert 升级通道：5号 醒来读 state.json 若 alert 非空 → telegram 告警老板（待第一次实测）
+
 ### Phase 0 — Bootstrap（1 天内）
-- [ ] `go mod init github.com/murphyismurphy/polymarket-go`
-- [ ] 目录骨架：`cmd/bot/`, `internal/{feed,strategy,order,risk,log}/`
-- [ ] 建 github public repo + 初始 commit
-- [ ] Makefile + golangci-lint + go test 基础
+- [x] `go mod init github.com/murphyismurphy/polymarket-go`
+- [x] 目录骨架：`cmd/bot/`, `internal/{feed,strategy,order,risk,log,config}/`
+- [x] Makefile + .gitignore + build 通过
+- [x] git init + 首个 commit（3d072a7）
+- [ ] 建 github public repo（gh auth 后 push）
+- [ ] golangci-lint 配置
 
-## 💤 待启动
-
-### Phase 1 — 数据层（2-3 天）
+### Phase 1 — 数据层（下一步，2-3 天）
 - [ ] Polymarket WSS 客户端（自动重连、心跳）
 - [ ] gamma REST 客户端（LoL 市场筛选）
 - [ ] orderbook 内存模型（bid/ask 深度、最近成交流）
 - [ ] tick 采样器（1s 粒度，滑窗 60s）
+
+## 💤 待启动
 
 ### Phase 2 — 策略层（2 天）
 - [ ] 动量信号检测（N秒涨幅、tick 单调性、主动成交占比）
