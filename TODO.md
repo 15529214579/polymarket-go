@@ -63,6 +63,7 @@
 - [x] 2026-04-19 23:58 — PRINCIPLES.md 上线（7 条老板拍板原则持久化到 repo）
 - [x] 2026-04-20 00:02 — Phase 1.1 完成：gamma LoL 市场发现 +  WSS 骨架（commit d5c67b9）
 - [x] 2026-04-20 00:09 — Phase 1.2/1.3 完成：真 WSS dial + book/price_change/last_trade_price 解码 + 本地 orderbook 重建；活 LEC 盘 VIT/GIANTX 实时 bid/ask 跑通
+- [x] 2026-04-20 00:13 — 老板预存启动资金到 Go 钱包：90.405327 USDC.e + 111.030024 POL，Day 0 PnL 基准已锁定（SPEC §5.1）
 
 ## ❌ 不做
 
