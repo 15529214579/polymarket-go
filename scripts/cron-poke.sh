@@ -71,4 +71,7 @@ cat > "$ROOT/state.json" <<EOF
 }
 EOF
 
+# 告警投递（读 state.json，cooldown 2h，夜间静默）
+"$ROOT/scripts/alert-dispatch.sh" >> "$log" 2>&1 || true
+
 exit 0
