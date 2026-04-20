@@ -38,6 +38,11 @@ func main() {
 	journalDir := flag.String("journal_dir", "db/journal", "trade-journal directory (one JSONL per SGT day)")
 	reportDay := flag.String("report_day", "", "daily-report mode: SGT day YYYY-MM-DD (default: yesterday SGT)")
 	reportPush := flag.Bool("report_push", false, "daily-report mode: also push summary via Telegram alert bot")
+	// Phase 7.a entry-price band filter: only emit SignalPrompt when sig.Mid is
+	// inside [min, max]. Default 0.15–0.70 matches python-db winner distribution
+	// (see reports/python_autopsy.md §4–5).
+	minEntry := flag.Float64("min_entry_price", 0.15, "signals with mid < this are filtered out (reports/python_autopsy.md §2.1)")
+	maxEntry := flag.Float64("max_entry_price", 0.70, "signals with mid > this are filtered out (reports/python_autopsy.md §2.2)")
 	flag.Parse()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -67,7 +72,7 @@ func main() {
 			os.Exit(1)
 		}
 	case "detect":
-		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *largeFillUSD, *signalMode, *exitMode, *journalDir); err != nil && ctx.Err() == nil {
+		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *minEntry, *maxEntry); err != nil && ctx.Err() == nil {
 			slog.Error("detect failed", "err", err)
 			os.Exit(1)
 		}
@@ -277,7 +282,7 @@ func runSample(ctx context.Context, topN, windowSec int) error {
 	return ws.Run(ctx)
 }
 
-func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUSD float64, signalMode, exitMode, journalDir string) error {
+func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUSD float64, signalMode, exitMode, journalDir string, minEntry, maxEntry float64) error {
 	if signalMode != "auto" && signalMode != "prompt" {
 		return fmt.Errorf("invalid signal_mode %q (want auto|prompt)", signalMode)
 	}
@@ -622,6 +627,19 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 						"reason", string(st.BlockReason),
 						"day_pnl_usd", st.DayRealizedPnL,
 						"cap_usd", st.DayLossCapUSD,
+					)
+					continue
+				}
+				// Phase 7.a entry-price band filter — winners in python DB clustered
+				// in [0.15, 0.70]; edges (<0.15 bleed to zero, >0.70 favorites wipe
+				// out) were losers. Signal still logs; only the prompt is suppressed.
+				if sig.Mid < minEntry || sig.Mid > maxEntry {
+					slog.Info("signal_filtered_price_band",
+						"asset", short(sig.AssetID),
+						"q", metaQ(meta, sig.AssetID),
+						"mid", sig.Mid,
+						"min", minEntry,
+						"max", maxEntry,
 					)
 					continue
 				}

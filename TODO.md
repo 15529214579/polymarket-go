@@ -94,12 +94,16 @@
     - gap 分档（已平仓样本）：10-15pp 3/3 全败 / 25-50pp 10/10 全败 / 5-10pp **零 closed 样本**（python 自己都不追窄 gap）
     - scan 分布：1325 theodds_h2h 中 1036 是 **15+pp**（avg 33.72pp），多为 league mismatch / outright 错配
     - llm_scan: 4 closed / 2W 2L / +20.9% ROI（样本 n=4 不可下结论）
-- [ ] **路线抉择**（等老板拍板，不动手）：
-    - R1. 放弃 "PM 内部动量" 和 "宽 gap arb" 两条路，回到结算确定盘（清尾）+ 人工筛市场
-    - R2. 只做 **窄 gap（5-10pp）+ 严格 league/market 匹配 guard**，需新建 bookmaker 源 + 真 league 匹配器；要收集 8-12 周数据才有统计意义
-    - R3. 先关掉纯 momentum auto 开仓（daemon 继续订阅 + 发 prompt，但只在**你亲手点**的情况下开仓），保留信号流做观察，等策略想清楚再动
-    - R4. 方向未定 → Apr 29 不切实盘，Paper 顺延
-- [ ] 路线定下来后，Phase 6 SPEC 落地；当前所有 >Phase 5 的计划（3.0 wrap / 3 V2 签名 / 实盘）**暂停**，cutover 还是到，但实盘 go-live 视抉择结果
+- [x] 2026-04-20 21:30 — **老板拍板 R3+R4**：daemon 默认 `-signal_mode=prompt`（R3，已生效），Apr 29 不实盘（R4，Phase 3 V2 暂缓）。
+- [x] 2026-04-20 21:30 — **python DB 深度扒 winners**（扬长避短）：`reports/python_autopsy.md` 上线。结论——唯一通杀的是 **ladder_TP（+30%/+60%）入场 0.13–0.65 价带** 6/6；theodds_h2h 0W13L、football >0.70 favorite / TIME_STOP 长守护全部进黑名单。
+
+### Phase 7 — prompt-only + 扬长避短
+- [x] 2026-04-20 21:3x — **Phase 7.a 价带过滤**：`-min_entry_price=0.15 -max_entry_price=0.70` 上线；detect 信号命中才发 SignalPrompt，不在区间的打 `signal_filtered_price_band` 日志后 continue。daemon 62192 已吃新 bin。
+- [ ] **Phase 7.b ladder TP 出场**（`-exit_mode=ladder`）：+30% 出 1/3 / +60% 出 1/2 剩余 / 余量 hold。需 PositionManager 支持分批平仓 + 价轨跟踪。
+- [ ] **Phase 7.c 长尾市场扫描**：gamma tag `politics/news/crypto-event` 扩 filter，人工筛选+ladder TP 默认开。
+- [ ] **Phase 7.d 历史回放**：灌 python trades 的 market_id × entry_price 进 Go backtester，跑 ladder_TP 策略得期望曲线和最大回撤；过关才谈实盘。
+
+当前所有 >Phase 7 的计划（3.0 wrap / 3 V2 签名 / 实盘）**暂停**，cutover 还是到，但实盘 go-live 视 7.d 结果。
 
 ## ✅ 已完成
 

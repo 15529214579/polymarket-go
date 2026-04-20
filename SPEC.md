@@ -13,28 +13,53 @@
 
 **为什么 Go：** 低延迟、goroutine 并发、持久 WSS 长连接稳定。
 
-## 2. 策略（老板 2026-04-19 23:33 定调）
+## 2. 策略（2026-04-20 21:30 R3+R4 改版）
 
-**类型：** 赛中动量跟进（in-play momentum follow）
+> **戳破 04-19 版本的追涨假设 + Phase 6 backtest 把 "PM vs bookmaker >5pp" 也证伪之后，第二次重写。详细推翻依据见 [`reports/python_autopsy.md`](reports/python_autopsy.md)。**
 
-**触发条件：**
-- 必须是**已开赛**（game_state = live）的 LoL 比赛市场
-- **任一侧** yes/no 价格出现"持续上升利好"信号 → 跟进该侧
-- **不限**初始价格区间（0.3 也可以进，0.8 也可以进）
+### 2.0 决策框架（R3 + R4）
 
-**"上升利好"量化（默认，待老板 review）：**
-- 最近 N 秒（默认 **60s**）价格净涨幅 ≥ **3pp**（百分点）
-- 且最近 M 个 tick（默认 **5**）收盘价单调或准单调上升（至少 4/5 上行）
-- 且 orderbook 买一方向主动成交占比 ≥ 60%（避免挂单堆叠误导）
+- **R3** — auto-open 关闭，daemon 默认 `-signal_mode=prompt`。所有信号走 Telegram DM prompt，老板**手动点按钮**才下单。
+- **R4** — Apr 29 不切实盘。Phase 3 V2 签名暂缓，等 Phase 7 的 ladder_TP 策略回测通过再讨论实盘。
+- **策略定位** — "信号推荐 + 人工过滤"，不是"全自动 momentum"。模型和触发条件向 python DB 里真正赚过钱的模式靠拢。
 
-**出场（老板 04-20 17:21 拍板：`-exit_mode=hold` 为默认）：**
+### 2.1 扬（python DB 证明过能赚的三件事）
+
+1. **ladder TP 出场**：+30% 出 1/3、+60% 出 1/2 剩余、剩余 hold 到结算（6/6 赢家的唯一共性）
+2. **中间价带入场**（0.15–0.70）：所有赢家都落在这段，偏弱侧
+3. **长尾高 payoff 市场**（政治事件、明确 asymmetric 赔率）：可作战赛道，但筛选靠人工/LLM，不是纯 gap
+
+### 2.2 避（python DB 证明过会亏的三件事）
+
+1. **theodds_h2h >5pp gap**：13/13 全败，gap 来自 league mismatch 而非真 arb
+2. **高价 favorite 追入**（>0.70）：一次翻车归零抹平多笔盈利
+3. **裸追涨 Δ>3pp in-play momentum**：Day-1 自己 0W4L，python DB 里没对应 scan_type 佐证能赚
+
+### 2.3 当前触发条件（Phase 7.a — 价带过滤版）
+
+- 旧：60s Δ≥3pp + tail 4/5 + buy ≥60%（momentum 原生信号，保留作为候选池）
+- 新增过滤器：
+  - `entry_price` 必须在 `[min_entry_price, max_entry_price]` 闭区间（默认 0.15–0.70）
+  - 命中过滤的信号才发 `SignalPrompt` DM；没命中的只留 `signal` 日志不发 DM
+- 老板点按钮后走原 manual_open 路径（paper 期间），hold 到结算（`-exit_mode=hold`）
+
+### 2.4 待验证（Phase 7.b+）
+
+- **ladder TP 出场模式** — `-exit_mode=ladder`：+30% 出 1/3、+60% 出 1/2 剩余、余量 hold。Phase 7.b 落地。
+- **长尾市场扫描** — gamma tag `politics/news` 子集开 prompt，Phase 7.c。
+- **历史回放** — 把 python trades 的 entry_price × market_id 灌进 Go backtester 验 ladder_TP 期望曲线，Phase 7.d。
+
+### 2.5 出场（保持 `-exit_mode=hold` 作 R3 阶段默认）
+
 - `-exit_mode=hold`（当前默认）：**买了就等最终结果**——不看 SL/TP/timeout，开仓后**只等 market resolve**，按 gamma `OutcomePrices[SlotIdx]` 清算（赢家侧 1.0、输家侧 0.0）。settlement watcher 每 60s 轮询 gamma，`closed=true` 即清算；5 min 打一行 `hold_status` 便于 grep。
-- `-exit_mode=auto`（legacy）：ExitTracker 按 SPEC §2 旧版（反转 3 tick / 回撤 2pp / 入场-3pp 止损 / 30min 超时）。paper 早期筛信号用，不是默认。
-- 两种模式都保留日亏损熔断 + 单笔亏损 flag + feed-silence watchdog。
+- `-exit_mode=auto`（legacy）：ExitTracker 按旧版（反转 3 tick / 回撤 2pp / 入场-3pp 止损 / 30min 超时）。
+- `-exit_mode=ladder`（**Phase 7.b 待实现**）：+30% 出 1/3，+60% 出 1/2 剩余，余量 hold。
+- 所有模式都保留日亏损熔断 + 单笔亏损 flag + feed-silence watchdog。
 
-**仓位：**
-- Paper 阶段：单笔 **5 USDC**，不叠仓，同一市场同时只持 1 仓
-- 实盘阶段：总资金 × 5%/笔，由老板打钱后定
+### 2.6 仓位（prompt 模式）
+
+- Paper 阶段：按钮档 1U / 5U / 10U 由老板手选，`PositionManager.OpenSized` 已支持可变 size。
+- 实盘阶段（Phase 7 过后才考虑）：总资金 × 5%/笔，由回测结果定。
 
 ## 3. 数据源
 

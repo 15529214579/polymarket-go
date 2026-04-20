@@ -83,6 +83,8 @@ Paper 阶段**不挂 SL/TP/timeout**。开仓后只等 market resolve，按 gamm
 
 - 2026-04-19 — P1~P7 初版（5号 开工首日）
 - 2026-04-20 17:29 — P8 hold-to-settlement 出场策略
+- 2026-04-20 21:15 — P8 新增"infra 前先跑历史回测"
+- 2026-04-20 21:30 — P9 新增"从邻居 DB 具体扬长避短"
 
 ---
 
@@ -99,5 +101,22 @@ Paper 阶段**不挂 SL/TP/timeout**。开仓后只等 market resolve，按 gamm
 3. 大 gap（>15pp）/ 大 delta（>10pp）这些极端信号大概率是 data pipeline 的 mismatch，不是真机会——**任何 gap 阈值上都必须先看 gap 的分布**
 
 **不要**：不做这一步就直接 "先把 infra 搭好再边跑边看"。先验证想法，再烧代码。
+
+---
+
+## 9. 扬长避短 — 从邻居 DB 学具体而非抽象
+
+**2026-04-20 21:30 拍板。**
+
+第一次用 python DB 只问了 "PM vs bookmaker >5pp 能不能赚钱"，答案是不能就直接跳到 "不抄 python"。这是**抽象否定**——漏掉了具体模式里还有 8 笔赢家（ladder_TP 0.13→0.25, 0.36→0.60, 0.6455→0.895 …）值得学。
+
+**规则**：
+
+1. 否定一个策略后，**必须下钻**到 winners 清单和 losers 清单，按 entry_price / exit_reason / market_type 看具体长相
+2. 拒绝 "整体 ROI 是负的就全部作废"——把**赢家共性**抽出来作为新 filter（本项目的 `reports/python_autopsy.md` §5 / §8 就是这一步的产物）
+3. 同时把**输家共性**列成黑名单（本项目：theodds_h2h / football favorite 高价 / TIME_STOP 长守护）作为 prompt 过滤条件
+4. 这条规则和 §8 互补：§8 要求用数据验证，§9 要求不只看聚合，必须看子集
+
+**不要**：看到"总 PnL 为负"就把整个 DB 丢一边。
 
 ---
