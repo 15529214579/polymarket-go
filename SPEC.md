@@ -27,11 +27,10 @@
 - 且最近 M 个 tick（默认 **5**）收盘价单调或准单调上升（至少 4/5 上行）
 - 且 orderbook 买一方向主动成交占比 ≥ 60%（避免挂单堆叠误导）
 
-**出场：**
-- 止盈：持有至反转信号（3 个 tick 连续下行 或 净回撤 2pp）
-- 止损：入场价 -3pp 硬止损
-- 结算：市场 resolve 时按最终结果清算
-- 最大持仓：单笔 **30 分钟**上限（比赛慢节奏时强制出）
+**出场（老板 04-20 17:21 拍板：`-exit_mode=hold` 为默认）：**
+- `-exit_mode=hold`（当前默认）：**买了就等最终结果**——不看 SL/TP/timeout，开仓后**只等 market resolve**，按 gamma `OutcomePrices[SlotIdx]` 清算（赢家侧 1.0、输家侧 0.0）。settlement watcher 每 60s 轮询 gamma，`closed=true` 即清算；5 min 打一行 `hold_status` 便于 grep。
+- `-exit_mode=auto`（legacy）：ExitTracker 按 SPEC §2 旧版（反转 3 tick / 回撤 2pp / 入场-3pp 止损 / 30min 超时）。paper 早期筛信号用，不是默认。
+- 两种模式都保留日亏损熔断 + 单笔亏损 flag + feed-silence watchdog。
 
 **仓位：**
 - Paper 阶段：单笔 **5 USDC**，不叠仓，同一市场同时只持 1 仓

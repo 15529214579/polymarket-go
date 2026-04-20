@@ -29,8 +29,9 @@ start() {
   ( cd "$ROOT" && go build -o bin/bot ./cmd/bot ) || { echo "build failed"; exit 1; }
   cd "$ROOT" || exit 1
   shift_args=("${@:2}")
-  # Default mode: auto detect, 20 markets, 60s window. Override by passing extra args.
-  args=(-mode=detect -signal_mode=auto -markets=20 -window=60)
+  # Default mode: auto detect, 20 markets, 60s window, hold-to-settlement exit.
+  # Override by passing extra args.
+  args=(-mode=detect -signal_mode=auto -exit_mode=hold -markets=20 -window=60)
   if [ "${#shift_args[@]}" -gt 0 ]; then
     args=("${shift_args[@]}")
   fi

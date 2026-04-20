@@ -179,6 +179,45 @@ func FilterSports(ms []Market) []Market {
 	return filterBy(ms, IsSportsMarket)
 }
 
+// GetByConditionIDs fetches a batch of markets by their conditionId. The gamma
+// /markets endpoint accepts repeated `condition_ids=<hex>` query params and
+// returns only matching rows (ignoring active/closed state), which is exactly
+// what we want for settlement polling: we need to see closed=true markets too.
+func (c *GammaClient) GetByConditionIDs(ctx context.Context, ids []string) ([]Market, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	q := url.Values{}
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		q.Add("condition_ids", id)
+	}
+	q.Set("limit", fmt.Sprintf("%d", len(ids)+5))
+	req, err := http.NewRequestWithContext(ctx, "GET", c.base+"/markets?"+q.Encode(), nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("gamma GET: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("gamma %d: %s", resp.StatusCode, truncate(string(body), 200))
+	}
+	var out []Market
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, fmt.Errorf("gamma decode: %w", err)
+	}
+	return out, nil
+}
+
 func filterBy(ms []Market, pred func(Market) bool) []Market {
 	out := make([]Market, 0, len(ms))
 	for _, m := range ms {

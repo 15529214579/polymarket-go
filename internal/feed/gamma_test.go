@@ -1,6 +1,14 @@
 package feed
 
-import "testing"
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"sort"
+	"testing"
+	"time"
+)
 
 func TestIsLoLMarket(t *testing.T) {
 	cases := []struct {
@@ -31,9 +39,9 @@ func TestIsBasketballMarket(t *testing.T) {
 		{"will-the-los-angeles-lakers-win-the-2026-nba-finals", false}, // seasonal
 		{"nba-finals-2026-mvp", false},
 		{"mlb-det-bos-2026-04-20", false},
-		{"nba-min-den-2026-04-20-spread-home-6pt5", false},       // derivative
-		{"nba-min-den-2026-04-20-total-231pt5", false},           // derivative
-		{"nba-atl-nyk-2026-04-20-spread-home-5pt5", false},       // derivative
+		{"nba-min-den-2026-04-20-spread-home-6pt5", false}, // derivative
+		{"nba-min-den-2026-04-20-total-231pt5", false},     // derivative
+		{"nba-atl-nyk-2026-04-20-spread-home-5pt5", false}, // derivative
 	}
 	for _, c := range cases {
 		if got := IsBasketballMarket(Market{Slug: c.slug}); got != c.want {
@@ -49,9 +57,9 @@ func TestIsFootballMarket(t *testing.T) {
 	}{
 		{"epl-cry-wes-2026-04-20-wes", true},
 		{"epl-bur-mac-2026-04-22-mac", true},
-		{"will-manchester-city-win-2025-26", false},                 // seasonal
-		{"nfl-dal-nyg-2026-09-08", false},                           // not in scope
-		{"epl-cry-wes-2026-04-20-spread-away-2pt5", false},          // derivative
+		{"will-manchester-city-win-2025-26", false},        // seasonal
+		{"nfl-dal-nyg-2026-09-08", false},                  // not in scope
+		{"epl-cry-wes-2026-04-20-spread-away-2pt5", false}, // derivative
 	}
 	for _, c := range cases {
 		if got := IsFootballMarket(Market{Slug: c.slug}); got != c.want {
@@ -84,5 +92,89 @@ func TestFilterSports_UnionAndOrder(t *testing.T) {
 		if m.Slug != want[i] {
 			t.Errorf("pos %d: got %s want %s", i, m.Slug, want[i])
 		}
+	}
+}
+
+func TestGetByConditionIDs_FiltersAndDecodes(t *testing.T) {
+	wantIDs := map[string]bool{
+		"0xabc": true,
+		"0xdef": true,
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/markets" {
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+		got := r.URL.Query()["condition_ids"]
+		sort.Strings(got)
+		want := []string{"0xabc", "0xdef"}
+		if len(got) != len(want) {
+			t.Errorf("condition_ids count: got %v want %v", got, want)
+		}
+		for _, id := range got {
+			if !wantIDs[id] {
+				t.Errorf("unexpected condition_id %q", id)
+			}
+		}
+		// Return a mixed slice: one closed with outcomePrices, one still open.
+		rows := []map[string]any{
+			{
+				"conditionId":   "0xabc",
+				"question":      "LoL: A vs B - Game 1 Winner",
+				"closed":        true,
+				"outcomes":      `["A","B"]`,
+				"outcomePrices": `["1","0"]`,
+				"clobTokenIds":  `["101","102"]`,
+			},
+			{
+				"conditionId":   "0xdef",
+				"question":      "LoL: C vs D - Game 2 Winner",
+				"closed":        false,
+				"outcomes":      `["C","D"]`,
+				"outcomePrices": `["0.65","0.35"]`,
+				"clobTokenIds":  `["201","202"]`,
+			},
+		}
+		_ = json.NewEncoder(w).Encode(rows)
+	}))
+	defer srv.Close()
+
+	c := &GammaClient{http: &http.Client{Timeout: 3 * time.Second}, base: srv.URL}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	got, err := c.GetByConditionIDs(ctx, []string{"0xabc", "", "0xdef"})
+	if err != nil {
+		t.Fatalf("GetByConditionIDs: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d markets, want 2", len(got))
+	}
+	byCond := map[string]Market{}
+	for _, m := range got {
+		byCond[m.ConditionID] = m
+	}
+	closed, ok := byCond["0xabc"]
+	if !ok {
+		t.Fatalf("0xabc missing")
+	}
+	if !closed.Closed {
+		t.Errorf("0xabc should be Closed=true")
+	}
+	prices := closed.OutcomePrices()
+	if len(prices) != 2 || prices[0] != "1" || prices[1] != "0" {
+		t.Errorf("prices decode failed: %v", prices)
+	}
+	if open := byCond["0xdef"]; open.Closed {
+		t.Errorf("0xdef should be Closed=false")
+	}
+}
+
+func TestGetByConditionIDs_EmptyInput(t *testing.T) {
+	c := NewGammaClient()
+	got, err := c.GetByConditionIDs(context.Background(), nil)
+	if err != nil {
+		t.Errorf("empty should be no-op, got err=%v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("empty should return nil slice, got len=%d", len(got))
 	}
 }

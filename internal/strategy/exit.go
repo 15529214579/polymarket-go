@@ -15,6 +15,7 @@ const (
 	ExitReversalDrawdown ExitReason = "reversal_drawdown" // peak - current ≥ drawdown_pp
 	ExitStopLoss         ExitReason = "stop_loss"         // entry - current ≥ stop_pp
 	ExitTimeout          ExitReason = "timeout"           // held longer than max_hold
+	ExitSettlement       ExitReason = "settlement"        // market resolved; close at OutcomePrice
 )
 
 // ExitSignal is emitted when an open position should be closed.

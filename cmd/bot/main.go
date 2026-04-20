@@ -32,6 +32,7 @@ func main() {
 	largeFillUSD := flag.Float64("large_fill_usd", 3.0, "DM notifier threshold on |realized pnl|")
 	envFile := flag.String("env_file", ".env.local", "dotenv file to load before reading env")
 	signalMode := flag.String("signal_mode", "auto", "auto (paper-submit on signal) | prompt (DM + Buy 1/5/10 inline buttons, boss picks size)")
+	exitMode := flag.String("exit_mode", "hold", "hold (wait for market resolution; no SL/TP/timeout) | auto (SPEC §2 reversal/drawdown/stop/timeout)")
 	journalDir := flag.String("journal_dir", "db/journal", "trade-journal directory (one JSONL per SGT day)")
 	reportDay := flag.String("report_day", "", "daily-report mode: SGT day YYYY-MM-DD (default: yesterday SGT)")
 	reportPush := flag.Bool("report_push", false, "daily-report mode: also push summary via Telegram alert bot")
@@ -64,7 +65,7 @@ func main() {
 			os.Exit(1)
 		}
 	case "detect":
-		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *largeFillUSD, *signalMode, *journalDir); err != nil && ctx.Err() == nil {
+		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *largeFillUSD, *signalMode, *exitMode, *journalDir); err != nil && ctx.Err() == nil {
 			slog.Error("detect failed", "err", err)
 			os.Exit(1)
 		}
@@ -274,10 +275,14 @@ func runSample(ctx context.Context, topN, windowSec int) error {
 	return ws.Run(ctx)
 }
 
-func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUSD float64, signalMode, journalDir string) error {
+func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUSD float64, signalMode, exitMode, journalDir string) error {
 	if signalMode != "auto" && signalMode != "prompt" {
 		return fmt.Errorf("invalid signal_mode %q (want auto|prompt)", signalMode)
 	}
+	if exitMode != "hold" && exitMode != "auto" {
+		return fmt.Errorf("invalid exit_mode %q (want hold|auto)", exitMode)
+	}
+	holdToSettlement := exitMode == "hold"
 	jrn, err := journal.New(journalDir)
 	if err != nil {
 		return fmt.Errorf("journal init: %w", err)
@@ -344,6 +349,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 		"large_fill_usd", largeFillUSD,
 	)
 	slog.Info("signal_mode.ready", "mode", signalMode)
+	slog.Info("exit_mode.ready", "mode", exitMode, "hold_to_settlement", holdToSettlement)
 
 	// Inbound callback consumer (Phase 3.5.b). Only runs if a DEDICATED sidecar
 	// bot token is configured — we never long-poll the alert bot's token because
@@ -359,15 +365,16 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 			slog.Warn("sidecar_chat_id_parse_fail", "err", err.Error())
 		} else {
 			h := &buyHandler{
-				pm:           pm,
-				exit:         exit,
-				paper:        paper,
-				rm:           rm,
-				pending:      pending,
-				notifier:     notifier,
-				meta:         meta,
-				src:          src,
-				largeFillUSD: largeFillUSD,
+				pm:               pm,
+				exit:             exit,
+				paper:            paper,
+				rm:               rm,
+				pending:          pending,
+				notifier:         notifier,
+				meta:             meta,
+				src:              src,
+				largeFillUSD:     largeFillUSD,
+				holdToSettlement: holdToSettlement,
 			}
 			lp := notify.NewLongPoll(notify.LongPollConfig{
 				BotToken:       sidecarToken,
@@ -693,7 +700,9 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 					)
 					continue
 				}
-				exit.Open(sig.AssetID, sig.Market, entryTick)
+				if !holdToSettlement {
+					exit.Open(sig.AssetID, sig.Market, entryTick)
+				}
 				src.Mark(sig.AssetID, "auto", res.OrderID)
 				stats := pm.Stats()
 				slog.Info("paper_open",
@@ -776,6 +785,171 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 		}
 	}()
 
+	// Settlement watcher (exit_mode=hold). Polls gamma for each open position's
+	// market every 60s; when a market is `closed` we close the position using
+	// OutcomePrices[SlotIdx] as the final fill — 1.0 for the winning side,
+	// 0.0 for the loser. Does the same risk/journal/notify bookkeeping the
+	// auto-exit tracker does. SPEC §2 exit_mode=hold.
+	if holdToSettlement {
+		go func() {
+			tk := time.NewTicker(60 * time.Second)
+			defer tk.Stop()
+			lastHeldLog := time.Time{}
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-tk.C:
+				}
+				open := pm.Snapshot()
+				if len(open) == 0 {
+					continue
+				}
+				// Collect unique conditionIDs from meta.
+				seen := make(map[string]struct{}, len(open))
+				ids := make([]string, 0, len(open))
+				for _, p := range open {
+					me := meta[p.AssetID]
+					if me == nil || me.ConditionID == "" {
+						continue
+					}
+					if _, ok := seen[me.ConditionID]; ok {
+						continue
+					}
+					seen[me.ConditionID] = struct{}{}
+					ids = append(ids, me.ConditionID)
+				}
+				if len(ids) == 0 {
+					continue
+				}
+				qctx, qcancel := context.WithTimeout(ctx, 15*time.Second)
+				mkts2, err := gc.GetByConditionIDs(qctx, ids)
+				qcancel()
+				if err != nil {
+					slog.Warn("settlement_poll_fail", "err", err.Error(), "ids", len(ids))
+					continue
+				}
+				byCond := make(map[string]feed.Market, len(mkts2))
+				for _, m := range mkts2 {
+					byCond[m.ConditionID] = m
+				}
+				// Periodic "still holding" log (once per 5 min) — easy to grep for.
+				now := time.Now()
+				if now.Sub(lastHeldLog) >= 5*time.Minute {
+					lastHeldLog = now
+					slog.Info("hold_status",
+						"open", len(open),
+						"markets_polled", len(ids),
+						"resolved_seen", countResolved(mkts2),
+					)
+				}
+				for _, p := range open {
+					me := meta[p.AssetID]
+					if me == nil || me.ConditionID == "" {
+						continue
+					}
+					m, ok := byCond[me.ConditionID]
+					if !ok {
+						continue
+					}
+					if !m.Closed {
+						continue
+					}
+					prices := m.OutcomePrices()
+					if me.SlotIdx < 0 || me.SlotIdx >= len(prices) {
+						continue
+					}
+					settleMid, perr := strconv.ParseFloat(prices[me.SlotIdx], 64)
+					if perr != nil {
+						slog.Warn("settlement_price_parse_fail",
+							"asset", short(p.AssetID),
+							"raw", prices[me.SlotIdx],
+							"err", perr.Error())
+						continue
+					}
+					sig := strategy.ExitSignal{
+						AssetID:  p.AssetID,
+						Market:   p.Market,
+						Time:     now,
+						EntryMid: p.EntryMid,
+						PeakMid:  p.EntryMid,
+						ExitMid:  settleMid,
+						HeldFor:  now.Sub(p.EntryTime),
+						ChangePP: (settleMid - p.EntryMid) * 100,
+						Reason:   strategy.ExitSettlement,
+					}
+					closed, cerr := pm.Close(p.AssetID, sig)
+					if cerr != nil {
+						slog.Warn("settlement_close_miss", "asset", short(p.AssetID), "err", cerr.Error())
+						continue
+					}
+					orderID := fmt.Sprintf("settle-%s", short(p.AssetID))
+					stats := pm.Stats()
+					if tripped := rm.OnClose(closed.PnLUSD, now); tripped {
+						rst := rm.State()
+						slog.Error("risk_trip",
+							"reason", string(rst.BlockReason),
+							"day_pnl_usd", rst.DayRealizedPnL,
+							"cap_usd", rst.DayLossCapUSD,
+						)
+						notifier.RiskTrip(notify.RiskTripEvent{
+							Reason:        string(rst.BlockReason),
+							DayPnLUSD:     rst.DayRealizedPnL,
+							DayLossCapUSD: rst.DayLossCapUSD,
+							OpenPositions: stats.Open,
+						})
+					}
+					if closed.PnLUSD <= -largeFillUSD || closed.PnLUSD >= largeFillUSD {
+						notifier.LargeFill(notify.LargeFillEvent{
+							Question: metaQ(meta, p.AssetID),
+							AssetID:  p.AssetID,
+							Side:     "sell",
+							SizeUSD:  p.SizeUSD,
+							PnLUSD:   closed.PnLUSD,
+							EntryPx:  p.EntryMid,
+							ExitPx:   settleMid,
+							Reason:   string(strategy.ExitSettlement),
+							HeldSec:  int(sig.HeldFor.Seconds()),
+						})
+					}
+					source, openOID := src.Take(p.AssetID)
+					if jerr := jrn.Append(journal.TradeRecord{
+						ID: closed.ID, AssetID: closed.AssetID, Market: closed.Market,
+						Question:     metaQ(meta, closed.AssetID),
+						Outcome:      metaOutcome(meta, closed.AssetID),
+						Side:         "buy",
+						SizeUSD:      closed.SizeUSD,
+						Units:        closed.Units,
+						EntryMid:     closed.EntryMid,
+						EntryTime:    closed.EntryTime,
+						ExitMid:      closed.ExitMid,
+						ExitTime:     closed.ExitTime,
+						ExitReason:   string(closed.ExitReason),
+						HeldSec:      int(sig.HeldFor.Seconds()),
+						PnLUSD:       closed.PnLUSD,
+						OpenOrderID:  openOID,
+						CloseOrderID: orderID,
+						Mode:         "paper",
+						SignalSource: source,
+					}); jerr != nil {
+						slog.Warn("journal_append_fail", "asset", short(p.AssetID), "err", jerr.Error())
+					}
+					slog.Info("settlement_exit",
+						"asset", short(p.AssetID),
+						"q", metaQ(meta, p.AssetID),
+						"outcome", metaOutcome(meta, p.AssetID),
+						"entry", p.EntryMid,
+						"settle", settleMid,
+						"pnl_usd", closed.PnLUSD,
+						"held_sec", int(sig.HeldFor.Seconds()),
+						"open_positions", stats.Open,
+						"realized_pnl", stats.RealizedPnLUSD,
+					)
+				}
+			}
+		}()
+	}
+
 	go func() {
 		tk := time.NewTicker(30 * time.Second)
 		defer tk.Stop()
@@ -801,6 +975,18 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 	}()
 
 	return ws.Run(ctx)
+}
+
+// countResolved returns the number of markets in the slice that have already
+// settled on-chain (closed=true). Used for settlement-watcher status logging.
+func countResolved(ms []feed.Market) int {
+	n := 0
+	for _, m := range ms {
+		if m.Closed {
+			n++
+		}
+	}
+	return n
 }
 
 func topWindow(ws []feed.WindowStats, n int) []feed.WindowStats {
@@ -841,6 +1027,8 @@ func short(id string) string {
 // touches gamma again.
 type assetMeta struct {
 	Question       string
+	ConditionID    string // market conditionId (0x…); needed for gamma settlement lookup
+	SlotIdx        int    // index of this asset in market.Outcomes / OutcomePrices (0 or 1)
 	Match          string // parsed title, e.g. "LoL: Shifters vs G2 Esports"
 	Context        string // parsed context, e.g. "Game 1 Winner" or "BO3 · LCK ..."
 	Outcome        string // this asset's outcome label ("Shifters", "Yes", ...)
@@ -870,10 +1058,12 @@ func buildAssetMeta(ms []feed.Market) map[string]*assetMeta {
 				continue
 			}
 			me := &assetMeta{
-				Question: m.Question,
-				Match:    match,
-				Context:  ctx,
-				EndTime:  endTime,
+				Question:    m.Question,
+				ConditionID: m.ConditionID,
+				SlotIdx:     i,
+				Match:       match,
+				Context:     ctx,
+				EndTime:     endTime,
 			}
 			if i < len(outcomes) {
 				me.Outcome = outcomes[i]
@@ -1095,15 +1285,16 @@ func runPromptTest(ctx context.Context, slippageBp float64) error {
 // Executes synchronously on the longpoll goroutine; Telegram dispatch of the
 // resulting DM is async via notifier.
 type buyHandler struct {
-	pm           *strategy.PositionManager
-	exit         *strategy.ExitTracker
-	paper        order.Client
-	rm           *risk.Manager
-	pending      *notify.PendingStore
-	notifier     notify.Notifier
-	meta         map[string]*assetMeta
-	src          *sourceTracker
-	largeFillUSD float64
+	pm               *strategy.PositionManager
+	exit             *strategy.ExitTracker
+	paper            order.Client
+	rm               *risk.Manager
+	pending          *notify.PendingStore
+	notifier         notify.Notifier
+	meta             map[string]*assetMeta
+	src              *sourceTracker
+	largeFillUSD     float64
+	holdToSettlement bool
 }
 
 func (h *buyHandler) OnBuy(ctx context.Context, nonce string, slot int, sizeUSD float64) (string, error) {
@@ -1143,7 +1334,9 @@ func (h *buyHandler) OnBuy(ctx context.Context, nonce string, slot int, sizeUSD 
 	if err != nil {
 		return "", fmt.Errorf("开仓失败: %s", err.Error())
 	}
-	h.exit.Open(choice.AssetID, p.Market, entryTick)
+	if !h.holdToSettlement {
+		h.exit.Open(choice.AssetID, p.Market, entryTick)
+	}
 	if h.src != nil {
 		h.src.Mark(choice.AssetID, "manual", res.OrderID)
 	}

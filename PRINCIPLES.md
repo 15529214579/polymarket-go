@@ -71,6 +71,15 @@ Phase / P0x 级别的 TODO 完成时，在**当前老板 telegram 私聊 DM**（
 
 ---
 
+## P8. Paper 期初出场策略 = hold-to-settlement（2026-04-20 17:21）
+
+Paper 阶段**不挂 SL/TP/timeout**。开仓后只等 market resolve，按 gamma `OutcomePrices[SlotIdx]` 清算（赢家 1.0 / 输家 0.0）。settlement watcher goroutine 每 60s 查 gamma。
+
+**Why:** 老板 04-20 17:21 看 17:17 Day-1 样本后拍板——4/4 平仓全是 `reversal_drawdown` 几秒内止损，detector 门槛（Δ≥3pp）在抓短期顶点。在还没有足够样本校准阈值前，用 **"持到结果"** 给策略一个真正的 ground-truth PnL 分布，避免 exit 规则把好信号洗掉。
+
+**How to apply:** 默认 `-exit_mode=hold`（bot-daemon.sh 已内置）。legacy `-exit_mode=auto` 走旧 ExitTracker（反转/回撤/3pp 止损/30min 超时），做阈值对照或手动压测时用。两种模式都保留日亏损熔断 + feed-silence watchdog——那是风控，不是策略。
+
 ## 变更日志
 
 - 2026-04-19 — P1~P7 初版（5号 开工首日）
+- 2026-04-20 17:29 — P8 hold-to-settlement 出场策略
