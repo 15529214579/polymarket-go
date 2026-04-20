@@ -114,17 +114,10 @@ func runFeed(ctx context.Context, topN int) error {
 	}
 	lol = lol[:topN]
 
-	// Collect clobTokenIDs; map back to question for log context.
-	assetToQ := map[string]string{}
-	var assetIDs []string
-	for _, m := range lol {
-		for _, id := range m.ClobTokenIDs() {
-			if id == "" {
-				continue
-			}
-			assetToQ[id] = m.Question
-			assetIDs = append(assetIDs, id)
-		}
+	meta := buildAssetMeta(lol)
+	assetIDs := make([]string, 0, len(meta))
+	for id := range meta {
+		assetIDs = append(assetIDs, id)
 	}
 	slog.Info("feed.start", "markets", len(lol), "assets", len(assetIDs))
 
@@ -155,7 +148,7 @@ func runFeed(ctx context.Context, topN int) error {
 				}
 				slog.Info("book",
 					"asset", short(ev.AssetID),
-					"q", assetToQ[ev.AssetID],
+					"q", metaQ(meta, ev.AssetID),
 					"bid", bestBid,
 					"ask", bestAsk,
 					"n_bids", len(ev.Bids),
@@ -167,7 +160,7 @@ func runFeed(ctx context.Context, topN int) error {
 				}
 				slog.Info("trade",
 					"asset", short(tr.AssetID),
-					"q", assetToQ[tr.AssetID],
+					"q", metaQ(meta, tr.AssetID),
 					"price", tr.Price,
 					"size", tr.Size,
 					"side", tr.Side,
@@ -194,16 +187,10 @@ func runSample(ctx context.Context, topN, windowSec int) error {
 	}
 	lol = lol[:topN]
 
-	assetToQ := map[string]string{}
-	var assetIDs []string
-	for _, m := range lol {
-		for _, id := range m.ClobTokenIDs() {
-			if id == "" {
-				continue
-			}
-			assetToQ[id] = m.Question
-			assetIDs = append(assetIDs, id)
-		}
+	meta := buildAssetMeta(lol)
+	assetIDs := make([]string, 0, len(meta))
+	for id := range meta {
+		assetIDs = append(assetIDs, id)
 	}
 	slog.Info("sample.start", "markets", len(lol), "assets", len(assetIDs), "window_sec", windowSec)
 
@@ -227,7 +214,7 @@ func runSample(ctx context.Context, topN, windowSec int) error {
 				}
 				slog.Info("tick",
 					"asset", short(t.AssetID),
-					"q", assetToQ[t.AssetID],
+					"q", metaQ(meta, t.AssetID),
 					"bid", t.BestBid,
 					"ask", t.BestAsk,
 					"mid", t.Mid,
@@ -251,7 +238,7 @@ func runSample(ctx context.Context, topN, windowSec int) error {
 				for _, w := range sampler.Snapshot() {
 					slog.Info("window",
 						"asset", short(w.AssetID),
-						"q", assetToQ[w.AssetID],
+						"q", metaQ(meta, w.AssetID),
 						"samples", w.Samples,
 						"start_mid", w.StartMid,
 						"end_mid", w.EndMid,
@@ -287,16 +274,10 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 	}
 	lol = lol[:topN]
 
-	assetToQ := map[string]string{}
-	var assetIDs []string
-	for _, m := range lol {
-		for _, id := range m.ClobTokenIDs() {
-			if id == "" {
-				continue
-			}
-			assetToQ[id] = m.Question
-			assetIDs = append(assetIDs, id)
-		}
+	meta := buildAssetMeta(lol)
+	assetIDs := make([]string, 0, len(meta))
+	for id := range meta {
+		assetIDs = append(assetIDs, id)
 	}
 	slog.Info("detect.start", "markets", len(lol), "assets", len(assetIDs), "window_sec", windowSec)
 
@@ -347,13 +328,13 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 			slog.Warn("sidecar_chat_id_parse_fail", "err", err.Error())
 		} else {
 			h := &buyHandler{
-				pm:       pm,
-				exit:     exit,
-				paper:    paper,
-				rm:       rm,
-				pending:  pending,
-				notifier: notifier,
-				assetToQ: assetToQ,
+				pm:           pm,
+				exit:         exit,
+				paper:        paper,
+				rm:           rm,
+				pending:      pending,
+				notifier:     notifier,
+				meta:         meta,
 				largeFillUSD: largeFillUSD,
 			}
 			lp := notify.NewLongPoll(notify.LongPollConfig{
@@ -469,7 +450,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 						}
 						if closed.PnLUSD <= -largeFillUSD || closed.PnLUSD >= largeFillUSD {
 							notifier.LargeFill(notify.LargeFillEvent{
-								Question: assetToQ[sig.AssetID],
+								Question: metaQ(meta, sig.AssetID),
 								AssetID:  sig.AssetID,
 								Side:     "sell",
 								SizeUSD:  posCfg.PerPositionUSD,
@@ -482,7 +463,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 						}
 						slog.Info("exit",
 							"asset", short(sig.AssetID),
-							"q", assetToQ[sig.AssetID],
+							"q", metaQ(meta, sig.AssetID),
 							"reason", string(sig.Reason),
 							"order_id", res.OrderID,
 							"entry", sig.EntryMid,
@@ -512,7 +493,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 				}
 				slog.Info("signal",
 					"asset", short(sig.AssetID),
-					"q", assetToQ[sig.AssetID],
+					"q", metaQ(meta, sig.AssetID),
 					"mid", sig.Mid,
 					"delta_pp", sig.DeltaPP,
 					"tail_ups", sig.TailUps,
@@ -525,7 +506,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 					st := rm.State()
 					slog.Warn("risk_block_open",
 						"asset", short(sig.AssetID),
-						"q", assetToQ[sig.AssetID],
+						"q", metaQ(meta, sig.AssetID),
 						"reason", string(st.BlockReason),
 						"day_pnl_usd", st.DayRealizedPnL,
 						"cap_usd", st.DayLossCapUSD,
@@ -537,27 +518,58 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 				if pm.Has(sig.AssetID) || pm.HasMarket(sig.Market) {
 					slog.Info("paper_open_skip",
 						"asset", short(sig.AssetID),
-						"q", assetToQ[sig.AssetID],
+						"q", metaQ(meta, sig.AssetID),
 						"reason", "already_open",
 					)
 					continue
 				}
 
-				// Prompt mode: publish the signal as a DM with Buy 1/5/10 buttons
-				// and stash the intent in the pending store. The callback longpoll
-				// (above) claims the nonce and executes via buyHandler.
+				// Prompt mode: publish the signal as a DM with one button row per
+				// outcome (YES/NO or team-A/team-B) and stash the full Choices slice
+				// in the pending store. The callback longpoll (above) claims the
+				// nonce, picks Choices[slot], and executes via buyHandler.
 				if signalMode == "prompt" {
+					me := meta[sig.AssetID]
+					choices := []notify.Choice{{
+						AssetID: sig.AssetID, Outcome: outcomeOrDefault(me, "Yes"),
+						Mid: sig.Mid, IsSignal: true,
+					}}
+					sigChoices := []notify.SignalChoice{{
+						Slot: 0, Outcome: choices[0].Outcome, Mid: sig.Mid, IsSignal: true,
+					}}
+					if me != nil && me.Sibling != "" {
+						sibMid := 1.0 - sig.Mid // fallback: binary complement
+						if w, ok := sampler.Window(me.Sibling); ok && w.Samples > 0 {
+							sibMid = w.EndMid
+						}
+						sibOutcome := me.SiblingOutcome
+						if sibOutcome == "" {
+							sibOutcome = "No"
+						}
+						choices = append(choices, notify.Choice{
+							AssetID: me.Sibling, Outcome: sibOutcome, Mid: sibMid,
+						})
+						sigChoices = append(sigChoices, notify.SignalChoice{
+							Slot: 1, Outcome: sibOutcome, Mid: sibMid,
+						})
+					}
 					p := pending.Put(notify.PendingIntent{
-						AssetID:  sig.AssetID,
 						Market:   sig.Market,
-						Question: assetToQ[sig.AssetID],
-						Mid:      sig.Mid,
+						Question: metaQ(meta, sig.AssetID),
+						Choices:  choices,
 					}, time.Now())
+					var match, ctxLine, endIn string
+					if me != nil {
+						match = me.Match
+						ctxLine = me.Context
+						endIn = notify.HumanizeEndIn(time.Now(), me.EndTime)
+					}
 					notifier.SignalPrompt(notify.SignalPromptEvent{
 						Nonce:     p.Nonce,
-						Question:  assetToQ[sig.AssetID],
-						AssetID:   sig.AssetID,
-						Mid:       sig.Mid,
+						Match:     match,
+						Context:   ctxLine,
+						EndIn:     endIn,
+						Choices:   sigChoices,
 						DeltaPP:   sig.DeltaPP,
 						TailUps:   sig.TailUps,
 						TailLen:   sig.TailLen,
@@ -568,6 +580,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 						"asset", short(sig.AssetID),
 						"nonce", p.Nonce,
 						"mid", sig.Mid,
+						"choices", len(choices),
 					)
 					continue
 				}
@@ -597,7 +610,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 				if err != nil {
 					slog.Info("paper_open_skip",
 						"asset", short(sig.AssetID),
-						"q", assetToQ[sig.AssetID],
+						"q", metaQ(meta, sig.AssetID),
 						"order_id", res.OrderID,
 						"reason", err.Error(),
 					)
@@ -609,7 +622,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 					"id", pos.ID,
 					"order_id", res.OrderID,
 					"asset", short(sig.AssetID),
-					"q", assetToQ[sig.AssetID],
+					"q", metaQ(meta, sig.AssetID),
 					"signal_mid", sig.Mid,
 					"entry_fill", res.AvgPrice,
 					"size_usd", pos.SizeUSD,
@@ -697,7 +710,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 				for _, w := range top {
 					slog.Info("top_window",
 						"asset", short(w.AssetID),
-						"q", assetToQ[w.AssetID],
+						"q", metaQ(meta, w.AssetID),
 						"samples", w.Samples,
 						"mid", w.EndMid,
 						"delta_pp", w.DeltaPP,
@@ -735,6 +748,80 @@ func short(id string) string {
 	return id[:6] + ".." + id[len(id)-4:]
 }
 
+// assetMeta carries per-asset context used by signal prompts and log lines.
+// Built once at startup from the gamma market list so the hot path never
+// touches gamma again.
+type assetMeta struct {
+	Question       string
+	Match          string // parsed title, e.g. "LoL: Shifters vs G2 Esports"
+	Context        string // parsed context, e.g. "Game 1 Winner" or "BO3 · LCK ..."
+	Outcome        string // this asset's outcome label ("Shifters", "Yes", ...)
+	Sibling        string // sibling asset_id (the other outcome) — empty if market is non-binary
+	SiblingOutcome string
+	EndTime        time.Time // parsed from market.EndDate; zero if unparseable
+}
+
+// buildAssetMeta walks a market list and produces an asset_id-keyed view that
+// pairs each asset with its sibling outcome. Only binary markets get sibling
+// info; multi-outcome markets (rare in LoL) degrade to "no sibling" which
+// renders as a single-row prompt.
+func buildAssetMeta(ms []feed.Market) map[string]*assetMeta {
+	out := make(map[string]*assetMeta, len(ms)*2)
+	for _, m := range ms {
+		tokens := m.ClobTokenIDs()
+		outcomes := m.Outcomes()
+		match, ctx := notify.ParseMarketTitle(m.Question)
+		var endTime time.Time
+		if m.EndDate != "" {
+			if t, err := time.Parse(time.RFC3339, m.EndDate); err == nil {
+				endTime = t
+			}
+		}
+		for i, id := range tokens {
+			if id == "" {
+				continue
+			}
+			me := &assetMeta{
+				Question: m.Question,
+				Match:    match,
+				Context:  ctx,
+				EndTime:  endTime,
+			}
+			if i < len(outcomes) {
+				me.Outcome = outcomes[i]
+			}
+			// Sibling: for a 2-outcome market, the "other" token.
+			if len(tokens) == 2 {
+				sibIdx := 1 - i
+				me.Sibling = tokens[sibIdx]
+				if sibIdx < len(outcomes) {
+					me.SiblingOutcome = outcomes[sibIdx]
+				}
+			}
+			out[id] = me
+		}
+	}
+	return out
+}
+
+// metaQ returns the Question string for an asset, or "" if unknown. Used by log
+// lines that previously indexed a plain map[string]string.
+func metaQ(m map[string]*assetMeta, id string) string {
+	if me := m[id]; me != nil {
+		return me.Question
+	}
+	return ""
+}
+
+// outcomeOrDefault pulls the outcome label for a meta entry, falling back to
+// def when the market has no outcome list (rare but defensive).
+func outcomeOrDefault(me *assetMeta, def string) string {
+	if me == nil || me.Outcome == "" {
+		return def
+	}
+	return me.Outcome
+}
+
 // runPromptTest drives the Phase 3.5.b button loop end-to-end against real
 // Telegram APIs, without needing a live momentum signal. Picks the top-vol LoL
 // market, seeds a PendingStore entry, sends a SignalPrompt DM, runs the sidecar
@@ -756,7 +843,7 @@ func runPromptTest(ctx context.Context, slippageBp float64) error {
 		return fmt.Errorf("top market has no clob tokens: %s", top.Slug)
 	}
 	assetID := tokens[0]
-	assetToQ := map[string]string{assetID: top.Question}
+	meta := buildAssetMeta(lol)
 
 	posCfg := strategy.DefaultPositionConfig()
 	pm := strategy.NewPositionManager(posCfg)
@@ -787,7 +874,7 @@ func runPromptTest(ctx context.Context, slippageBp float64) error {
 	h := &buyHandler{
 		pm: pm, exit: exit, paper: paper, rm: rm,
 		pending: pending, notifier: notifier,
-		assetToQ: assetToQ, largeFillUSD: 3.0,
+		meta: meta, largeFillUSD: 3.0,
 	}
 	lp := notify.NewLongPoll(notify.LongPollConfig{
 		BotToken: sidecarToken, ExpectedChatID: chatID,
@@ -802,20 +889,53 @@ func runPromptTest(ctx context.Context, slippageBp float64) error {
 	}()
 
 	// Seed one pending intent at the current mid (use 0.50 as a placeholder —
-	// paper fill math is the same since slippage is bp-relative).
+	// paper fill math is the same since slippage is bp-relative). Build full
+	// Choices so the prompt shows both YES/NO (or team-A/team-B) rows.
 	mid := 0.50
+	me := meta[assetID]
+	choices := []notify.Choice{{
+		AssetID: assetID, Outcome: outcomeOrDefault(me, "Yes"),
+		Mid: mid, IsSignal: true,
+	}}
+	sigChoices := []notify.SignalChoice{{
+		Slot: 0, Outcome: choices[0].Outcome, Mid: mid, IsSignal: true,
+	}}
+	if me != nil && me.Sibling != "" {
+		sibOutcome := me.SiblingOutcome
+		if sibOutcome == "" {
+			sibOutcome = "No"
+		}
+		sibMid := 1.0 - mid
+		choices = append(choices, notify.Choice{
+			AssetID: me.Sibling, Outcome: sibOutcome, Mid: sibMid,
+		})
+		sigChoices = append(sigChoices, notify.SignalChoice{
+			Slot: 1, Outcome: sibOutcome, Mid: sibMid,
+		})
+	}
 	p := pending.Put(notify.PendingIntent{
-		AssetID:  assetID,
 		Market:   top.Slug,
 		Question: top.Question,
-		Mid:      mid,
+		Choices:  choices,
 	}, time.Now())
 
+	var match, ctxLine, endIn string
+	if me != nil {
+		match = me.Match
+		ctxLine = me.Context
+		endIn = notify.HumanizeEndIn(time.Now(), me.EndTime)
+	}
+	if ctxLine != "" {
+		ctxLine += " · [PROMPT-TEST]"
+	} else {
+		ctxLine = "[PROMPT-TEST]"
+	}
 	notifier.SignalPrompt(notify.SignalPromptEvent{
 		Nonce:     p.Nonce,
-		Question:  top.Question + "  [PROMPT-TEST]",
-		AssetID:   assetID,
-		Mid:       mid,
+		Match:     match,
+		Context:   ctxLine,
+		EndIn:     endIn,
+		Choices:   sigChoices,
 		DeltaPP:   0,
 		TailUps:   0,
 		TailLen:   0,
@@ -827,6 +947,7 @@ func runPromptTest(ctx context.Context, slippageBp float64) error {
 		"q", top.Question,
 		"mid", mid,
 		"asset", short(assetID),
+		"choices", len(choices),
 	)
 
 	// Wait for either: first fill (pm.Stats().Open > 0), the user's click
@@ -856,10 +977,11 @@ func runPromptTest(ctx context.Context, slippageBp float64) error {
 	}
 }
 
-// buyHandler wires a click on Buy 1/5/10 → same paper-submit → pm.Open path
-// the auto-mode signal loop uses, but honors the size the boss picked and the
-// frozen mid captured at signal time. Executes synchronously on the longpoll
-// goroutine; Telegram dispatch of the resulting DM is async via notifier.
+// buyHandler wires a click on one outcome's Buy 1/5/10 → same paper-submit →
+// pm.Open path the auto-mode signal loop uses, but honors the size the boss
+// picked and the Choice (YES/NO) resolved from PendingIntent.Choices[slot].
+// Executes synchronously on the longpoll goroutine; Telegram dispatch of the
+// resulting DM is async via notifier.
 type buyHandler struct {
 	pm           *strategy.PositionManager
 	exit         *strategy.ExitTracker
@@ -867,29 +989,33 @@ type buyHandler struct {
 	rm           *risk.Manager
 	pending      *notify.PendingStore
 	notifier     notify.Notifier
-	assetToQ     map[string]string
+	meta         map[string]*assetMeta
 	largeFillUSD float64
 }
 
-func (h *buyHandler) OnBuy(ctx context.Context, nonce string, sizeUSD float64) (string, error) {
+func (h *buyHandler) OnBuy(ctx context.Context, nonce string, slot int, sizeUSD float64) (string, error) {
 	now := time.Now()
 	p, ok := h.pending.Claim(nonce, now)
 	if !ok {
 		return "", fmt.Errorf("已过期或已点过")
 	}
+	if slot < 0 || slot >= len(p.Choices) {
+		return "", fmt.Errorf("选项越界 slot=%d", slot)
+	}
+	choice := p.Choices[slot]
 	if err := h.rm.AllowOpen(now); err != nil {
 		st := h.rm.State()
 		return "", fmt.Errorf("风控阻止: %s (day_pnl=%.2f)", st.BlockReason, st.DayRealizedPnL)
 	}
-	if h.pm.Has(p.AssetID) || h.pm.HasMarket(p.Market) {
+	if h.pm.Has(choice.AssetID) || h.pm.HasMarket(p.Market) {
 		return "", fmt.Errorf("已有同市场仓位")
 	}
 	intent := order.Intent{
-		AssetID: p.AssetID,
+		AssetID: choice.AssetID,
 		Market:  p.Market,
 		Side:    order.Buy,
 		SizeUSD: sizeUSD,
-		LimitPx: p.Mid,
+		LimitPx: choice.Mid,
 		Type:    order.GTC,
 	}
 	res, err := h.paper.Submit(ctx, intent)
@@ -897,28 +1023,31 @@ func (h *buyHandler) OnBuy(ctx context.Context, nonce string, sizeUSD float64) (
 		return "", fmt.Errorf("下单失败: %s", err.Error())
 	}
 	entryTick := feed.Tick{
-		AssetID: p.AssetID, Market: p.Market,
+		AssetID: choice.AssetID, Market: p.Market,
 		Time: now, Mid: res.AvgPrice,
 	}
-	pos, err := h.pm.OpenSized(p.AssetID, p.Market, entryTick, sizeUSD)
+	pos, err := h.pm.OpenSized(choice.AssetID, p.Market, entryTick, sizeUSD)
 	if err != nil {
 		return "", fmt.Errorf("开仓失败: %s", err.Error())
 	}
-	h.exit.Open(p.AssetID, p.Market, entryTick)
+	h.exit.Open(choice.AssetID, p.Market, entryTick)
 	stats := h.pm.Stats()
 	slog.Info("manual_open",
 		"id", pos.ID,
 		"order_id", res.OrderID,
-		"asset", short(p.AssetID),
-		"q", h.assetToQ[p.AssetID],
+		"asset", short(choice.AssetID),
+		"q", metaQ(h.meta, choice.AssetID),
+		"outcome", choice.Outcome,
+		"slot", slot,
 		"size_usd", sizeUSD,
-		"signal_mid", p.Mid,
+		"signal_mid", choice.Mid,
 		"entry_fill", res.AvgPrice,
 		"units", pos.Units,
 		"open_positions", stats.Open,
 		"total_exposure_usd", stats.TotalExposure,
 	)
-	return fmt.Sprintf("✅ %gU @ %.4f · order %s", sizeUSD, res.AvgPrice, short(res.OrderID)), nil
+	return fmt.Sprintf("✅ %s %gU @ %.4f · order %s",
+		choice.Outcome, sizeUSD, res.AvgPrice, short(res.OrderID)), nil
 }
 
 // buildNotifier returns a Telegram notifier when TELEGRAM_BOT_TOKEN + _CHAT_ID

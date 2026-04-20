@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -74,27 +75,62 @@ func (t *Telegram) RiskTrip(ev RiskTripEvent)     { t.enqueue(outgoing{text: For
 func (t *Telegram) RiskResume(ev RiskResumeEvent) { t.enqueue(outgoing{text: FormatRiskResume(ev), tag: "risk_resume"}) }
 func (t *Telegram) LargeFill(ev LargeFillEvent)   { t.enqueue(outgoing{text: FormatLargeFill(ev), tag: "large_fill"}) }
 
-// SignalPrompt enqueues a DM with an inline keyboard ("Buy 1U / 5U / 10U").
-// callback_data is "buy:<nonce>:<sizeUSD>"; the inbound callback handler
-// (Phase 3.5 follow-up) resolves nonce via the PendingStore.
+// SignalPrompt enqueues a DM with one inline-keyboard row per Choice. Each row
+// is "Buy <outcome> 1U / 5U / 10U"; callback_data is
+// "buy:<nonce>:<slot>:<sizeUSD>" where slot indexes into
+// PendingIntent.Choices. The inbound callback handler resolves nonce via the
+// PendingStore and executes Choices[slot].
 func (t *Telegram) SignalPrompt(ev SignalPromptEvent) {
 	sizes := ev.SizesUSD
 	if len(sizes) == 0 {
 		sizes = DefaultSizesUSD
 	}
-	row := make([]map[string]string, 0, len(sizes))
-	for _, s := range sizes {
-		row = append(row, map[string]string{
-			"text":          fmt.Sprintf("Buy %gU", s),
-			"callback_data": fmt.Sprintf("buy:%s:%g", ev.Nonce, s),
-		})
+	choices := ev.Choices
+	if len(choices) == 0 {
+		// Defensive: treat as single-slot when caller forgot to populate.
+		choices = []SignalChoice{{Slot: 0, Outcome: "?", IsSignal: true}}
 	}
-	kb := map[string]any{"inline_keyboard": [][]map[string]string{row}}
+	rows := make([][]map[string]string, 0, len(choices))
+	for _, c := range choices {
+		row := make([]map[string]string, 0, len(sizes))
+		for _, s := range sizes {
+			label := buttonLabel(c.Outcome, s, c.IsSignal)
+			row = append(row, map[string]string{
+				"text":          label,
+				"callback_data": fmt.Sprintf("buy:%s:%d:%g", ev.Nonce, c.Slot, s),
+			})
+		}
+		rows = append(rows, row)
+	}
+	kb := map[string]any{"inline_keyboard": rows}
 	tok := t.cfg.PromptBotToken
 	if tok == "" {
 		tok = t.cfg.BotToken
 	}
 	t.enqueue(outgoing{text: FormatSignalPrompt(ev), tag: "signal_prompt", replyMarkup: kb, sendToken: tok})
+}
+
+// buttonLabel trims the outcome to fit Telegram's ~40-char inline-button cap.
+// Yes/No markets get ✅/❌ for explicit polarity; team-vs-team keeps ⚡ on the
+// signal (upward-momentum) row so the buy side is obvious at a glance.
+func buttonLabel(outcome string, sizeUSD float64, isSignal bool) string {
+	name := outcome
+	if name == "" {
+		name = "?"
+	}
+	switch strings.ToLower(name) {
+	case "yes":
+		return fmt.Sprintf("✅ Yes %gU", sizeUSD)
+	case "no":
+		return fmt.Sprintf("❌ No %gU", sizeUSD)
+	}
+	if len(name) > 18 {
+		name = name[:15] + "..."
+	}
+	if isSignal {
+		return fmt.Sprintf("🟢 %s %gU", name, sizeUSD)
+	}
+	return fmt.Sprintf("🔴 %s %gU", name, sizeUSD)
 }
 
 type outgoing struct {

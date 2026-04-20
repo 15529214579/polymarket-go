@@ -1,6 +1,7 @@
 bin/
 /bot
 logs/*.log
+db/*.log
 state.json
 *.env
 .env*

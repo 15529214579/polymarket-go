@@ -14,10 +14,11 @@ import (
 )
 
 // CallbackHandler is the inbound half of the Phase 3.5 click-to-buy flow. It
-// is called once per valid "buy:<nonce>:<sizeUSD>" callback_query. The ack
-// string (if any) is surfaced as the Telegram toast on the clicker's screen.
+// is called once per valid "buy:<nonce>:<slot>:<sizeUSD>" callback_query.
+// Slot indexes into PendingIntent.Choices (YES/NO etc). The ack string (if
+// any) is surfaced as the Telegram toast on the clicker's screen.
 type CallbackHandler interface {
-	OnBuy(ctx context.Context, nonce string, sizeUSD float64) (ack string, err error)
+	OnBuy(ctx context.Context, nonce string, slot int, sizeUSD float64) (ack string, err error)
 }
 
 // LongPollConfig bounds a single long-poll consumer. Use a DEDICATED bot token
@@ -179,7 +180,7 @@ func (l *LongPoll) dispatch(ctx context.Context, u tgUpdate) {
 		return
 	}
 
-	nonce, size, ok := parseBuyCallback(cq.Data)
+	nonce, slot, size, ok := parseBuyCallback(cq.Data)
 	if !ok {
 		l.answerCallback(ctx, cq.ID, "bad data", true)
 		return
@@ -187,11 +188,12 @@ func (l *LongPoll) dispatch(ctx context.Context, u tgUpdate) {
 
 	l.logger.Info("callback_click",
 		"nonce", nonce,
+		"slot", slot,
 		"size_usd", size,
 		"from", cq.From.Username,
 	)
 
-	ack, err := l.handler.OnBuy(ctx, nonce, size)
+	ack, err := l.handler.OnBuy(ctx, nonce, slot, size)
 	if err != nil {
 		l.answerCallback(ctx, cq.ID, "❌ "+truncate(err.Error(), 180), true)
 		return
@@ -202,18 +204,23 @@ func (l *LongPoll) dispatch(ctx context.Context, u tgUpdate) {
 	l.answerCallback(ctx, cq.ID, ack, false)
 }
 
-// parseBuyCallback validates and splits "buy:<nonce>:<sizeUSD>".
-// Nonce must be non-empty; size must parse to a positive float.
-func parseBuyCallback(s string) (nonce string, sizeUSD float64, ok bool) {
-	parts := strings.SplitN(s, ":", 3)
-	if len(parts) != 3 || parts[0] != "buy" || parts[1] == "" {
-		return "", 0, false
+// parseBuyCallback validates and splits "buy:<nonce>:<slot>:<sizeUSD>".
+// Nonce must be non-empty; slot must parse to a non-negative int; size must
+// parse to a positive float.
+func parseBuyCallback(s string) (nonce string, slot int, sizeUSD float64, ok bool) {
+	parts := strings.SplitN(s, ":", 4)
+	if len(parts) != 4 || parts[0] != "buy" || parts[1] == "" {
+		return "", 0, 0, false
 	}
-	sz, err := strconv.ParseFloat(parts[2], 64)
+	sl, err := strconv.Atoi(parts[2])
+	if err != nil || sl < 0 {
+		return "", 0, 0, false
+	}
+	sz, err := strconv.ParseFloat(parts[3], 64)
 	if err != nil || sz <= 0 {
-		return "", 0, false
+		return "", 0, 0, false
 	}
-	return parts[1], sz, true
+	return parts[1], sl, sz, true
 }
 
 func (l *LongPoll) answerCallback(ctx context.Context, cqID string, text string, showAlert bool) {

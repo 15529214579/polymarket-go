@@ -121,8 +121,15 @@ func TestTelegram_SignalPromptAttachesInlineKeyboard(t *testing.T) {
 
 	tg := NewTelegram(TelegramConfig{BotToken: "t", ChatID: "1", BaseURL: srv.URL, QueueSize: 4})
 	tg.SignalPrompt(SignalPromptEvent{
-		Nonce: "abcd1234", Question: "LEC VIT vs GIANTX Game 2",
-		AssetID: "a", Mid: 0.42, DeltaPP: 3.5, TailUps: 4, TailLen: 5, BuyRatio: 0.8,
+		Nonce:   "abcd1234",
+		Match:   "LoL: VIT vs GIANTX",
+		Context: "Game 2 Winner",
+		EndIn:   "1h 23m",
+		Choices: []SignalChoice{
+			{Slot: 0, Outcome: "VIT", Mid: 0.42, IsSignal: true},
+			{Slot: 1, Outcome: "GIANTX", Mid: 0.58, IsSignal: false},
+		},
+		DeltaPP: 3.5, TailUps: 4, TailLen: 5, BuyRatio: 0.8,
 		ExpiresIn: 60 * time.Second,
 	})
 	if err := tg.Close(context.Background()); err != nil {
@@ -133,28 +140,62 @@ func TestTelegram_SignalPromptAttachesInlineKeyboard(t *testing.T) {
 		t.Fatal("no payload captured")
 	}
 	text, _ := m["text"].(string)
-	if !strings.Contains(text, "动量信号") || !strings.Contains(text, "VIT") {
-		t.Errorf("text: %q", text)
+	for _, want := range []string{"动量信号", "VIT", "GIANTX", "Game 2 Winner", "结算 1h 23m", "选 VIT", "选 GIANTX"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("text missing %q; got: %q", want, text)
+		}
 	}
 	rm, ok := m["reply_markup"].(map[string]any)
 	if !ok {
 		t.Fatalf("reply_markup missing: %v", m["reply_markup"])
 	}
 	kb, ok := rm["inline_keyboard"].([]any)
-	if !ok || len(kb) != 1 {
-		t.Fatalf("inline_keyboard shape: %v", kb)
+	if !ok || len(kb) != 2 {
+		t.Fatalf("inline_keyboard shape: want 2 rows, got %v", kb)
 	}
-	row, _ := kb[0].([]any)
-	if len(row) != 3 {
-		t.Fatalf("expected 3 buttons, got %d", len(row))
+	// Row 0 (signal row — VIT)
+	row0, _ := kb[0].([]any)
+	if len(row0) != 3 {
+		t.Fatalf("row0 buttons: got %d", len(row0))
 	}
-	b0, _ := row[0].(map[string]any)
-	if b0["text"] != "Buy 1U" || b0["callback_data"] != "buy:abcd1234:1" {
-		t.Errorf("button[0]: %+v", b0)
+	b0, _ := row0[0].(map[string]any)
+	if b0["text"] != "🟢 VIT 1U" || b0["callback_data"] != "buy:abcd1234:0:1" {
+		t.Errorf("row0.button0: %+v", b0)
 	}
-	b2, _ := row[2].(map[string]any)
-	if b2["text"] != "Buy 10U" || b2["callback_data"] != "buy:abcd1234:10" {
-		t.Errorf("button[2]: %+v", b2)
+	b2, _ := row0[2].(map[string]any)
+	if b2["text"] != "🟢 VIT 10U" || b2["callback_data"] != "buy:abcd1234:0:10" {
+		t.Errorf("row0.button2: %+v", b2)
+	}
+	// Row 1 (contrarian — GIANTX)
+	row1, _ := kb[1].([]any)
+	if len(row1) != 3 {
+		t.Fatalf("row1 buttons: got %d", len(row1))
+	}
+	b10, _ := row1[0].(map[string]any)
+	if b10["text"] != "🔴 GIANTX 1U" || b10["callback_data"] != "buy:abcd1234:1:1" {
+		t.Errorf("row1.button0: %+v", b10)
+	}
+}
+
+func TestButtonLabel_YesNoPolarity(t *testing.T) {
+	cases := []struct {
+		outcome  string
+		isSignal bool
+		size     float64
+		want     string
+	}{
+		{"Yes", true, 1, "✅ Yes 1U"},
+		{"yes", false, 5, "✅ Yes 5U"},
+		{"No", false, 10, "❌ No 10U"},
+		{"NO", true, 1, "❌ No 1U"},
+		{"Gen.G", true, 5, "🟢 Gen.G 5U"},
+		{"Nongshim", false, 1, "🔴 Nongshim 1U"},
+	}
+	for _, c := range cases {
+		got := buttonLabel(c.outcome, c.size, c.isSignal)
+		if got != c.want {
+			t.Errorf("buttonLabel(%q, %v, %v) = %q, want %q", c.outcome, c.size, c.isSignal, got, c.want)
+		}
 	}
 }
 
@@ -182,7 +223,11 @@ func TestTelegram_SignalPromptRoutesThroughPromptBot(t *testing.T) {
 	})
 	tg.RiskTrip(RiskTripEvent{Reason: "daily_loss", DayPnLUSD: -14, DayLossCapUSD: 13.56})
 	tg.LargeFill(LargeFillEvent{PnLUSD: 5})
-	tg.SignalPrompt(SignalPromptEvent{Nonce: "n", AssetID: "a", Mid: 0.5, ExpiresIn: time.Minute})
+	tg.SignalPrompt(SignalPromptEvent{
+		Nonce: "n", Match: "m",
+		Choices: []SignalChoice{{Slot: 0, Outcome: "Yes", Mid: 0.5, IsSignal: true}},
+		ExpiresIn: time.Minute,
+	})
 	if err := tg.Close(context.Background()); err != nil {
 		t.Fatalf("close: %v", err)
 	}

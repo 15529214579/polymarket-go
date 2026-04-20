@@ -13,17 +13,22 @@ import (
 )
 
 type stubHandler struct {
-	calls  atomic.Int64
-	last   struct{ nonce string; size float64 }
-	ack    string
-	err    error
-	mu     sync.Mutex
+	calls atomic.Int64
+	last  struct {
+		nonce string
+		slot  int
+		size  float64
+	}
+	ack string
+	err error
+	mu  sync.Mutex
 }
 
-func (s *stubHandler) OnBuy(ctx context.Context, nonce string, size float64) (string, error) {
+func (s *stubHandler) OnBuy(ctx context.Context, nonce string, slot int, size float64) (string, error) {
 	s.calls.Add(1)
 	s.mu.Lock()
 	s.last.nonce = nonce
+	s.last.slot = slot
 	s.last.size = size
 	s.mu.Unlock()
 	return s.ack, s.err
@@ -31,26 +36,31 @@ func (s *stubHandler) OnBuy(ctx context.Context, nonce string, size float64) (st
 
 func TestParseBuyCallback(t *testing.T) {
 	cases := []struct {
-		in      string
-		nonce   string
-		size    float64
-		ok      bool
+		in    string
+		nonce string
+		slot  int
+		size  float64
+		ok    bool
 	}{
-		{"buy:abc123:5", "abc123", 5, true},
-		{"buy:abc123:0.5", "abc123", 0.5, true},
-		{"buy:abc123:10", "abc123", 10, true},
-		{"sell:abc:5", "", 0, false},
-		{"buy::5", "", 0, false},
-		{"buy:abc:-1", "", 0, false},
-		{"buy:abc:bad", "", 0, false},
-		{"garbage", "", 0, false},
-		{"buy:abc", "", 0, false},
+		{"buy:abc123:0:5", "abc123", 0, 5, true},
+		{"buy:abc123:1:0.5", "abc123", 1, 0.5, true},
+		{"buy:abc123:0:10", "abc123", 0, 10, true},
+		{"buy:abc123:2:1", "abc123", 2, 1, true},
+		{"sell:abc:0:5", "", 0, 0, false},
+		{"buy::0:5", "", 0, 0, false},
+		{"buy:abc:0:-1", "", 0, 0, false},
+		{"buy:abc:0:bad", "", 0, 0, false},
+		{"buy:abc:-1:5", "", 0, 0, false},
+		{"buy:abc:bad:5", "", 0, 0, false},
+		{"garbage", "", 0, 0, false},
+		{"buy:abc", "", 0, 0, false},
+		{"buy:abc:5", "", 0, 0, false}, // old 3-part format no longer accepted
 	}
 	for _, c := range cases {
-		n, s, ok := parseBuyCallback(c.in)
-		if n != c.nonce || s != c.size || ok != c.ok {
-			t.Errorf("parseBuyCallback(%q) = (%q,%v,%v), want (%q,%v,%v)",
-				c.in, n, s, ok, c.nonce, c.size, c.ok)
+		n, sl, sz, ok := parseBuyCallback(c.in)
+		if n != c.nonce || sl != c.slot || sz != c.size || ok != c.ok {
+			t.Errorf("parseBuyCallback(%q) = (%q,%d,%v,%v), want (%q,%d,%v,%v)",
+				c.in, n, sl, sz, ok, c.nonce, c.slot, c.size, c.ok)
 		}
 	}
 }
@@ -107,7 +117,6 @@ func contains(haystack, needle string) bool {
 }
 
 func indexOf(haystack, needle string) int {
-	// minimal avoid-strings-dep helper
 	if needle == "" {
 		return 0
 	}
@@ -150,7 +159,7 @@ func makeCallback(updateID, chatID int64, data string) tgUpdate {
 
 func TestLongPoll_DispatchesValidBuy(t *testing.T) {
 	ft := &fakeTelegram{batches: [][]tgUpdate{
-		{makeCallback(1, 42, "buy:nonce1:5")},
+		{makeCallback(1, 42, "buy:nonce1:1:5")},
 	}}
 	srv := httptest.NewServer(ft.handler())
 	defer srv.Close()
@@ -165,8 +174,8 @@ func TestLongPoll_DispatchesValidBuy(t *testing.T) {
 	if h.calls.Load() != 1 {
 		t.Fatalf("handler called %d times, want 1", h.calls.Load())
 	}
-	if h.last.nonce != "nonce1" || h.last.size != 5 {
-		t.Fatalf("got nonce=%q size=%v", h.last.nonce, h.last.size)
+	if h.last.nonce != "nonce1" || h.last.slot != 1 || h.last.size != 5 {
+		t.Fatalf("got nonce=%q slot=%d size=%v", h.last.nonce, h.last.slot, h.last.size)
 	}
 	ft.mu.Lock()
 	defer ft.mu.Unlock()
@@ -177,13 +186,13 @@ func TestLongPoll_DispatchesValidBuy(t *testing.T) {
 
 func TestLongPoll_RejectsForeignChat(t *testing.T) {
 	ft := &fakeTelegram{batches: [][]tgUpdate{
-		{makeCallback(1, 999, "buy:nonce1:5")}, // foreign chat
+		{makeCallback(1, 999, "buy:nonce1:0:5")},
 	}}
 	srv := httptest.NewServer(ft.handler())
 	defer srv.Close()
 
 	h := &stubHandler{}
-	lp := newPoller(t, srv, h, 42) // expect 42
+	lp := newPoller(t, srv, h, 42)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
 	defer cancel()
@@ -201,9 +210,10 @@ func TestLongPoll_RejectsForeignChat(t *testing.T) {
 
 func TestLongPoll_RejectsMalformedData(t *testing.T) {
 	ft := &fakeTelegram{batches: [][]tgUpdate{
-		{makeCallback(1, 42, "buy::5")},     // empty nonce
-		{makeCallback(2, 42, "buy:abc:-5")}, // negative size
-		{makeCallback(3, 42, "hack:abc:5")}, // wrong action
+		{makeCallback(1, 42, "buy::0:5")},     // empty nonce
+		{makeCallback(2, 42, "buy:abc:0:-5")}, // negative size
+		{makeCallback(3, 42, "hack:abc:0:5")}, // wrong action
+		{makeCallback(4, 42, "buy:abc:-1:5")}, // negative slot
 	}}
 	srv := httptest.NewServer(ft.handler())
 	defer srv.Close()
@@ -220,8 +230,8 @@ func TestLongPoll_RejectsMalformedData(t *testing.T) {
 	}
 	ft.mu.Lock()
 	defer ft.mu.Unlock()
-	if len(ft.answered) != 3 {
-		t.Fatalf("want 3 bad-data answers, got %d", len(ft.answered))
+	if len(ft.answered) != 4 {
+		t.Fatalf("want 4 bad-data answers, got %d", len(ft.answered))
 	}
 	for _, a := range ft.answered {
 		if a.Text != "bad data" {
@@ -232,7 +242,7 @@ func TestLongPoll_RejectsMalformedData(t *testing.T) {
 
 func TestLongPoll_SurfaceHandlerError(t *testing.T) {
 	ft := &fakeTelegram{batches: [][]tgUpdate{
-		{makeCallback(1, 42, "buy:nonce1:5")},
+		{makeCallback(1, 42, "buy:nonce1:0:5")},
 	}}
 	srv := httptest.NewServer(ft.handler())
 	defer srv.Close()

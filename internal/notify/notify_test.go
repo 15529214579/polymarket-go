@@ -1,0 +1,97 @@
+package notify
+
+import (
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestParseMarketTitle(t *testing.T) {
+	cases := []struct {
+		in        string
+		wantMatch string
+		wantCtx   string
+	}{
+		{
+			"LoL: Shifters vs G2 Esports - Game 1 Winner",
+			"LoL: Shifters vs G2 Esports",
+			"Game 1 Winner",
+		},
+		{
+			"LoL: Weibo Gaming vs Oh My God (BO3) - LPL Group Ascend",
+			"LoL: Weibo Gaming vs Oh My God",
+			"BO3 · LPL Group Ascend",
+		},
+		{
+			"LoL: Gen.G Global Academy vs Nongshim Esports Academy (BO3) - LCK Challengers League Rounds 1-2",
+			"LoL: Gen.G Global Academy vs Nongshim Esports Academy",
+			"BO3 · LCK Challengers League Rounds 1-2",
+		},
+		{
+			"Games Total: O/U 2.5",
+			"Games Total: O/U 2.5",
+			"",
+		},
+		{
+			"Game Handicap: BLG (-1.5) vs Invictus Gaming (+1.5)",
+			// No " - " separator at top level so returns as-is.
+			"Game Handicap: BLG (-1.5) vs Invictus Gaming (+1.5)",
+			"",
+		},
+	}
+	for _, c := range cases {
+		m, ctx := ParseMarketTitle(c.in)
+		if m != c.wantMatch || ctx != c.wantCtx {
+			t.Errorf("ParseMarketTitle(%q) = (%q, %q), want (%q, %q)", c.in, m, ctx, c.wantMatch, c.wantCtx)
+		}
+	}
+}
+
+func TestHumanizeEndIn(t *testing.T) {
+	now := time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC)
+	cases := []struct {
+		end  time.Time
+		want string
+	}{
+		{now.Add(2*time.Hour + 5*time.Minute), "2h 05m"},
+		{now.Add(45 * time.Minute), "45m"},
+		{now.Add(30 * time.Second), "<1m"},
+		{now.Add(-1 * time.Minute), ""},
+		{time.Time{}, ""},
+	}
+	for _, c := range cases {
+		got := HumanizeEndIn(now, c.end)
+		if got != c.want {
+			t.Errorf("HumanizeEndIn(end=%v) = %q, want %q", c.end, got, c.want)
+		}
+	}
+}
+
+func TestFormatSignalPrompt_ShowsMatchAndChoices(t *testing.T) {
+	s := FormatSignalPrompt(SignalPromptEvent{
+		Nonce:   "n",
+		Match:   "LoL: Shifters vs G2 Esports",
+		Context: "Game 1 Winner",
+		EndIn:   "2h 05m",
+		Choices: []SignalChoice{
+			{Slot: 0, Outcome: "Shifters", Mid: 0.235, IsSignal: true},
+			{Slot: 1, Outcome: "G2 Esports", Mid: 0.765, IsSignal: false},
+		},
+		DeltaPP: 4.2, TailUps: 4, TailLen: 5, BuyRatio: 0.78,
+		ExpiresIn: 60 * time.Second,
+	})
+	for _, want := range []string{
+		"Shifters ↑",
+		"LoL: Shifters vs G2 Esports",
+		"Game 1 Winner · 结算 2h 05m",
+		"Δ +4.20pp",
+		"选 Shifters (当前 0.2350)",
+		"← 信号",
+		"选 G2 Esports (当前 0.7650)",
+		"60s 内有效",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("FormatSignalPrompt missing %q; got:\n%s", want, s)
+		}
+	}
+}

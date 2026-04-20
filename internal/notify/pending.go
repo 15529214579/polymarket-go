@@ -7,16 +7,26 @@ import (
 	"time"
 )
 
-// PendingIntent is the snapshot captured when a signal prompt is sent. The
-// callback consumer looks it up by nonce and replays it through the order
-// path at the chosen size. Stored in memory only; process restarts wipe
-// pending prompts (desired — 60s TTL anyway).
-type PendingIntent struct {
-	Nonce    string
+// Choice is one selectable outcome in a PendingIntent. Binary markets carry 2
+// (YES / NO or team A / team B); multi-outcome markets could carry more. Slot
+// is the index encoded in callback_data so the handler can resolve back
+// without trusting the clicker with an asset_id.
+type Choice struct {
 	AssetID  string
-	Market   string
-	Question string
-	Mid      float64
+	Outcome  string  // outcome label as Polymarket returns it
+	Mid      float64 // latest mid at prompt time
+	IsSignal bool    // true for the asset that fired the momentum signal
+}
+
+// PendingIntent is the snapshot captured when a signal prompt is sent. The
+// callback consumer looks it up by nonce, picks Choices[slot], and replays it
+// through the order path at the chosen size. Stored in memory only; process
+// restarts wipe pending prompts (desired — 60s TTL anyway).
+type PendingIntent struct {
+	Nonce     string
+	Market    string
+	Question  string
+	Choices   []Choice
 	CreatedAt time.Time
 	ExpiresAt time.Time
 }
@@ -91,7 +101,7 @@ func (s *PendingStore) Size() int {
 }
 
 // newNonce returns 8 bytes of hex (16 chars). Telegram caps callback_data at
-// 64 bytes; we fit well under that with "buy:<nonce>:<size>" ≈ 25 chars.
+// 64 bytes; we fit well under that with "buy:<nonce>:<slot>:<size>" ≈ 28 chars.
 func newNonce() string {
 	var b [8]byte
 	_, _ = rand.Read(b[:])
