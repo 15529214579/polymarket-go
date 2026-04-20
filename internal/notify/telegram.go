@@ -33,7 +33,7 @@ type Telegram struct {
 	client *http.Client
 	logger *slog.Logger
 
-	queue chan string
+	queue chan outgoing
 	wg    sync.WaitGroup
 	stop  chan struct{}
 	once  sync.Once
@@ -55,7 +55,7 @@ func NewTelegram(cfg TelegramConfig) *Telegram {
 		cfg:    cfg,
 		client: &http.Client{Timeout: cfg.SendTimeout},
 		logger: slog.Default(),
-		queue:  make(chan string, cfg.QueueSize),
+		queue:  make(chan outgoing, cfg.QueueSize),
 		stop:   make(chan struct{}),
 	}
 	t.wg.Add(1)
@@ -65,15 +65,40 @@ func NewTelegram(cfg TelegramConfig) *Telegram {
 
 // RiskTrip formats and enqueues a risk-breaker trip. Drops silently if the
 // queue is saturated (a stuck Telegram pipe must not block the trading loop).
-func (t *Telegram) RiskTrip(ev RiskTripEvent)     { t.enqueue(FormatRiskTrip(ev), "risk_trip") }
-func (t *Telegram) RiskResume(ev RiskResumeEvent) { t.enqueue(FormatRiskResume(ev), "risk_resume") }
-func (t *Telegram) LargeFill(ev LargeFillEvent)   { t.enqueue(FormatLargeFill(ev), "large_fill") }
+func (t *Telegram) RiskTrip(ev RiskTripEvent)     { t.enqueue(outgoing{text: FormatRiskTrip(ev), tag: "risk_trip"}) }
+func (t *Telegram) RiskResume(ev RiskResumeEvent) { t.enqueue(outgoing{text: FormatRiskResume(ev), tag: "risk_resume"}) }
+func (t *Telegram) LargeFill(ev LargeFillEvent)   { t.enqueue(outgoing{text: FormatLargeFill(ev), tag: "large_fill"}) }
 
-func (t *Telegram) enqueue(msg, tag string) {
+// SignalPrompt enqueues a DM with an inline keyboard ("Buy 1U / 5U / 10U").
+// callback_data is "buy:<nonce>:<sizeUSD>"; the inbound callback handler
+// (Phase 3.5 follow-up) resolves nonce via the PendingStore.
+func (t *Telegram) SignalPrompt(ev SignalPromptEvent) {
+	sizes := ev.SizesUSD
+	if len(sizes) == 0 {
+		sizes = DefaultSizesUSD
+	}
+	row := make([]map[string]string, 0, len(sizes))
+	for _, s := range sizes {
+		row = append(row, map[string]string{
+			"text":          fmt.Sprintf("Buy %gU", s),
+			"callback_data": fmt.Sprintf("buy:%s:%g", ev.Nonce, s),
+		})
+	}
+	kb := map[string]any{"inline_keyboard": [][]map[string]string{row}}
+	t.enqueue(outgoing{text: FormatSignalPrompt(ev), tag: "signal_prompt", replyMarkup: kb})
+}
+
+type outgoing struct {
+	text        string
+	tag         string
+	replyMarkup any
+}
+
+func (t *Telegram) enqueue(o outgoing) {
 	select {
-	case t.queue <- msg:
+	case t.queue <- o:
 	default:
-		t.logger.Warn("notify_drop", "reason", "queue_full", "tag", tag)
+		t.logger.Warn("notify_drop", "reason", "queue_full", "tag", o.tag)
 	}
 }
 
@@ -99,27 +124,31 @@ func (t *Telegram) drain() {
 			// Flush whatever's already queued, then exit.
 			for {
 				select {
-				case msg := <-t.queue:
-					t.send(msg)
+				case o := <-t.queue:
+					t.send(o)
 				default:
 					return
 				}
 			}
-		case msg := <-t.queue:
-			t.send(msg)
+		case o := <-t.queue:
+			t.send(o)
 		}
 	}
 }
 
 // send is synchronous inside the drain goroutine. Errors are logged but not
 // returned — the trading loop never waits on Telegram.
-func (t *Telegram) send(msg string) {
+func (t *Telegram) send(o outgoing) {
 	url := fmt.Sprintf("%s/bot%s/sendMessage", t.cfg.BaseURL, t.cfg.BotToken)
-	payload, _ := json.Marshal(map[string]any{
+	body := map[string]any{
 		"chat_id":                  t.cfg.ChatID,
-		"text":                     msg,
+		"text":                     o.text,
 		"disable_web_page_preview": true,
-	})
+	}
+	if o.replyMarkup != nil {
+		body["reply_markup"] = o.replyMarkup
+	}
+	payload, _ := json.Marshal(body)
 	ctx, cancel := context.WithTimeout(context.Background(), t.cfg.SendTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))

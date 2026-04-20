@@ -47,14 +47,23 @@
 - [ ] 成交回执轮询 + status 机
 - [ ] **Apr 28 cutover 当天 WSS 烟测**：18:45 SGT 待机 → 20:15 SGT 跑 `-mode=detect` 20min，验 3 种消息类型帧结构
 
-### Phase 3.5 — 半自动点选下单（Hybrid UX，不急）
+### Phase 3.5 — 半自动点选下单（Hybrid UX）
 > 信号推 DM → 按钮点选 1U / 5U / 10U → 回调触发同一签名路径下单。依赖 Phase 2 信号 + Phase 3 下单。
-- [ ] 信号推送格式：市场 / 方向 / 当前 mid / 触发指标 + 三颗 inline 按钮（1U / 5U / 10U）
-- [ ] callback 接收通道：OpenClaw 把 Telegram callback_query 转发到 5号 session（或走独立 bot webhook → 写入 pending 队列，5号 轮询消费）—— 开工前确认走哪条
-- [ ] 回调 → 下单：复用 Phase 3 签名路径，单仓、去重、超时作废（信号推出 60s 内未点击则按钮过期）
-- [ ] 安全：按钮只对老板 chat_id 生效，callback_data 带 nonce 防重放
-- [ ] Paper 期间：点了按钮走 paper 路径（记模拟 fill）；Day 7 转实盘后按钮直接真下单
-- [ ] 告警：下单成功/失败都回 DM 单条小回执
+- [x] 2026-04-20 12:0x — Phase 3.5.a（outbound）：`notify.SignalPrompt` 把信号打成 DM，附 inline keyboard "Buy 1U / 5U / 10U"；callback_data = `buy:<nonce>:<sizeUSD>`。`internal/notify/pending.go` 上线（`PendingStore` TTL=60s、one-shot Claim、hex8 nonce）。3 pending 单测 + 1 telegram signal 单测全过。**outbound 独立于 callback 方案 A/B，已锁。**
+- [ ] **⚠️ 等老板拍板：callback 路径 A/B**（见下）
+- [ ] Phase 3.5.b（inbound）：callback 消费 → Claim nonce → `paper.Submit`（paper）或 Phase 3 CLOB 签名（Day 9 起实盘）
+- [ ] 超时作废（>60s 自动在 Telegram 上编辑原 DM 为 "已过期"，callback 返回 alert=expired）
+- [ ] 安全：sender_id 过滤只认老板；PendingStore 已做 one-shot，callback_data 带 nonce 防重放
+- [ ] Paper 期间：点了按钮走 paper 路径；Day 9 起自动走真下单
+- [ ] 成交回执：下单成功/失败都回 DM 单条小回执（`notify.LargeFill` 已有路径，小单复用一个 `notify.OrderResult` 事件即可）
+
+**callback 路径选项（开工前拍板）：**
+- **A. OpenClaw 转发**：OpenClaw telegram provider 接到 callback_query 后把"老板点了 buy:xxx:5"路由进当前 5号 session，5号 session 处理 → 调 bot 的 CLI 或本地 RPC 完成下单。
+  - 优：零新服务、凭据全落 OpenClaw、安全模型复用
+  - 劣：耦合 OpenClaw 的 callback 转发能力，目前尚未验证是否支持
+- **B. bot 自起 long-poll**：`cmd/bot` 里开一个 goroutine 调 Telegram `getUpdates` 消费 callback_query（同一个 bot token），命中 nonce → 内部直接下单。
+  - 优：完全 in-process、不依赖外部
+  - 劣：同一 token 如果 OpenClaw 也在 poll，会抢 update；需要确认 `.env.local` 的 token 是否和 OpenClaw 用的同一个，否则就要开个 sidecar bot
 
 ### Phase 4 — 风控 + 可观测（1 天）
 - [x] 2026-04-20 11:4x — Phase 4.a：`internal/risk/risk.go` 上线。日亏损熔断（15% × 90.41 = -13.56 USDC 上限）+ per-trade 单笔损失 ≥ 3 USDC 计数旗标 + WSS feed-silence watchdog（30s 无 book/trade → trip）+ 手动 Pause/Resume。SGT 日切滚动但不自动解除 breaker（SPEC §6 "等老板手动恢复"）。8 个单测全过。接进 detect 循环：开仓前 `AllowOpen` 门控，close 后 `OnClose` 累计，5s 心跳 `CheckFeed`，60s `risk_status` 日志。35s 实盘烟测：`risk.ready` + 无 trip（预期，LoL 市场平静）。

@@ -107,6 +107,57 @@ func TestFormatLargeFill(t *testing.T) {
 	}
 }
 
+func TestTelegram_SignalPromptAttachesInlineKeyboard(t *testing.T) {
+	var got atomic.Value
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var m map[string]any
+		_ = json.Unmarshal(body, &m)
+		got.Store(m)
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+
+	tg := NewTelegram(TelegramConfig{BotToken: "t", ChatID: "1", BaseURL: srv.URL, QueueSize: 4})
+	tg.SignalPrompt(SignalPromptEvent{
+		Nonce: "abcd1234", Question: "LEC VIT vs GIANTX Game 2",
+		AssetID: "a", Mid: 0.42, DeltaPP: 3.5, TailUps: 4, TailLen: 5, BuyRatio: 0.8,
+		ExpiresIn: 60 * time.Second,
+	})
+	if err := tg.Close(context.Background()); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	m, _ := got.Load().(map[string]any)
+	if m == nil {
+		t.Fatal("no payload captured")
+	}
+	text, _ := m["text"].(string)
+	if !strings.Contains(text, "动量信号") || !strings.Contains(text, "VIT") {
+		t.Errorf("text: %q", text)
+	}
+	rm, ok := m["reply_markup"].(map[string]any)
+	if !ok {
+		t.Fatalf("reply_markup missing: %v", m["reply_markup"])
+	}
+	kb, ok := rm["inline_keyboard"].([]any)
+	if !ok || len(kb) != 1 {
+		t.Fatalf("inline_keyboard shape: %v", kb)
+	}
+	row, _ := kb[0].([]any)
+	if len(row) != 3 {
+		t.Fatalf("expected 3 buttons, got %d", len(row))
+	}
+	b0, _ := row[0].(map[string]any)
+	if b0["text"] != "Buy 1U" || b0["callback_data"] != "buy:abcd1234:1" {
+		t.Errorf("button[0]: %+v", b0)
+	}
+	b2, _ := row[2].(map[string]any)
+	if b2["text"] != "Buy 10U" || b2["callback_data"] != "buy:abcd1234:10" {
+		t.Errorf("button[2]: %+v", b2)
+	}
+}
+
 func TestFormatRiskTrip_FeedSilence(t *testing.T) {
 	s := FormatRiskTrip(RiskTripEvent{Reason: "feed_silence", SilentSec: 47})
 	if !strings.Contains(s, "WSS") || !strings.Contains(s, "47s") {
