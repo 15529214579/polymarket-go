@@ -75,9 +75,9 @@ func (t *Telegram) RiskTrip(ev RiskTripEvent)     { t.enqueue(outgoing{text: For
 func (t *Telegram) RiskResume(ev RiskResumeEvent) { t.enqueue(outgoing{text: FormatRiskResume(ev), tag: "risk_resume"}) }
 func (t *Telegram) LargeFill(ev LargeFillEvent)   { t.enqueue(outgoing{text: FormatLargeFill(ev), tag: "large_fill"}) }
 
-// SignalPrompt enqueues a DM with one inline-keyboard row per Choice. Each row
-// is "Buy <outcome> 1U / 5U / 10U"; callback_data is
-// "buy:<nonce>:<slot>:<sizeUSD>" where slot indexes into
+// SignalPrompt enqueues a DM with a single inline-keyboard row for the signal
+// side only (boss picks amount, not direction). Buttons are "Buy 1U / 5U / 10U";
+// callback_data is "buy:<nonce>:<slot>:<sizeUSD>" where slot indexes into
 // PendingIntent.Choices. The inbound callback handler resolves nonce via the
 // PendingStore and executes Choices[slot].
 func (t *Telegram) SignalPrompt(ev SignalPromptEvent) {
@@ -85,24 +85,19 @@ func (t *Telegram) SignalPrompt(ev SignalPromptEvent) {
 	if len(sizes) == 0 {
 		sizes = DefaultSizesUSD
 	}
-	choices := ev.Choices
-	if len(choices) == 0 {
-		// Defensive: treat as single-slot when caller forgot to populate.
-		choices = []SignalChoice{{Slot: 0, Outcome: "?", IsSignal: true}}
+	sig, ok := signalChoice(ev.Choices)
+	if !ok {
+		// Defensive: caller forgot to populate Choices.
+		sig = SignalChoice{Slot: 0, Outcome: "?", IsSignal: true}
 	}
-	rows := make([][]map[string]string, 0, len(choices))
-	for _, c := range choices {
-		row := make([]map[string]string, 0, len(sizes))
-		for _, s := range sizes {
-			label := buttonLabel(c.Outcome, s, c.IsSignal)
-			row = append(row, map[string]string{
-				"text":          label,
-				"callback_data": fmt.Sprintf("buy:%s:%d:%g", ev.Nonce, c.Slot, s),
-			})
-		}
-		rows = append(rows, row)
+	row := make([]map[string]string, 0, len(sizes))
+	for _, s := range sizes {
+		row = append(row, map[string]string{
+			"text":          buttonLabel(sig.Outcome, s, true),
+			"callback_data": fmt.Sprintf("buy:%s:%d:%g", ev.Nonce, sig.Slot, s),
+		})
 	}
-	kb := map[string]any{"inline_keyboard": rows}
+	kb := map[string]any{"inline_keyboard": [][]map[string]string{row}}
 	tok := t.cfg.PromptBotToken
 	if tok == "" {
 		tok = t.cfg.BotToken

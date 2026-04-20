@@ -127,8 +127,9 @@ func FormatRiskResume(ev RiskResumeEvent) string {
 	)
 }
 
-// FormatSignalPrompt renders the DM body that accompanies the inline-keyboard
-// rows. Formatting kept plain (no markdown escaping needed).
+// FormatSignalPrompt renders the DM body that accompanies the inline-keyboard.
+// Only the signal side is surfaced — the boss picks amount, not direction.
+// Formatting kept plain (no markdown escaping needed).
 //
 // Layout:
 //
@@ -136,21 +137,16 @@ func FormatRiskResume(ev RiskResumeEvent) string {
 //	<Match>
 //	<Context> · 结算 <EndIn>
 //	Δ +x.xxpp · tail 4/5 · buy 78%
+//	当前 0.xxxx
 //
-//	选 <outcome> (当前 0.xxxx):
-//	  [按钮行]
-//	选 <outcome> (当前 0.xxxx):
-//	  [按钮行]
 //	按钮 10m 内有效
 func FormatSignalPrompt(ev SignalPromptEvent) string {
 	var b strings.Builder
 
+	sig, ok := signalChoice(ev.Choices)
 	signalOutcome := "?"
-	for _, c := range ev.Choices {
-		if c.IsSignal {
-			signalOutcome = c.Outcome
-			break
-		}
+	if ok {
+		signalOutcome = sig.Outcome
 	}
 
 	fmt.Fprintf(&b, "⚡ 动量信号 · %s ↑\n", signalOutcome)
@@ -177,15 +173,8 @@ func FormatSignalPrompt(ev SignalPromptEvent) string {
 
 	fmt.Fprintf(&b, "Δ %+.2fpp · tail %d/%d · buy %.0f%%\n",
 		ev.DeltaPP, ev.TailUps, ev.TailLen, ev.BuyRatio*100)
-	fmt.Fprintln(&b)
-
-	for _, c := range ev.Choices {
-		tag := ""
-		if c.IsSignal {
-			tag = "  ← 信号"
-		}
-		fmt.Fprintf(&b, "选 %s (当前 %.4f)%s:\n",
-			truncateStr(c.Outcome, 40), c.Mid, tag)
+	if ok {
+		fmt.Fprintf(&b, "当前 %.4f\n", sig.Mid)
 	}
 
 	ttl := ev.ExpiresIn
@@ -194,6 +183,20 @@ func FormatSignalPrompt(ev SignalPromptEvent) string {
 	}
 	fmt.Fprintf(&b, "\n按钮 %s 内有效", humanizeTTL(ttl))
 	return b.String()
+}
+
+// signalChoice returns the first Choice flagged IsSignal, or the first entry
+// if none are flagged (defensive; prompts are only emitted when a signal fires).
+func signalChoice(cs []SignalChoice) (SignalChoice, bool) {
+	for _, c := range cs {
+		if c.IsSignal {
+			return c, true
+		}
+	}
+	if len(cs) > 0 {
+		return cs[0], true
+	}
+	return SignalChoice{}, false
 }
 
 // DefaultSizesUSD is the Buy 1/5/10 inline-button row used when

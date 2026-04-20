@@ -67,7 +67,7 @@ func TestHumanizeEndIn(t *testing.T) {
 	}
 }
 
-func TestFormatSignalPrompt_ShowsMatchAndChoices(t *testing.T) {
+func TestFormatSignalPrompt_ShowsSignalOnly(t *testing.T) {
 	s := FormatSignalPrompt(SignalPromptEvent{
 		Nonce:   "n",
 		Match:   "LoL: Shifters vs G2 Esports",
@@ -85,13 +85,17 @@ func TestFormatSignalPrompt_ShowsMatchAndChoices(t *testing.T) {
 		"LoL: Shifters vs G2 Esports",
 		"Game 1 Winner · 结算 2h 05m",
 		"Δ +4.20pp",
-		"选 Shifters (当前 0.2350)",
-		"← 信号",
-		"选 G2 Esports (当前 0.7650)",
+		"当前 0.2350",
 		"10m 内有效",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("FormatSignalPrompt missing %q; got:\n%s", want, s)
+		}
+	}
+	// Contrarian side must not be presented as a choice.
+	for _, absent := range []string{"0.7650", "选 ", "← 信号"} {
+		if strings.Contains(s, absent) {
+			t.Errorf("FormatSignalPrompt leaked %q; got:\n%s", absent, s)
 		}
 	}
 }

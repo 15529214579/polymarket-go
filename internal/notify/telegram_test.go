@@ -140,20 +140,23 @@ func TestTelegram_SignalPromptAttachesInlineKeyboard(t *testing.T) {
 		t.Fatal("no payload captured")
 	}
 	text, _ := m["text"].(string)
-	for _, want := range []string{"动量信号", "VIT", "GIANTX", "Game 2 Winner", "结算 1h 23m", "选 VIT", "选 GIANTX"} {
+	for _, want := range []string{"动量信号", "VIT", "Game 2 Winner", "结算 1h 23m"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("text missing %q; got: %q", want, text)
 		}
+	}
+	// Contrarian mid price must not be rendered in the body (match title may contain the team name legitimately).
+	if strings.Contains(text, "0.5800") || strings.Contains(text, "选 GIANTX") {
+		t.Errorf("contrarian side leaked into prompt body: %q", text)
 	}
 	rm, ok := m["reply_markup"].(map[string]any)
 	if !ok {
 		t.Fatalf("reply_markup missing: %v", m["reply_markup"])
 	}
 	kb, ok := rm["inline_keyboard"].([]any)
-	if !ok || len(kb) != 2 {
-		t.Fatalf("inline_keyboard shape: want 2 rows, got %v", kb)
+	if !ok || len(kb) != 1 {
+		t.Fatalf("inline_keyboard shape: want 1 signal row, got %v", kb)
 	}
-	// Row 0 (signal row — VIT)
 	row0, _ := kb[0].([]any)
 	if len(row0) != 3 {
 		t.Fatalf("row0 buttons: got %d", len(row0))
@@ -165,15 +168,6 @@ func TestTelegram_SignalPromptAttachesInlineKeyboard(t *testing.T) {
 	b2, _ := row0[2].(map[string]any)
 	if b2["text"] != "🟢 VIT 10U" || b2["callback_data"] != "buy:abcd1234:0:10" {
 		t.Errorf("row0.button2: %+v", b2)
-	}
-	// Row 1 (contrarian — GIANTX)
-	row1, _ := kb[1].([]any)
-	if len(row1) != 3 {
-		t.Fatalf("row1 buttons: got %d", len(row1))
-	}
-	b10, _ := row1[0].(map[string]any)
-	if b10["text"] != "🔴 GIANTX 1U" || b10["callback_data"] != "buy:abcd1234:1:1" {
-		t.Errorf("row1.button0: %+v", b10)
 	}
 }
 
