@@ -57,10 +57,9 @@
 - [ ] 告警：下单成功/失败都回 DM 单条小回执
 
 ### Phase 4 — 风控 + 可观测（1 天）
-- [ ] 日亏损熔断
-- [ ] WSS 断线保护
-- [ ] telegram webhook 推送关键事件
-- [ ] 日结报表 cron
+- [x] 2026-04-20 11:4x — Phase 4.a：`internal/risk/risk.go` 上线。日亏损熔断（15% × 90.41 = -13.56 USDC 上限）+ per-trade 单笔损失 ≥ 3 USDC 计数旗标 + WSS feed-silence watchdog（30s 无 book/trade → trip）+ 手动 Pause/Resume。SGT 日切滚动但不自动解除 breaker（SPEC §6 "等老板手动恢复"）。8 个单测全过。接进 detect 循环：开仓前 `AllowOpen` 门控，close 后 `OnClose` 累计，5s 心跳 `CheckFeed`，60s `risk_status` 日志。35s 实盘烟测：`risk.ready` + 无 trip（预期，LoL 市场平静）。
+- [ ] telegram webhook 推送关键事件（risk_trip / 大额 fill / Phase 5 日结）
+- [ ] 日结报表 cron（SGT 00:00 汇总 realized PnL / trade 分布 / block 时长）
 
 ### Phase 5 — Paper 跑 8 天（Apr 20 → Apr 28 cutover）
 > 04-20 10:36 老板拍板 A：顺延 Paper 跨过 V2 cutover，Apr 29 起实盘（原 7 天 → 8 天）
@@ -83,6 +82,8 @@
 - [x] 2026-04-20 08:45 — Phase 2.2 完成：ExitTracker（反转/止损/超时 4 规则，5 单测）
 - [x] 2026-04-20 10:36 — SPEC/TODO 对齐 Polymarket V2 迁移：Paper 顺延 Apr 29，Phase 3 直接按 V2 签名，cutover 当天 wrap USDC→pUSD + WSS 烟测
 - [x] 2026-04-20 10:41 — Phase 2.3 完成：PositionManager（双重去重 + 敞口/仓位数上限，6 单测）；detect 链路 pm.Open → exit.Open → pm.Close 闭环。**Phase 2 整层通关。**
+- [x] 2026-04-20 11:4x — Phase 3.a/3.b 完成：`order.Client`/`PaperClient` + slippage + detect 循环改走 `Submit→Fill→Open/Close`（Apr 28 cutover 后换真 V2 client 零改动）
+- [x] 2026-04-20 11:4x — Phase 4.a 完成：RiskManager（日亏损 -13.56 USDC 熔断 + 30s feed-silence watchdog + 手动 Pause/Resume + 8 单测），detect 闭环已装风控门控
 
 ## ❌ 不做
 

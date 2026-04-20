@@ -12,6 +12,7 @@ import (
 
 	"github.com/15529214579/polymarket-go/internal/feed"
 	"github.com/15529214579/polymarket-go/internal/order"
+	"github.com/15529214579/polymarket-go/internal/risk"
 	"github.com/15529214579/polymarket-go/internal/strategy"
 )
 
@@ -295,7 +296,15 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp float64) err
 	posCfg := strategy.DefaultPositionConfig()
 	pm := strategy.NewPositionManager(posCfg)
 	paper := order.NewPaperClient(slippageBp)
+	riskCfg := risk.DefaultConfig()
+	rm := risk.New(riskCfg, time.Now())
 	slog.Info("paper_client.ready", "slippage_bp", slippageBp, "per_pos_usd", posCfg.PerPositionUSD)
+	slog.Info("risk.ready",
+		"bankroll_usd", riskCfg.StartingBankrollUSD,
+		"daily_loss_cap_usd", rm.State().DayLossCapUSD,
+		"max_single_loss_usd", riskCfg.MaxSingleLossUSD,
+		"feed_silence_sec", riskCfg.FeedSilenceSec,
+	)
 
 	go func() {
 		if err := sampler.Run(ctx, ws.Books(), ws.Trades()); err != nil && ctx.Err() == nil {
@@ -362,6 +371,14 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp float64) err
 							continue
 						}
 						stats := pm.Stats()
+						if tripped := rm.OnClose(closed.PnLUSD, sig.Time); tripped {
+							rst := rm.State()
+							slog.Error("risk_trip",
+								"reason", string(rst.BlockReason),
+								"day_pnl_usd", rst.DayRealizedPnL,
+								"cap_usd", rst.DayLossCapUSD,
+							)
+						}
 						slog.Info("exit",
 							"asset", short(sig.AssetID),
 							"q", assetToQ[sig.AssetID],
@@ -402,6 +419,18 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp float64) err
 					"buy_ratio", sig.BuyRatio,
 					"reason", sig.Reason,
 				)
+				// Risk gate first — daily-loss breaker / feed-silence / manual pause.
+				if err := rm.AllowOpen(time.Now()); err != nil {
+					st := rm.State()
+					slog.Warn("risk_block_open",
+						"asset", short(sig.AssetID),
+						"q", assetToQ[sig.AssetID],
+						"reason", string(st.BlockReason),
+						"day_pnl_usd", st.DayRealizedPnL,
+						"cap_usd", st.DayLossCapUSD,
+					)
+					continue
+				}
 				// Dedupe checks before we bother submitting to the paper client;
 				// avoids polluting history with rejected paper orders.
 				if pm.Has(sig.AssetID) || pm.HasMarket(sig.Market) {
@@ -457,6 +486,45 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp float64) err
 					"open_positions", stats.Open,
 					"total_exposure_usd", stats.TotalExposure,
 				)
+			}
+		}
+	}()
+
+	// Feed-silence watchdog + periodic risk snapshot. SPEC §6: >30s WSS
+	// silence trips breaker. We also push a risk summary every 60s so the
+	// heartbeat log has a recent snapshot.
+	go func() {
+		tk := time.NewTicker(5 * time.Second)
+		defer tk.Stop()
+		lastSummary := time.Now()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case now := <-tk.C:
+				if at := ws.LastEventAt(); !at.IsZero() {
+					rm.OnFeedHeartbeat(at)
+				}
+				silent, tripped := rm.CheckFeed(now)
+				if tripped {
+					slog.Error("risk_trip",
+						"reason", string(risk.BlockFeedSilence),
+						"silent_sec", int(silent.Seconds()),
+					)
+				}
+				if now.Sub(lastSummary) >= 60*time.Second {
+					lastSummary = now
+					st := rm.State()
+					slog.Info("risk_status",
+						"day", st.Day,
+						"day_pnl_usd", st.DayRealizedPnL,
+						"cap_usd", st.DayLossCapUSD,
+						"blocked", st.Blocked,
+						"reason", string(st.BlockReason),
+						"single_loss_flags", st.SingleLossFlags,
+						"feed_silent_sec", int(silent.Seconds()),
+					)
+				}
 			}
 		}
 	}()

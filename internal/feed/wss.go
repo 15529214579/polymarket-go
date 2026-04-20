@@ -16,6 +16,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -63,6 +64,10 @@ type WSSClient struct {
 	books    chan BookEvent
 	trades   chan TradeEvent
 
+	// lastEventNs is a unix-nano stamp of the most recent book/trade we
+	// decoded. Read by the risk feed-silence watchdog (SPEC §6).
+	lastEventNs atomic.Int64
+
 	mu       sync.Mutex
 	orderbks map[string]*bookState // per-assetID local reconstruction
 }
@@ -92,6 +97,16 @@ func (w *WSSClient) Books() <-chan BookEvent { return w.books }
 
 // Trades returns last_trade_price events.
 func (w *WSSClient) Trades() <-chan TradeEvent { return w.trades }
+
+// LastEventAt returns the timestamp of the most recent decoded event. Zero
+// time means no event has arrived yet.
+func (w *WSSClient) LastEventAt() time.Time {
+	ns := w.lastEventNs.Load()
+	if ns == 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, ns)
+}
 
 // Run blocks until ctx is canceled. Reconnects on error.
 func (w *WSSClient) Run(ctx context.Context) error {
@@ -276,6 +291,7 @@ func (w *WSSClient) dispatchOne(data []byte) {
 			Size:      parseFloat(p.Size),
 			Side:      p.Side,
 		}
+		w.lastEventNs.Store(time.Now().UnixNano())
 		select {
 		case w.trades <- ev:
 		default:
@@ -371,6 +387,7 @@ func (w *WSSClient) emitBook(assetID, market string, ts time.Time, raw string) {
 		Asks:      asks,
 		Raw:       raw,
 	}
+	w.lastEventNs.Store(time.Now().UnixNano())
 	select {
 	case w.books <- ev:
 	default:
