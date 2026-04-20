@@ -20,14 +20,15 @@ type LadderConfig struct {
 }
 
 // DefaultLadderConfig matches SPEC §2.4: +15% TP1 (close 50%), +30% TP2
-// (clear remaining), -10% SL, 4h MaxHold.
+// (clear remaining), -5% SL, 4h MaxHold. SL tightened from -10% to -5% on
+// 2026-04-20 22:42 SGT after Phase 7.d sweep (SL=5% topped 10/10 configs).
 func DefaultLadderConfig() LadderConfig {
 	return LadderConfig{
 		TP1Pct:  0.15,
 		TP1Frac: 0.50,
 		TP2Pct:  0.30,
 		TP2Frac: 1.00,
-		SLPct:   0.10,
+		SLPct:   0.05,
 		MaxHold: 4 * time.Hour,
 	}
 }

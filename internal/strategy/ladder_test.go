@@ -92,7 +92,7 @@ func TestLadder_StopLoss_ClosesEverything(t *testing.T) {
 	t0 := time.Now()
 	l.Open("p1", "M", "A", feed.Tick{Time: t0, Mid: 0.50}, 80)
 
-	// SL threshold = 0.50 × (1 - 0.10) = 0.45. Go below.
+	// SL threshold = 0.50 × (1 - 0.05) = 0.475. Go below.
 	ex, fired := l.OnTick("p1", lt(0.44, t0.Add(500*time.Millisecond)))
 	if !fired || ex.Tranche != "sl" || ex.Reason != ExitLadderSL {
 		t.Fatalf("sl miss: fired=%v ex=%+v", fired, ex)

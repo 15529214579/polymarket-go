@@ -48,9 +48,10 @@
 - **激进 ladder TP + 止损 + 手续费**（`-exit_mode=ladder`，Phase 7.b 已实现）：
   - **TP1** 价格较入场涨 15% → 清 50%（默认；`-ladder_tp1_pct=0.15` `-ladder_tp1_frac=0.50`）
   - **TP2** 价格较入场涨 30% → 清剩余 100%（默认；`-ladder_tp2_pct=0.30` `-ladder_tp2_frac=1.0`）
-  - **Stop-loss** 价格较入场跌 10% → 清 100%（`-ladder_sl_pct=0.10`）
+  - **Stop-loss** 价格较入场跌 5% → 清 100%（`-ladder_sl_pct=0.05`，04-20 22:42 收紧自 0.10）
   - **MaxHold** 4h 强平（避免锁死资金）
   - 相比老方案 (+30%/+60%/余量 hold) 更激进：拉早 TP1、补足 TP2 清仓、加硬止损、加超时，不保留 hold tail
+  - SL 收紧依据：Phase 7.d sweep 显示 SL 是主导杠杆——python pool 中 baseline -30.41 → SL=5% 的 -0.23（top 10 全部 SL=5%）。TP 阈值在 5%~100% 之间只差 7 个点。
 - **手续费建模** — `-fee_bp`（per-side 基点，默认 0 匹配 CLOB V1 实测；V2 官方数字发布后更新）。paper 双边计费写 journal，净 PnL = 毛 PnL − entry_fee − exit_fee。
 - ~~**Phase 7.c 长尾市场**~~ — 老板 04-20 21:42 拍板**不做**：周期太长不适合 90 USDC 资金体量。
 - **历史回放** — 把 python trades 的 entry_price × market_id 灌进 Go backtester 验 ladder_TP 期望曲线，Phase 7.d。

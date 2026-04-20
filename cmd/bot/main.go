@@ -24,6 +24,7 @@ import (
 	"github.com/15529214579/polymarket-go/internal/order"
 	"github.com/15529214579/polymarket-go/internal/risk"
 	"github.com/15529214579/polymarket-go/internal/strategy"
+	"github.com/15529214579/polymarket-go/internal/tickrec"
 )
 
 func main() {
@@ -36,6 +37,7 @@ func main() {
 	signalMode := flag.String("signal_mode", "auto", "auto (paper-submit on signal) | prompt (DM + Buy 1/5/10 inline buttons, boss picks size)")
 	exitMode := flag.String("exit_mode", "hold", "hold (settlement only) | auto (SPEC §2 reversal/drawdown/stop/timeout) | ladder (Phase 7.b TP1/TP2/SL/timeout)")
 	journalDir := flag.String("journal_dir", "db/journal", "trade-journal directory (one JSONL per SGT day)")
+	tickPathDir := flag.String("tickpath_dir", "db/tickpath", "Phase 7.e tick-path persistence dir (one JSONL per posID; empty disables)")
 	reportDay := flag.String("report_day", "", "daily-report mode: SGT day YYYY-MM-DD (default: yesterday SGT)")
 	reportPush := flag.Bool("report_push", false, "daily-report mode: also push summary via Telegram alert bot")
 	// Phase 7.a entry-price band filter: only emit SignalPrompt when sig.Mid is
@@ -49,7 +51,7 @@ func main() {
 	ladderTP1Frac := flag.Float64("ladder_tp1_frac", 0.50, "fraction of initial units to close on TP1")
 	ladderTP2Pct := flag.Float64("ladder_tp2_pct", 0.30, "ladder TP2 trigger: exit ≥ entry × (1 + this)")
 	ladderTP2Frac := flag.Float64("ladder_tp2_frac", 1.00, "fraction of initial units to close on TP2 (1.0 = all remaining)")
-	ladderSLPct := flag.Float64("ladder_sl_pct", 0.10, "ladder stop-loss: exit ≤ entry × (1 - this) closes 100%")
+	ladderSLPct := flag.Float64("ladder_sl_pct", 0.05, "ladder stop-loss: exit ≤ entry × (1 - this) closes 100%")
 	ladderMaxHold := flag.Duration("ladder_max_hold", 4*time.Hour, "ladder hard timeout — closes remainder")
 	flag.Parse()
 
@@ -88,7 +90,7 @@ func main() {
 			SLPct:   *ladderSLPct,
 			MaxHold: *ladderMaxHold,
 		}
-		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *minEntry, *maxEntry, ladderCfg); err != nil && ctx.Err() == nil {
+		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg); err != nil && ctx.Err() == nil {
 			slog.Error("detect failed", "err", err)
 			os.Exit(1)
 		}
@@ -298,7 +300,7 @@ func runSample(ctx context.Context, topN, windowSec int) error {
 	return ws.Run(ctx)
 }
 
-func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig) error {
+func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig) error {
 	if signalMode != "auto" && signalMode != "prompt" {
 		return fmt.Errorf("invalid signal_mode %q (want auto|prompt)", signalMode)
 	}
@@ -313,6 +315,15 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 		return fmt.Errorf("journal init: %w", err)
 	}
 	defer jrn.Close()
+	// Phase 7.e: per-position 1Hz tick path recorder. Empty dir → noop nil
+	// recorder so unit tests / ad-hoc runs can opt out cleanly.
+	var recorder *tickrec.Recorder
+	if tickPathDir != "" {
+		recorder, err = tickrec.New(tickPathDir)
+		if err != nil {
+			return fmt.Errorf("tickrec init: %w", err)
+		}
+	}
 	src := newSourceTracker()
 	gc := feed.NewGammaClient()
 	all, err := gc.ListActiveMarkets(ctx, 500)
@@ -419,6 +430,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				notifier:     notifier,
 				meta:         meta,
 				src:          src,
+				recorder:     recorder,
 				largeFillUSD: largeFillUSD,
 				exitMode:     exitMode,
 			}
@@ -557,6 +569,11 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						if err != nil {
 							slog.Warn("paper_close_miss", "asset", short(sig.AssetID), "err", err.Error())
 							continue
+						}
+						if recorder != nil {
+							if rerr := recorder.Stop(closed.ID); rerr != nil {
+								slog.Warn("tickrec_stop_fail", "pos", closed.ID, "err", rerr.Error())
+							}
 						}
 						entryFee := closed.OpenFeeUSD
 						exitFee := res.FeeUSD
@@ -702,6 +719,11 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 								"err", cerr.Error())
 							continue
 						}
+						if ex.Final && recorder != nil {
+							if rerr := recorder.Stop(p.ID); rerr != nil {
+								slog.Warn("tickrec_stop_fail", "pos", p.ID, "err", rerr.Error())
+							}
+						}
 						// Apportion the open fee across tranches by unit share.
 						entryFeeShare := 0.0
 						if p.InitUnits > 0 {
@@ -796,6 +818,33 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 							"open_positions", stats.Open,
 							"realized_pnl", stats.RealizedPnLUSD,
 						)
+					}
+				}
+			}
+		}()
+	}
+
+	// Phase 7.e: 1Hz tick-path recorder. Runs independent of exit_mode so we
+	// capture the full post-open trajectory in hold-mode paper runs too. Each
+	// second, snapshot open recordings and persist the latest sampler tick;
+	// Recorder dedupes within-second on its side so this can safely over-fire.
+	if recorder != nil {
+		go func() {
+			tk := time.NewTicker(1 * time.Second)
+			defer tk.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-tk.C:
+					for posID, assetID := range recorder.Snapshot() {
+						tail, ok := sampler.TickTail(assetID, 1)
+						if !ok || len(tail) == 0 {
+							continue
+						}
+						if err := recorder.Record(posID, tail[0]); err != nil {
+							slog.Warn("tickrec_record_fail", "pos", posID, "err", err.Error())
+						}
 					}
 				}
 			}
@@ -955,6 +1004,11 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					exit.Open(sig.AssetID, sig.Market, entryTick)
 				case "ladder":
 					ladder.Open(pos.ID, sig.Market, sig.AssetID, entryTick, pos.Units)
+				}
+				if recorder != nil {
+					if rerr := recorder.Start(pos.ID, sig.AssetID); rerr != nil {
+						slog.Warn("tickrec_start_fail", "pos", pos.ID, "err", rerr.Error())
+					}
 				}
 				src.Mark(pos.ID, "auto", res.OrderID)
 				stats := pm.Stats()
@@ -1151,6 +1205,11 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					// Drop any ladder state that was still tracking this
 					// position — settlement supersedes TP/SL/timeout.
 					ladder.Forget(p.ID)
+					if recorder != nil {
+						if rerr := recorder.Stop(closed.ID); rerr != nil {
+							slog.Warn("tickrec_stop_fail", "pos", closed.ID, "err", rerr.Error())
+						}
+					}
 					orderID := fmt.Sprintf("settle-%s", short(p.AssetID))
 					// Apportion remaining open fee to the portion of units
 					// still open at settlement (p.InitUnits may be > p.Units
@@ -1550,6 +1609,7 @@ type buyHandler struct {
 	notifier     notify.Notifier
 	meta         map[string]*assetMeta
 	src          *sourceTracker
+	recorder     *tickrec.Recorder
 	largeFillUSD float64
 	exitMode     string
 }
@@ -1605,6 +1665,11 @@ func (h *buyHandler) OnBuy(ctx context.Context, nonce string, slot int, sizeUSD 
 	case "ladder":
 		if h.ladder != nil {
 			h.ladder.Open(pos.ID, p.Market, choice.AssetID, entryTick, pos.Units)
+		}
+	}
+	if h.recorder != nil {
+		if rerr := h.recorder.Start(pos.ID, choice.AssetID); rerr != nil {
+			slog.Warn("tickrec_start_fail", "pos", pos.ID, "err", rerr.Error())
 		}
 	}
 	if h.src != nil {

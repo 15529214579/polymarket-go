@@ -5,6 +5,7 @@ db/*.log
 db/*.err
 db/*.pid
 db/journal/
+db/tickpath/
 state.json
 *.env
 .env*
