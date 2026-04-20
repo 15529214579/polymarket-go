@@ -140,7 +140,7 @@ func TestTelegram_SignalPromptAttachesInlineKeyboard(t *testing.T) {
 		t.Fatal("no payload captured")
 	}
 	text, _ := m["text"].(string)
-	for _, want := range []string{"动量信号", "VIT", "Game 2 Winner", "结算 1h 23m"} {
+	for _, want := range []string{"VIT ↑ @ 0.4200", "LoL: VIT vs GIANTX", "Game 2 Winner", "1h 23m", "Δ+3.50pp"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("text missing %q; got: %q", want, text)
 		}
@@ -162,11 +162,11 @@ func TestTelegram_SignalPromptAttachesInlineKeyboard(t *testing.T) {
 		t.Fatalf("row0 buttons: got %d", len(row0))
 	}
 	b0, _ := row0[0].(map[string]any)
-	if b0["text"] != "🟢 VIT 1U" || b0["callback_data"] != "buy:abcd1234:0:1" {
+	if b0["text"] != "🟢 1U" || b0["callback_data"] != "buy:abcd1234:0:1" {
 		t.Errorf("row0.button0: %+v", b0)
 	}
 	b2, _ := row0[2].(map[string]any)
-	if b2["text"] != "🟢 VIT 10U" || b2["callback_data"] != "buy:abcd1234:0:10" {
+	if b2["text"] != "🟢 10U" || b2["callback_data"] != "buy:abcd1234:0:10" {
 		t.Errorf("row0.button2: %+v", b2)
 	}
 }
@@ -182,8 +182,9 @@ func TestButtonLabel_YesNoPolarity(t *testing.T) {
 		{"yes", false, 5, "✅ Yes 5U"},
 		{"No", false, 10, "❌ No 10U"},
 		{"NO", true, 1, "❌ No 1U"},
-		{"Gen.G", true, 5, "🟢 Gen.G 5U"},
-		{"Nongshim", false, 1, "🔴 Nongshim 1U"},
+		{"Gen.G", true, 5, "🟢 5U"},
+		{"Nongshim", false, 1, "🔴 1U"},
+		{"Gen.G Global Academy", true, 10, "🟢 10U"},
 	}
 	for _, c := range cases {
 		got := buttonLabel(c.outcome, c.size, c.isSignal)

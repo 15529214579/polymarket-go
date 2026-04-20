@@ -153,27 +153,21 @@ func (t *Telegram) FillReceipt(ev FillReceiptEvent) {
 	t.enqueue(outgoing{text: FormatFillReceipt(ev), tag: "fill_receipt"})
 }
 
-// buttonLabel trims the outcome to fit Telegram's ~40-char inline-button cap.
-// Yes/No markets get ✅/❌ for explicit polarity; team-vs-team keeps ⚡ on the
-// signal (upward-momentum) row so the buy side is obvious at a glance.
+// buttonLabel builds a short inline-button caption. Yes/No markets keep the
+// explicit word (short anyway); team-vs-team markets drop the team name from
+// the button — the team is already in the DM header, so the button only needs
+// polarity + amount to avoid truncation on mobile.
 func buttonLabel(outcome string, sizeUSD float64, isSignal bool) string {
-	name := outcome
-	if name == "" {
-		name = "?"
-	}
-	switch strings.ToLower(name) {
+	switch strings.ToLower(strings.TrimSpace(outcome)) {
 	case "yes":
 		return fmt.Sprintf("✅ Yes %gU", sizeUSD)
 	case "no":
 		return fmt.Sprintf("❌ No %gU", sizeUSD)
 	}
-	if len(name) > 18 {
-		name = name[:15] + "..."
-	}
 	if isSignal {
-		return fmt.Sprintf("🟢 %s %gU", name, sizeUSD)
+		return fmt.Sprintf("🟢 %gU", sizeUSD)
 	}
-	return fmt.Sprintf("🔴 %s %gU", name, sizeUSD)
+	return fmt.Sprintf("🔴 %gU", sizeUSD)
 }
 
 type outgoing struct {

@@ -157,61 +157,46 @@ func FormatRiskResume(ev RiskResumeEvent) string {
 	)
 }
 
-// FormatSignalPrompt renders the DM body that accompanies the inline-keyboard.
+// FormatSignalPrompt renders a compact DM body that accompanies the inline-keyboard.
 // Only the signal side is surfaced — the boss picks amount, not direction.
-// Formatting kept plain (no markdown escaping needed).
 //
-// Layout:
+// Layout (3 lines, keeps buttons visible on mobile without scrolling):
 //
-//	⚡ 动量信号 · <signalOutcome> ↑
+//	⚡ <signalOutcome> ↑ @ 0.xxxx
 //	<Match>
-//	<Context> · 结算 <EndIn>
-//	Δ +x.xxpp · tail 4/5 · buy 78%
-//	当前 0.xxxx
-//
-//	按钮 10m 内有效
+//	<Context> · <EndIn> · Δ+x.xxpp buy 78%
 func FormatSignalPrompt(ev SignalPromptEvent) string {
 	var b strings.Builder
 
 	sig, ok := signalChoice(ev.Choices)
 	signalOutcome := "?"
+	mid := 0.0
 	if ok {
 		signalOutcome = sig.Outcome
+		mid = sig.Mid
 	}
 
-	fmt.Fprintf(&b, "⚡ 动量信号 · %s ↑\n", signalOutcome)
+	fmt.Fprintf(&b, "⚡ %s ↑ @ %.4f\n", truncateStr(signalOutcome, 40), mid)
+
 	match := ev.Match
 	if match == "" && len(ev.Choices) > 0 {
 		match = ev.Choices[0].Outcome + " vs " + outcomeAt(ev.Choices, 1)
 	}
-	fmt.Fprintln(&b, truncateStr(match, 120))
+	fmt.Fprintln(&b, truncateStr(match, 80))
 
-	var ctxLine strings.Builder
+	// Collapse context · endIn · Δ · buy into one line.
+	parts := make([]string, 0, 4)
 	if ev.Context != "" {
-		ctxLine.WriteString(ev.Context)
+		parts = append(parts, truncateStr(ev.Context, 40))
 	}
 	if ev.EndIn != "" {
-		if ctxLine.Len() > 0 {
-			ctxLine.WriteString(" · ")
-		}
-		ctxLine.WriteString("结算 ")
-		ctxLine.WriteString(ev.EndIn)
+		parts = append(parts, ev.EndIn)
 	}
-	if ctxLine.Len() > 0 {
-		fmt.Fprintln(&b, ctxLine.String())
+	parts = append(parts, fmt.Sprintf("Δ%+.2fpp", ev.DeltaPP))
+	if ev.TailLen > 0 || ev.BuyRatio > 0 {
+		parts = append(parts, fmt.Sprintf("buy %.0f%%", ev.BuyRatio*100))
 	}
-
-	fmt.Fprintf(&b, "Δ %+.2fpp · tail %d/%d · buy %.0f%%\n",
-		ev.DeltaPP, ev.TailUps, ev.TailLen, ev.BuyRatio*100)
-	if ok {
-		fmt.Fprintf(&b, "当前 %.4f\n", sig.Mid)
-	}
-
-	ttl := ev.ExpiresIn
-	if ttl <= 0 {
-		ttl = 10 * time.Minute
-	}
-	fmt.Fprintf(&b, "\n按钮 %s 内有效", humanizeTTL(ttl))
+	b.WriteString(strings.Join(parts, " · "))
 	return b.String()
 }
 
