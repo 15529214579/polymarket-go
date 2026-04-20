@@ -105,14 +105,22 @@ func (pm *PositionManager) HasMarket(market string) bool {
 	return ok
 }
 
-// Open attempts to book a new paper position at entry.Mid. Enforces:
-//   - no duplicate asset
-//   - no duplicate market (YES+NO sides on same market forbidden)
-//   - max concurrent positions
-//   - max total exposure
+// Open books a paper position at entry.Mid using the default PerPositionUSD
+// from config. See OpenSized for the variable-size variant used by the manual
+// prompt flow (Phase 3.5).
 func (pm *PositionManager) Open(assetID, market string, entry feed.Tick) (*Position, error) {
+	return pm.OpenSized(assetID, market, entry, pm.cfg.PerPositionUSD)
+}
+
+// OpenSized books a paper position at an explicit size. Used by the manual
+// button-select path where the boss picks 1 / 5 / 10 USDC per click. All the
+// dedupe + exposure caps that Open enforces still apply.
+func (pm *PositionManager) OpenSized(assetID, market string, entry feed.Tick, sizeUSD float64) (*Position, error) {
 	if entry.Mid <= 0 || entry.Mid >= 1 {
 		return nil, fmt.Errorf("%w: mid=%v", ErrInvalidEntry, entry.Mid)
+	}
+	if sizeUSD <= 0 {
+		return nil, fmt.Errorf("%w: size=%v", ErrInvalidEntry, sizeUSD)
 	}
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
@@ -128,7 +136,7 @@ func (pm *PositionManager) Open(assetID, market string, entry feed.Tick) (*Posit
 	if len(pm.open) >= pm.cfg.MaxOpenPositions {
 		return nil, ErrMaxPositions
 	}
-	if pm.totalExposureLocked()+pm.cfg.PerPositionUSD > pm.cfg.MaxTotalOpenUSD+1e-9 {
+	if pm.totalExposureLocked()+sizeUSD > pm.cfg.MaxTotalOpenUSD+1e-9 {
 		return nil, ErrMaxExposure
 	}
 
@@ -137,8 +145,8 @@ func (pm *PositionManager) Open(assetID, market string, entry feed.Tick) (*Posit
 		ID:        fmt.Sprintf("p%d", pm.nextID),
 		AssetID:   assetID,
 		Market:    market,
-		SizeUSD:   pm.cfg.PerPositionUSD,
-		Units:     pm.cfg.PerPositionUSD / entry.Mid,
+		SizeUSD:   sizeUSD,
+		Units:     sizeUSD / entry.Mid,
 		EntryMid:  entry.Mid,
 		EntryTime: entry.Time,
 		Status:    PosOpen,

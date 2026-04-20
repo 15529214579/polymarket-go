@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -25,6 +26,7 @@ func main() {
 	slippageBp := flag.Float64("slippage_bp", 0, "paper fill slippage in bp applied against you")
 	largeFillUSD := flag.Float64("large_fill_usd", 3.0, "DM notifier threshold on |realized pnl|")
 	envFile := flag.String("env_file", ".env.local", "dotenv file to load before reading env")
+	signalMode := flag.String("signal_mode", "auto", "auto (paper-submit on signal) | prompt (DM + Buy 1/5/10 inline buttons, boss picks size)")
 	flag.Parse()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -54,7 +56,7 @@ func main() {
 			os.Exit(1)
 		}
 	case "detect":
-		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *largeFillUSD); err != nil && ctx.Err() == nil {
+		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *largeFillUSD, *signalMode); err != nil && ctx.Err() == nil {
 			slog.Error("detect failed", "err", err)
 			os.Exit(1)
 		}
@@ -262,7 +264,10 @@ func runSample(ctx context.Context, topN, windowSec int) error {
 	return ws.Run(ctx)
 }
 
-func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUSD float64) error {
+func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUSD float64, signalMode string) error {
+	if signalMode != "auto" && signalMode != "prompt" {
+		return fmt.Errorf("invalid signal_mode %q (want auto|prompt)", signalMode)
+	}
 	gc := feed.NewGammaClient()
 	all, err := gc.ListActiveMarkets(ctx, 500)
 	if err != nil {
@@ -312,6 +317,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 		defer cancel()
 		_ = notifier.Close(sctx)
 	}()
+	pending := notify.NewPendingStore(60 * time.Second)
 	slog.Info("paper_client.ready", "slippage_bp", slippageBp, "per_pos_usd", posCfg.PerPositionUSD)
 	slog.Info("risk.ready",
 		"bankroll_usd", riskCfg.StartingBankrollUSD,
@@ -320,6 +326,62 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 		"feed_silence_sec", riskCfg.FeedSilenceSec,
 		"large_fill_usd", largeFillUSD,
 	)
+	slog.Info("signal_mode.ready", "mode", signalMode)
+
+	// Inbound callback consumer (Phase 3.5.b). Only runs if a DEDICATED sidecar
+	// bot token is configured — we never long-poll the alert bot's token because
+	// OpenClaw may also be polling it, and Telegram delivers updates competitively.
+	sidecarToken := os.Getenv("SIDECAR_BOT_TOKEN")
+	sidecarChat := os.Getenv("SIDECAR_CHAT_ID")
+	if sidecarChat == "" {
+		sidecarChat = os.Getenv("TELEGRAM_CHAT_ID")
+	}
+	if sidecarToken != "" && sidecarChat != "" {
+		chatID, err := strconv.ParseInt(sidecarChat, 10, 64)
+		if err != nil {
+			slog.Warn("sidecar_chat_id_parse_fail", "err", err.Error())
+		} else {
+			h := &buyHandler{
+				pm:       pm,
+				exit:     exit,
+				paper:    paper,
+				rm:       rm,
+				pending:  pending,
+				notifier: notifier,
+				assetToQ: assetToQ,
+				largeFillUSD: largeFillUSD,
+			}
+			lp := notify.NewLongPoll(notify.LongPollConfig{
+				BotToken:       sidecarToken,
+				ExpectedChatID: chatID,
+			}, h)
+			go func() {
+				slog.Info("sidecar_longpoll.ready", "chat_id", chatID)
+				if err := lp.Run(ctx); err != nil && ctx.Err() == nil {
+					slog.Warn("sidecar_longpoll_exit", "err", err.Error())
+				}
+			}()
+		}
+	} else if signalMode == "prompt" {
+		slog.Warn("signal_mode_prompt_without_sidecar",
+			"hint", "prompt mode needs SIDECAR_BOT_TOKEN + chat_id — buttons will arrive but clicks won't be consumed")
+	}
+
+	// Pending-store reaper so expired button prompts don't accumulate.
+	go func() {
+		tk := time.NewTicker(15 * time.Second)
+		defer tk.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case now := <-tk.C:
+				if n := pending.Reap(now); n > 0 {
+					slog.Info("pending_reap", "expired", n, "remaining", pending.Size())
+				}
+			}
+		}
+	}()
 
 	go func() {
 		if err := sampler.Run(ctx, ws.Books(), ws.Trades()); err != nil && ctx.Err() == nil {
@@ -475,6 +537,36 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 					)
 					continue
 				}
+
+				// Prompt mode: publish the signal as a DM with Buy 1/5/10 buttons
+				// and stash the intent in the pending store. The callback longpoll
+				// (above) claims the nonce and executes via buyHandler.
+				if signalMode == "prompt" {
+					p := pending.Put(notify.PendingIntent{
+						AssetID:  sig.AssetID,
+						Market:   sig.Market,
+						Question: assetToQ[sig.AssetID],
+						Mid:      sig.Mid,
+					}, time.Now())
+					notifier.SignalPrompt(notify.SignalPromptEvent{
+						Nonce:     p.Nonce,
+						Question:  assetToQ[sig.AssetID],
+						AssetID:   sig.AssetID,
+						Mid:       sig.Mid,
+						DeltaPP:   sig.DeltaPP,
+						TailUps:   sig.TailUps,
+						TailLen:   sig.TailLen,
+						BuyRatio:  sig.BuyRatio,
+						ExpiresIn: 60 * time.Second,
+					})
+					slog.Info("signal_prompt_sent",
+						"asset", short(sig.AssetID),
+						"nonce", p.Nonce,
+						"mid", sig.Mid,
+					)
+					continue
+				}
+
 				buyIntent := order.Intent{
 					AssetID: sig.AssetID,
 					Market:  sig.Market,
@@ -636,6 +728,71 @@ func short(id string) string {
 		return id
 	}
 	return id[:6] + ".." + id[len(id)-4:]
+}
+
+// buyHandler wires a click on Buy 1/5/10 → same paper-submit → pm.Open path
+// the auto-mode signal loop uses, but honors the size the boss picked and the
+// frozen mid captured at signal time. Executes synchronously on the longpoll
+// goroutine; Telegram dispatch of the resulting DM is async via notifier.
+type buyHandler struct {
+	pm           *strategy.PositionManager
+	exit         *strategy.ExitTracker
+	paper        order.Client
+	rm           *risk.Manager
+	pending      *notify.PendingStore
+	notifier     notify.Notifier
+	assetToQ     map[string]string
+	largeFillUSD float64
+}
+
+func (h *buyHandler) OnBuy(ctx context.Context, nonce string, sizeUSD float64) (string, error) {
+	now := time.Now()
+	p, ok := h.pending.Claim(nonce, now)
+	if !ok {
+		return "", fmt.Errorf("已过期或已点过")
+	}
+	if err := h.rm.AllowOpen(now); err != nil {
+		st := h.rm.State()
+		return "", fmt.Errorf("风控阻止: %s (day_pnl=%.2f)", st.BlockReason, st.DayRealizedPnL)
+	}
+	if h.pm.Has(p.AssetID) || h.pm.HasMarket(p.Market) {
+		return "", fmt.Errorf("已有同市场仓位")
+	}
+	intent := order.Intent{
+		AssetID: p.AssetID,
+		Market:  p.Market,
+		Side:    order.Buy,
+		SizeUSD: sizeUSD,
+		LimitPx: p.Mid,
+		Type:    order.GTC,
+	}
+	res, err := h.paper.Submit(ctx, intent)
+	if err != nil {
+		return "", fmt.Errorf("下单失败: %s", err.Error())
+	}
+	entryTick := feed.Tick{
+		AssetID: p.AssetID, Market: p.Market,
+		Time: now, Mid: res.AvgPrice,
+	}
+	pos, err := h.pm.OpenSized(p.AssetID, p.Market, entryTick, sizeUSD)
+	if err != nil {
+		return "", fmt.Errorf("开仓失败: %s", err.Error())
+	}
+	h.exit.Open(p.AssetID, p.Market, entryTick)
+	stats := h.pm.Stats()
+	slog.Info("manual_open",
+		"id", pos.ID,
+		"order_id", res.OrderID,
+		"asset", short(p.AssetID),
+		"q", h.assetToQ[p.AssetID],
+		"size_usd", sizeUSD,
+		"signal_mid", p.Mid,
+		"entry_fill", res.AvgPrice,
+		"units", pos.Units,
+		"open_positions", stats.Open,
+		"total_exposure_usd", stats.TotalExposure,
+	)
+	return fmt.Sprintf("✅ %gU @ %.4f · order %s", sizeUSD, res.AvgPrice, short(res.OrderID)), nil
 }
 
 // buildNotifier returns a Telegram notifier when TELEGRAM_BOT_TOKEN + _CHAT_ID

@@ -50,20 +50,18 @@
 ### Phase 3.5 — 半自动点选下单（Hybrid UX）
 > 信号推 DM → 按钮点选 1U / 5U / 10U → 回调触发同一签名路径下单。依赖 Phase 2 信号 + Phase 3 下单。
 - [x] 2026-04-20 12:0x — Phase 3.5.a（outbound）：`notify.SignalPrompt` 把信号打成 DM，附 inline keyboard "Buy 1U / 5U / 10U"；callback_data = `buy:<nonce>:<sizeUSD>`。`internal/notify/pending.go` 上线（`PendingStore` TTL=60s、one-shot Claim、hex8 nonce）。3 pending 单测 + 1 telegram signal 单测全过。**outbound 独立于 callback 方案 A/B，已锁。**
-- [ ] **⚠️ 等老板拍板：callback 路径 A/B**（见下）
-- [ ] Phase 3.5.b（inbound）：callback 消费 → Claim nonce → `paper.Submit`（paper）或 Phase 3 CLOB 签名（Day 9 起实盘）
-- [ ] 超时作废（>60s 自动在 Telegram 上编辑原 DM 为 "已过期"，callback 返回 alert=expired）
-- [ ] 安全：sender_id 过滤只认老板；PendingStore 已做 one-shot，callback_data 带 nonce 防重放
-- [ ] Paper 期间：点了按钮走 paper 路径；Day 9 起自动走真下单
-- [ ] 成交回执：下单成功/失败都回 DM 单条小回执（`notify.LargeFill` 已有路径，小单复用一个 `notify.OrderResult` 事件即可）
-
-**callback 路径选项（开工前拍板）：**
-- **A. OpenClaw 转发**：OpenClaw telegram provider 接到 callback_query 后把"老板点了 buy:xxx:5"路由进当前 5号 session，5号 session 处理 → 调 bot 的 CLI 或本地 RPC 完成下单。
-  - 优：零新服务、凭据全落 OpenClaw、安全模型复用
-  - 劣：耦合 OpenClaw 的 callback 转发能力，目前尚未验证是否支持
-- **B. bot 自起 long-poll**：`cmd/bot` 里开一个 goroutine 调 Telegram `getUpdates` 消费 callback_query（同一个 bot token），命中 nonce → 内部直接下单。
-  - 优：完全 in-process、不依赖外部
-  - 劣：同一 token 如果 OpenClaw 也在 poll，会抢 update；需要确认 `.env.local` 的 token 是否和 OpenClaw 用的同一个，否则就要开个 sidecar bot
+- [x] 2026-04-20 12:09 — 老板拍板选 **B（sidecar bot long-poll）**。
+- [x] 2026-04-20 12:1x — Phase 3.5.b 代码层完成：
+  - `internal/notify/callback.go` 上线：`LongPoll` 消费 `getUpdates`（allowed_updates=callback_query），chat_id 白名单，每个点击都走 `answerCallbackQuery` 回 toast；`CallbackHandler` 接口
+  - `cmd/bot/main.go` 加 `-signal_mode auto|prompt` flag（prompt 模式下信号→DM+pending，callback 执行）；`buyHandler` 负责 Claim/risk 门控/dedupe/`paper.Submit`/`pm.OpenSized`/`exit.Open`/toast
+  - `strategy.PositionManager` 新增 `OpenSized(sizeUSD)`，保留所有 dedupe+敞口上限
+  - 只有 `SIDECAR_BOT_TOKEN` 存在时 longpoll 才启动（防止和 OpenClaw 抢 `TELEGRAM_BOT_TOKEN` 的 update）
+  - 新 callback 单测 4 个（parse/分派成功/跨 chat 拒/坏 data/handler err → toast）全过；`./bin/bot -mode=detect -signal_mode=prompt` 启动 smoke OK
+- [ ] **⚠️ 等老板给 sidecar bot token**：老板 BotFather 新建一个独立 bot（例如 `@murphy_polygo_bot`），token 发 DM 给我 → 我存 Bitwarden → 写 `.env.local` `SIDECAR_BOT_TOKEN=...` + `SIDECAR_CHAT_ID=6695538819`（缺省复用 `TELEGRAM_CHAT_ID`）
+- [ ] 拿到 token 后端到端实盘验收：启 `./bin/bot -mode=detect -signal_mode=prompt`，用一条手动触发的 prompt 点按钮，确认 `manual_open` + toast
+- [ ] 超时作废视觉升级：>60s 编辑原 DM 为 "已过期"（可选，当前 callback 已 return "已过期或已点过"）
+- [ ] Paper 期间：点了按钮走 paper 路径；Day 9 起自动走真下单（Phase 3 V2 签名 client 接同一 `order.Client` 接口）
+- [ ] 成交回执：目前 callback toast 已带 `order_id / fill price`，可后续另发一条小 DM 作为凭据留档
 
 ### Phase 4 — 风控 + 可观测（1 天）
 - [x] 2026-04-20 11:4x — Phase 4.a：`internal/risk/risk.go` 上线。日亏损熔断（15% × 90.41 = -13.56 USDC 上限）+ per-trade 单笔损失 ≥ 3 USDC 计数旗标 + WSS feed-silence watchdog（30s 无 book/trade → trip）+ 手动 Pause/Resume。SGT 日切滚动但不自动解除 breaker（SPEC §6 "等老板手动恢复"）。8 个单测全过。接进 detect 循环：开仓前 `AllowOpen` 门控，close 后 `OnClose` 累计，5s 心跳 `CheckFeed`，60s `risk_status` 日志。35s 实盘烟测：`risk.ready` + 无 trip（预期，LoL 市场平静）。
