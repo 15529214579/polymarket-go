@@ -20,7 +20,7 @@ import (
 )
 
 func main() {
-	mode := flag.String("mode", "run", "run | discover | feed | sample | detect")
+	mode := flag.String("mode", "run", "run | discover | feed | sample | detect | prompt-test")
 	maxMarkets := flag.Int("markets", 20, "top-N LoL markets by vol24h to subscribe")
 	windowSec := flag.Int("window", 60, "sampler window in seconds")
 	slippageBp := flag.Float64("slippage_bp", 0, "paper fill slippage in bp applied against you")
@@ -58,6 +58,11 @@ func main() {
 	case "detect":
 		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *largeFillUSD, *signalMode); err != nil && ctx.Err() == nil {
 			slog.Error("detect failed", "err", err)
+			os.Exit(1)
+		}
+	case "prompt-test":
+		if err := runPromptTest(ctx, *slippageBp); err != nil && ctx.Err() == nil {
+			slog.Error("prompt-test failed", "err", err)
 			os.Exit(1)
 		}
 	case "run":
@@ -730,6 +735,127 @@ func short(id string) string {
 	return id[:6] + ".." + id[len(id)-4:]
 }
 
+// runPromptTest drives the Phase 3.5.b button loop end-to-end against real
+// Telegram APIs, without needing a live momentum signal. Picks the top-vol LoL
+// market, seeds a PendingStore entry, sends a SignalPrompt DM, runs the sidecar
+// LongPoll, and waits up to 2 minutes for one click — then logs manual_open
+// or the error toast and exits. Paper only.
+func runPromptTest(ctx context.Context, slippageBp float64) error {
+	gc := feed.NewGammaClient()
+	all, err := gc.ListActiveMarkets(ctx, 200)
+	if err != nil {
+		return err
+	}
+	lol := feed.FilterLoL(all)
+	if len(lol) == 0 {
+		return fmt.Errorf("no active LoL markets")
+	}
+	top := lol[0]
+	tokens := top.ClobTokenIDs()
+	if len(tokens) == 0 {
+		return fmt.Errorf("top market has no clob tokens: %s", top.Slug)
+	}
+	assetID := tokens[0]
+	assetToQ := map[string]string{assetID: top.Question}
+
+	posCfg := strategy.DefaultPositionConfig()
+	pm := strategy.NewPositionManager(posCfg)
+	exit := strategy.NewExitTracker(strategy.DefaultExitConfig())
+	paper := order.NewPaperClient(slippageBp)
+	rm := risk.New(risk.DefaultConfig(), time.Now())
+	notifier := buildNotifier()
+	defer func() {
+		sctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_ = notifier.Close(sctx)
+	}()
+	pending := notify.NewPendingStore(2 * time.Minute)
+
+	sidecarToken := os.Getenv("SIDECAR_BOT_TOKEN")
+	sidecarChat := os.Getenv("SIDECAR_CHAT_ID")
+	if sidecarChat == "" {
+		sidecarChat = os.Getenv("TELEGRAM_CHAT_ID")
+	}
+	if sidecarToken == "" || sidecarChat == "" {
+		return fmt.Errorf("prompt-test needs SIDECAR_BOT_TOKEN and chat_id in env")
+	}
+	chatID, err := strconv.ParseInt(sidecarChat, 10, 64)
+	if err != nil {
+		return fmt.Errorf("parse chat_id: %w", err)
+	}
+
+	h := &buyHandler{
+		pm: pm, exit: exit, paper: paper, rm: rm,
+		pending: pending, notifier: notifier,
+		assetToQ: assetToQ, largeFillUSD: 3.0,
+	}
+	lp := notify.NewLongPoll(notify.LongPollConfig{
+		BotToken: sidecarToken, ExpectedChatID: chatID,
+	}, h)
+
+	lpCtx, lpCancel := context.WithCancel(ctx)
+	defer lpCancel()
+	lpDone := make(chan error, 1)
+	go func() {
+		slog.Info("prompt_test.longpoll_start", "chat_id", chatID)
+		lpDone <- lp.Run(lpCtx)
+	}()
+
+	// Seed one pending intent at the current mid (use 0.50 as a placeholder —
+	// paper fill math is the same since slippage is bp-relative).
+	mid := 0.50
+	p := pending.Put(notify.PendingIntent{
+		AssetID:  assetID,
+		Market:   top.Slug,
+		Question: top.Question,
+		Mid:      mid,
+	}, time.Now())
+
+	notifier.SignalPrompt(notify.SignalPromptEvent{
+		Nonce:     p.Nonce,
+		Question:  top.Question + "  [PROMPT-TEST]",
+		AssetID:   assetID,
+		Mid:       mid,
+		DeltaPP:   0,
+		TailUps:   0,
+		TailLen:   0,
+		BuyRatio:  0,
+		ExpiresIn: 2 * time.Minute,
+	})
+	slog.Info("prompt_test.sent",
+		"nonce", p.Nonce,
+		"q", top.Question,
+		"mid", mid,
+		"asset", short(assetID),
+	)
+
+	// Wait for either: first fill (pm.Stats().Open > 0), the user's click
+	// arriving but failing (history shows a Result), context cancel, or timeout.
+	deadline := time.After(2 * time.Minute)
+	tk := time.NewTicker(1 * time.Second)
+	defer tk.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-deadline:
+			slog.Warn("prompt_test.timeout", "hint", "no click within 2 min")
+			lpCancel()
+			<-lpDone
+			return nil
+		case <-tk.C:
+			if pm.Stats().Open > 0 {
+				// Give the toast 1s to flush, then exit.
+				time.Sleep(1 * time.Second)
+				lpCancel()
+				<-lpDone
+				slog.Info("prompt_test.done", "open_positions", pm.Stats().Open)
+				return nil
+			}
+		}
+	}
+}
+
 // buyHandler wires a click on Buy 1/5/10 → same paper-submit → pm.Open path
 // the auto-mode signal loop uses, but honors the size the boss picked and the
 // frozen mid captured at signal time. Executes synchronously on the longpoll
@@ -797,6 +923,10 @@ func (h *buyHandler) OnBuy(ctx context.Context, nonce string, sizeUSD float64) (
 
 // buildNotifier returns a Telegram notifier when TELEGRAM_BOT_TOKEN + _CHAT_ID
 // are present, otherwise a Nop so the trading loop is unconditional.
+//
+// SIDECAR_BOT_TOKEN, when set, routes SignalPrompt messages through that bot so
+// the inline-keyboard message originates from the same bot the LongPoll watches
+// for callback_query (Phase 3.5.b). Other events stay on the alert bot.
 func buildNotifier() notify.Notifier {
 	tok := os.Getenv("TELEGRAM_BOT_TOKEN")
 	chat := os.Getenv("TELEGRAM_CHAT_ID")
@@ -804,6 +934,11 @@ func buildNotifier() notify.Notifier {
 		slog.Info("notify.ready", "mode", "nop", "reason", "telegram_env_missing")
 		return notify.Nop{}
 	}
-	slog.Info("notify.ready", "mode", "telegram", "chat_id", chat)
-	return notify.NewTelegram(notify.TelegramConfig{BotToken: tok, ChatID: chat})
+	cfg := notify.TelegramConfig{BotToken: tok, ChatID: chat, PromptBotToken: os.Getenv("SIDECAR_BOT_TOKEN")}
+	slog.Info("notify.ready",
+		"mode", "telegram",
+		"chat_id", chat,
+		"prompt_via_sidecar", cfg.PromptBotToken != "",
+	)
+	return notify.NewTelegram(cfg)
 }

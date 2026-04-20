@@ -158,6 +158,42 @@ func TestTelegram_SignalPromptAttachesInlineKeyboard(t *testing.T) {
 	}
 }
 
+func TestTelegram_SignalPromptRoutesThroughPromptBot(t *testing.T) {
+	// Verifies the fix for the Phase 3.5.b wiring bug: SignalPrompt must be sent
+	// from PromptBotToken when set, so clicks reach the bot the LongPoll watches.
+	var alertHits, promptHits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/botALERT/"):
+			alertHits.Add(1)
+		case strings.Contains(r.URL.Path, "/botPROMPT/"):
+			promptHits.Add(1)
+		default:
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+
+	tg := NewTelegram(TelegramConfig{
+		BotToken: "ALERT", PromptBotToken: "PROMPT", ChatID: "1",
+		BaseURL: srv.URL, QueueSize: 4,
+	})
+	tg.RiskTrip(RiskTripEvent{Reason: "daily_loss", DayPnLUSD: -14, DayLossCapUSD: 13.56})
+	tg.LargeFill(LargeFillEvent{PnLUSD: 5})
+	tg.SignalPrompt(SignalPromptEvent{Nonce: "n", AssetID: "a", Mid: 0.5, ExpiresIn: time.Minute})
+	if err := tg.Close(context.Background()); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	if alertHits.Load() != 2 {
+		t.Errorf("alert bot sends: got %d, want 2", alertHits.Load())
+	}
+	if promptHits.Load() != 1 {
+		t.Errorf("prompt bot sends: got %d, want 1", promptHits.Load())
+	}
+}
+
 func TestFormatRiskTrip_FeedSilence(t *testing.T) {
 	s := FormatRiskTrip(RiskTripEvent{Reason: "feed_silence", SilentSec: 47})
 	if !strings.Contains(s, "WSS") || !strings.Contains(s, "47s") {

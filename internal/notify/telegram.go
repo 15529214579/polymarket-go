@@ -16,6 +16,11 @@ import (
 type TelegramConfig struct {
 	BotToken string
 	ChatID   string
+	// PromptBotToken, when set, is used *only* for SignalPrompt messages so the
+	// inline-keyboard message originates from the same bot the callback long-poll
+	// watches. Leave empty to send prompts via BotToken (only correct if that bot
+	// is also the one being long-polled for callback_query).
+	PromptBotToken string
 	// BaseURL defaults to Telegram's production Bot API. Override for tests.
 	BaseURL string
 	// SendTimeout bounds each HTTP attempt. Default 5s.
@@ -85,13 +90,21 @@ func (t *Telegram) SignalPrompt(ev SignalPromptEvent) {
 		})
 	}
 	kb := map[string]any{"inline_keyboard": [][]map[string]string{row}}
-	t.enqueue(outgoing{text: FormatSignalPrompt(ev), tag: "signal_prompt", replyMarkup: kb})
+	tok := t.cfg.PromptBotToken
+	if tok == "" {
+		tok = t.cfg.BotToken
+	}
+	t.enqueue(outgoing{text: FormatSignalPrompt(ev), tag: "signal_prompt", replyMarkup: kb, sendToken: tok})
 }
 
 type outgoing struct {
 	text        string
 	tag         string
 	replyMarkup any
+	// sendToken, when non-empty, overrides cfg.BotToken for this message. Used
+	// for SignalPrompt so the message originates from the sidecar bot that the
+	// LongPoll watches for callback_query.
+	sendToken string
 }
 
 func (t *Telegram) enqueue(o outgoing) {
@@ -139,7 +152,11 @@ func (t *Telegram) drain() {
 // send is synchronous inside the drain goroutine. Errors are logged but not
 // returned — the trading loop never waits on Telegram.
 func (t *Telegram) send(o outgoing) {
-	url := fmt.Sprintf("%s/bot%s/sendMessage", t.cfg.BaseURL, t.cfg.BotToken)
+	tok := o.sendToken
+	if tok == "" {
+		tok = t.cfg.BotToken
+	}
+	url := fmt.Sprintf("%s/bot%s/sendMessage", t.cfg.BaseURL, tok)
 	body := map[string]any{
 		"chat_id":                  t.cfg.ChatID,
 		"text":                     o.text,

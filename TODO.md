@@ -57,8 +57,9 @@
   - `strategy.PositionManager` 新增 `OpenSized(sizeUSD)`，保留所有 dedupe+敞口上限
   - 只有 `SIDECAR_BOT_TOKEN` 存在时 longpoll 才启动（防止和 OpenClaw 抢 `TELEGRAM_BOT_TOKEN` 的 update）
   - 新 callback 单测 4 个（parse/分派成功/跨 chat 拒/坏 data/handler err → toast）全过；`./bin/bot -mode=detect -signal_mode=prompt` 启动 smoke OK
-- [ ] **⚠️ 等老板给 sidecar bot token**：老板 BotFather 新建一个独立 bot（例如 `@murphy_polygo_bot`），token 发 DM 给我 → 我存 Bitwarden → 写 `.env.local` `SIDECAR_BOT_TOKEN=...` + `SIDECAR_CHAT_ID=6695538819`（缺省复用 `TELEGRAM_CHAT_ID`）
-- [ ] 拿到 token 后端到端实盘验收：启 `./bin/bot -mode=detect -signal_mode=prompt`，用一条手动触发的 prompt 点按钮，确认 `manual_open` + toast
+- [x] 2026-04-20 12:15 — Sidecar bot token 入档：老板 BotFather 建 `@Murphyoderbot` (id 8760736438)，token 存 Bitwarden `Polymarket-Go Sidecar Bot` + 写 `.env.local` `SIDECAR_BOT_TOKEN=...`（`SIDECAR_CHAT_ID` 复用 `TELEGRAM_CHAT_ID=6695538819`）
+- [x] 2026-04-20 12:17 — 修 Phase 3.5.b 接线 bug：`SignalPrompt` 原先走 alert bot `@Murphy005bot` 发消息，点击 callback 进 alert bot 队列，但 LongPoll 盯的是 sidecar → 永远收不到点击。修法：`TelegramConfig.PromptBotToken` 字段 + `outgoing.sendToken` per-message 覆盖，prompt 走 sidecar，其它事件继续走 alert bot。`TestTelegram_SignalPromptRoutesThroughPromptBot` 锁死。
+- [x] 2026-04-20 12:20 — 端到端实盘验收：`./bin/bot -mode=prompt-test` 从 @Murphyoderbot 发 Buy 1U/5U/10U 给 `LCK CL Gen.G vs Nongshim BO3` (mid 0.50)；老板点 Buy 1U，14s 内 `callback_click` + `manual_open` id=p1 order=paper-eeff0905 2 units @ 0.50，toast 回 `✅ 1U @ 0.5000 · order paper-e..0905`。sidecar → pending.Claim → paper.Submit → pm.OpenSized → exit.Open 整条回路通。
 - [ ] 超时作废视觉升级：>60s 编辑原 DM 为 "已过期"（可选，当前 callback 已 return "已过期或已点过"）
 - [ ] Paper 期间：点了按钮走 paper 路径；Day 9 起自动走真下单（Phase 3 V2 签名 client 接同一 `order.Client` 接口）
 - [ ] 成交回执：目前 callback toast 已带 `order_id / fill price`，可后续另发一条小 DM 作为凭据留档
