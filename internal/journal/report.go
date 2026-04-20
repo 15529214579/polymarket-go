@@ -9,6 +9,10 @@ import (
 
 // DailySummary is the aggregate over one SGT day's TradeRecords. Built by
 // Summarize; rendered by FormatTelegram for the cron-pushed message.
+//
+// RealizedPnLUSD is net of fees when any record carries NetPnLUSD / fee
+// fields (Phase 7.b ladder); older records with zero fee fields contribute
+// gross PnL (net == gross in that case).
 type DailySummary struct {
 	Day             string
 	Trades          int
@@ -16,7 +20,9 @@ type DailySummary struct {
 	Losses          int
 	Breakevens      int
 	WinRate         float64 // 0..1, undefined if Trades==0
-	RealizedPnLUSD  float64
+	RealizedPnLUSD  float64 // net of fees
+	GrossPnLUSD     float64 // before fees
+	FeesUSD         float64 // sum of entry + exit fees
 	GrossWinUSD     float64
 	GrossLossUSD    float64
 	AvgPnLUSD       float64
@@ -38,19 +44,27 @@ func Summarize(day string, trades []TradeRecord) DailySummary {
 	var heldTotal int
 	for _, t := range trades {
 		s.Trades++
-		s.RealizedPnLUSD += t.PnLUSD
+		s.GrossPnLUSD += t.PnLUSD
+		s.FeesUSD += t.EntryFeeUSD + t.ExitFeeUSD
+		// Prefer net PnL when the ladder-era fields are populated; fall back
+		// to gross for legacy records where fee fields are zero.
+		net := t.NetPnLUSD
+		if net == 0 && (t.EntryFeeUSD == 0 && t.ExitFeeUSD == 0) {
+			net = t.PnLUSD
+		}
+		s.RealizedPnLUSD += net
 		switch {
-		case t.PnLUSD > 0:
+		case net > 0:
 			s.Wins++
-			s.GrossWinUSD += t.PnLUSD
-			if t.PnLUSD > s.BiggestWinUSD {
-				s.BiggestWinUSD = t.PnLUSD
+			s.GrossWinUSD += net
+			if net > s.BiggestWinUSD {
+				s.BiggestWinUSD = net
 			}
-		case t.PnLUSD < 0:
+		case net < 0:
 			s.Losses++
-			s.GrossLossUSD += t.PnLUSD
-			if t.PnLUSD < s.BiggestLossUSD {
-				s.BiggestLossUSD = t.PnLUSD
+			s.GrossLossUSD += net
+			if net < s.BiggestLossUSD {
+				s.BiggestLossUSD = net
 			}
 		default:
 			s.Breakevens++
@@ -90,7 +104,10 @@ func FormatTelegram(s DailySummary) string {
 		b.WriteString("无成交。\n")
 		return b.String()
 	}
-	fmt.Fprintf(&b, "• 实现 PnL: %s%.4f USDC\n", pnlSign, s.RealizedPnLUSD)
+	fmt.Fprintf(&b, "• 实现 PnL(净): %s%.4f USDC\n", pnlSign, s.RealizedPnLUSD)
+	if s.FeesUSD > 0 {
+		fmt.Fprintf(&b, "• 毛 PnL: %+.4f · 手续费 %.4f\n", s.GrossPnLUSD, s.FeesUSD)
+	}
 	fmt.Fprintf(&b, "• 成交 %d 笔  胜 %d / 负 %d / 平 %d  (胜率 %.0f%%)\n",
 		s.Trades, s.Wins, s.Losses, s.Breakevens, s.WinRate*100)
 	fmt.Fprintf(&b, "• 平均 PnL/笔 %.4f USDC\n", s.AvgPnLUSD)

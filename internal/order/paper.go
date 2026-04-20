@@ -12,18 +12,27 @@ import (
 
 // PaperClient is the no-network fill simulator used during Paper Day 0..7.
 // Fills immediately at LimitPx (strategy is expected to pass current mid),
-// with optional bp slippage to stress-test risk.
+// with optional bp slippage and a configurable per-side fee (bp of notional)
+// so net-PnL accounting can model the V2 fee reality ahead of cutover.
 type PaperClient struct {
 	slippageBp float64
+	feeBp      float64
 
 	mu     sync.Mutex
 	orders []Result
 }
 
 // NewPaperClient — slippageBp ≥ 0 pulls fill price against you (BUY fills
-// higher, SELL fills lower). Pass 0 for clean paper.
+// higher, SELL fills lower). Pass 0 for clean paper. Default feeBp is 0.
 func NewPaperClient(slippageBp float64) *PaperClient {
 	return &PaperClient{slippageBp: slippageBp}
+}
+
+// NewPaperClientWithFee is the ladder-era constructor that takes both
+// slippage and a per-side fee in basis points of notional. The strategy
+// layer charges this on each buy + each sell so tranche PnL is net of fees.
+func NewPaperClientWithFee(slippageBp, feeBp float64) *PaperClient {
+	return &PaperClient{slippageBp: slippageBp, feeBp: feeBp}
 }
 
 func (p *PaperClient) Name() string { return "paper" }
@@ -40,6 +49,7 @@ func (p *PaperClient) Submit(ctx context.Context, in Intent) (Result, error) {
 			fmt.Errorf("paper: slipped price %.4f out of (0,1)", px)
 	}
 	units := in.SizeUSD / px
+	fee := in.SizeUSD * p.feeBp / 10_000
 
 	r := Result{
 		OrderID:    "paper-" + randHex(6),
@@ -48,6 +58,7 @@ func (p *PaperClient) Submit(ctx context.Context, in Intent) (Result, error) {
 		AvgPrice:   px,
 		SubmitAt:   now,
 		FilledAt:   now,
+		FeeUSD:     fee,
 	}
 
 	p.mu.Lock()

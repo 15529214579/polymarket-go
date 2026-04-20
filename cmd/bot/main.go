@@ -34,7 +34,7 @@ func main() {
 	largeFillUSD := flag.Float64("large_fill_usd", 3.0, "DM notifier threshold on |realized pnl|")
 	envFile := flag.String("env_file", ".env.local", "dotenv file to load before reading env")
 	signalMode := flag.String("signal_mode", "auto", "auto (paper-submit on signal) | prompt (DM + Buy 1/5/10 inline buttons, boss picks size)")
-	exitMode := flag.String("exit_mode", "hold", "hold (wait for market resolution; no SL/TP/timeout) | auto (SPEC §2 reversal/drawdown/stop/timeout)")
+	exitMode := flag.String("exit_mode", "hold", "hold (settlement only) | auto (SPEC §2 reversal/drawdown/stop/timeout) | ladder (Phase 7.b TP1/TP2/SL/timeout)")
 	journalDir := flag.String("journal_dir", "db/journal", "trade-journal directory (one JSONL per SGT day)")
 	reportDay := flag.String("report_day", "", "daily-report mode: SGT day YYYY-MM-DD (default: yesterday SGT)")
 	reportPush := flag.Bool("report_push", false, "daily-report mode: also push summary via Telegram alert bot")
@@ -43,6 +43,14 @@ func main() {
 	// (see reports/python_autopsy.md §4–5).
 	minEntry := flag.Float64("min_entry_price", 0.15, "signals with mid < this are filtered out (reports/python_autopsy.md §2.1)")
 	maxEntry := flag.Float64("max_entry_price", 0.70, "signals with mid > this are filtered out (reports/python_autopsy.md §2.2)")
+	// Phase 7.b ladder TP / SL / timeout + fee modeling. Defaults are SPEC §2.4.
+	feeBp := flag.Float64("fee_bp", 0, "per-side fee in basis points of notional; default 0 matches CLOB V1 reality (update after V2 cutover)")
+	ladderTP1Pct := flag.Float64("ladder_tp1_pct", 0.15, "ladder TP1 trigger: exit ≥ entry × (1 + this)")
+	ladderTP1Frac := flag.Float64("ladder_tp1_frac", 0.50, "fraction of initial units to close on TP1")
+	ladderTP2Pct := flag.Float64("ladder_tp2_pct", 0.30, "ladder TP2 trigger: exit ≥ entry × (1 + this)")
+	ladderTP2Frac := flag.Float64("ladder_tp2_frac", 1.00, "fraction of initial units to close on TP2 (1.0 = all remaining)")
+	ladderSLPct := flag.Float64("ladder_sl_pct", 0.10, "ladder stop-loss: exit ≤ entry × (1 - this) closes 100%")
+	ladderMaxHold := flag.Duration("ladder_max_hold", 4*time.Hour, "ladder hard timeout — closes remainder")
 	flag.Parse()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -72,7 +80,15 @@ func main() {
 			os.Exit(1)
 		}
 	case "detect":
-		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *minEntry, *maxEntry); err != nil && ctx.Err() == nil {
+		ladderCfg := strategy.LadderConfig{
+			TP1Pct:  *ladderTP1Pct,
+			TP1Frac: *ladderTP1Frac,
+			TP2Pct:  *ladderTP2Pct,
+			TP2Frac: *ladderTP2Frac,
+			SLPct:   *ladderSLPct,
+			MaxHold: *ladderMaxHold,
+		}
+		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *minEntry, *maxEntry, ladderCfg); err != nil && ctx.Err() == nil {
 			slog.Error("detect failed", "err", err)
 			os.Exit(1)
 		}
@@ -282,14 +298,16 @@ func runSample(ctx context.Context, topN, windowSec int) error {
 	return ws.Run(ctx)
 }
 
-func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUSD float64, signalMode, exitMode, journalDir string, minEntry, maxEntry float64) error {
+func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig) error {
 	if signalMode != "auto" && signalMode != "prompt" {
 		return fmt.Errorf("invalid signal_mode %q (want auto|prompt)", signalMode)
 	}
-	if exitMode != "hold" && exitMode != "auto" {
-		return fmt.Errorf("invalid exit_mode %q (want hold|auto)", exitMode)
+	if exitMode != "hold" && exitMode != "auto" && exitMode != "ladder" {
+		return fmt.Errorf("invalid exit_mode %q (want hold|auto|ladder)", exitMode)
 	}
-	holdToSettlement := exitMode == "hold"
+	// hold & ladder both want the settlement watcher on — hold as primary,
+	// ladder as safety net (a market resolving mid-tranche clears remainder).
+	wantSettlement := exitMode == "hold" || exitMode == "ladder"
 	jrn, err := journal.New(journalDir)
 	if err != nil {
 		return fmt.Errorf("journal init: %w", err)
@@ -335,9 +353,10 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 	det := strategy.NewDetector(cfg, sampler)
 	exitCfg := strategy.DefaultExitConfig()
 	exit := strategy.NewExitTracker(exitCfg)
+	ladder := strategy.NewLadderTracker(ladderCfg)
 	posCfg := strategy.DefaultPositionConfig()
 	pm := strategy.NewPositionManager(posCfg)
-	paper := order.NewPaperClient(slippageBp)
+	paper := order.NewPaperClientWithFee(slippageBp, feeBp)
 	riskCfg := risk.DefaultConfig()
 	rm := risk.New(riskCfg, time.Now())
 	notifier := buildNotifier()
@@ -365,7 +384,17 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 		"large_fill_usd", largeFillUSD,
 	)
 	slog.Info("signal_mode.ready", "mode", signalMode)
-	slog.Info("exit_mode.ready", "mode", exitMode, "hold_to_settlement", holdToSettlement)
+	slog.Info("exit_mode.ready",
+		"mode", exitMode,
+		"want_settlement", wantSettlement,
+		"fee_bp", feeBp,
+		"ladder_tp1_pct", ladderCfg.TP1Pct,
+		"ladder_tp1_frac", ladderCfg.TP1Frac,
+		"ladder_tp2_pct", ladderCfg.TP2Pct,
+		"ladder_tp2_frac", ladderCfg.TP2Frac,
+		"ladder_sl_pct", ladderCfg.SLPct,
+		"ladder_max_hold", ladderCfg.MaxHold.String(),
+	)
 
 	// Inbound callback consumer (Phase 3.5.b). Only runs if a DEDICATED sidecar
 	// bot token is configured — we never long-poll the alert bot's token because
@@ -381,16 +410,17 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 			slog.Warn("sidecar_chat_id_parse_fail", "err", err.Error())
 		} else {
 			h := &buyHandler{
-				pm:               pm,
-				exit:             exit,
-				paper:            paper,
-				rm:               rm,
-				pending:          pending,
-				notifier:         notifier,
-				meta:             meta,
-				src:              src,
-				largeFillUSD:     largeFillUSD,
-				holdToSettlement: holdToSettlement,
+				pm:           pm,
+				exit:         exit,
+				ladder:       ladder,
+				paper:        paper,
+				rm:           rm,
+				pending:      pending,
+				notifier:     notifier,
+				meta:         meta,
+				src:          src,
+				largeFillUSD: largeFillUSD,
+				exitMode:     exitMode,
 			}
 			lp := notify.NewLongPoll(notify.LongPollConfig{
 				BotToken:       sidecarToken,
@@ -528,8 +558,11 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 							slog.Warn("paper_close_miss", "asset", short(sig.AssetID), "err", err.Error())
 							continue
 						}
+						entryFee := closed.OpenFeeUSD
+						exitFee := res.FeeUSD
+						netPnL := closed.PnLUSD - entryFee - exitFee
 						stats := pm.Stats()
-						if tripped := rm.OnClose(closed.PnLUSD, sig.Time); tripped {
+						if tripped := rm.OnClose(netPnL, sig.Time); tripped {
 							rst := rm.State()
 							slog.Error("risk_trip",
 								"reason", string(rst.BlockReason),
@@ -543,20 +576,20 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 								OpenPositions: stats.Open,
 							})
 						}
-						if closed.PnLUSD <= -largeFillUSD || closed.PnLUSD >= largeFillUSD {
+						if netPnL <= -largeFillUSD || netPnL >= largeFillUSD {
 							notifier.LargeFill(notify.LargeFillEvent{
 								Question: metaQ(meta, sig.AssetID),
 								AssetID:  sig.AssetID,
 								Side:     "sell",
 								SizeUSD:  posCfg.PerPositionUSD,
-								PnLUSD:   closed.PnLUSD,
+								PnLUSD:   netPnL,
 								EntryPx:  sig.EntryMid,
 								ExitPx:   res.AvgPrice,
 								Reason:   string(sig.Reason),
 								HeldSec:  int(sig.HeldFor.Seconds()),
 							})
 						}
-						source, openOID := src.Take(sig.AssetID)
+						source, openOID := src.Take(closed.ID)
 						if err := jrn.Append(journal.TradeRecord{
 							ID: closed.ID, AssetID: closed.AssetID, Market: closed.Market,
 							Question:     metaQ(meta, closed.AssetID),
@@ -571,6 +604,9 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 							ExitReason:   string(closed.ExitReason),
 							HeldSec:      int(sig.HeldFor.Seconds()),
 							PnLUSD:       closed.PnLUSD,
+							EntryFeeUSD:  entryFee,
+							ExitFeeUSD:   exitFee,
+							NetPnLUSD:    netPnL,
 							OpenOrderID:  openOID,
 							CloseOrderID: res.OrderID,
 							Mode:         "paper",
@@ -589,7 +625,10 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 							"delta_pp", sig.ChangePP,
 							"drawdown_pp", sig.DrawdownPP,
 							"held_sec", int(sig.HeldFor.Seconds()),
-							"pnl_usd", closed.PnLUSD,
+							"gross_pnl_usd", closed.PnLUSD,
+							"entry_fee_usd", entryFee,
+							"exit_fee_usd", exitFee,
+							"net_pnl_usd", netPnL,
 							"open_positions", stats.Open,
 							"realized_pnl", stats.RealizedPnLUSD,
 						)
@@ -598,6 +637,170 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 			}
 		}
 	}()
+
+	// Ladder exit-watch: runs in parallel to the auto exit-watch. Only
+	// ladder-tracked positions fire here — it polls posID directly so
+	// stacked positions on the same asset track independently.
+	if exitMode == "ladder" {
+		go func() {
+			tk := time.NewTicker(1 * time.Second)
+			defer tk.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-tk.C:
+					for _, p := range pm.Snapshot() {
+						if !ladder.Has(p.ID) {
+							continue
+						}
+						tail, ok := sampler.TickTail(p.AssetID, 1)
+						if !ok || len(tail) == 0 {
+							continue
+						}
+						ex, fired := ladder.OnTick(p.ID, tail[0])
+						if !fired {
+							continue
+						}
+						notional := ex.CloseUnits * ex.ExitMid
+						sellIntent := order.Intent{
+							AssetID: ex.AssetID,
+							Market:  ex.Market,
+							Side:    order.Sell,
+							SizeUSD: notional,
+							LimitPx: ex.ExitMid,
+							Type:    order.GTC,
+						}
+						res, err := paper.Submit(ctx, sellIntent)
+						if err != nil {
+							slog.Warn("paper_ladder_sell_reject",
+								"pos", p.ID,
+								"asset", short(ex.AssetID),
+								"tranche", ex.Tranche,
+								"limit", ex.ExitMid,
+								"err", err.Error())
+							continue
+						}
+						ex.ExitMid = res.AvgPrice
+						esig := strategy.ExitSignal{
+							AssetID:  ex.AssetID,
+							Market:   ex.Market,
+							Time:     ex.Time,
+							EntryMid: ex.EntryMid,
+							PeakMid:  ex.ExitMid,
+							ExitMid:  ex.ExitMid,
+							HeldFor:  ex.HeldFor,
+							ChangePP: (ex.ExitMid - ex.EntryMid) * 100,
+							Reason:   ex.Reason,
+						}
+						closedTranche, cerr := pm.PartialClose(p.ID, ex.CloseUnits, esig)
+						if cerr != nil {
+							slog.Warn("ladder_partial_close_fail",
+								"pos", p.ID,
+								"asset", short(ex.AssetID),
+								"tranche", ex.Tranche,
+								"err", cerr.Error())
+							continue
+						}
+						// Apportion the open fee across tranches by unit share.
+						entryFeeShare := 0.0
+						if p.InitUnits > 0 {
+							entryFeeShare = p.OpenFeeUSD * (ex.CloseUnits / p.InitUnits)
+						}
+						exitFee := res.FeeUSD
+						netPnL := closedTranche.PnLUSD - entryFeeShare - exitFee
+						stats := pm.Stats()
+						if tripped := rm.OnClose(netPnL, ex.Time); tripped {
+							rst := rm.State()
+							slog.Error("risk_trip",
+								"reason", string(rst.BlockReason),
+								"day_pnl_usd", rst.DayRealizedPnL,
+								"cap_usd", rst.DayLossCapUSD,
+							)
+							notifier.RiskTrip(notify.RiskTripEvent{
+								Reason:        string(rst.BlockReason),
+								DayPnLUSD:     rst.DayRealizedPnL,
+								DayLossCapUSD: rst.DayLossCapUSD,
+								OpenPositions: stats.Open,
+							})
+						}
+						if netPnL <= -largeFillUSD || netPnL >= largeFillUSD {
+							notifier.LargeFill(notify.LargeFillEvent{
+								Question: metaQ(meta, ex.AssetID),
+								AssetID:  ex.AssetID,
+								Side:     "sell",
+								SizeUSD:  notional,
+								PnLUSD:   netPnL,
+								EntryPx:  ex.EntryMid,
+								ExitPx:   res.AvgPrice,
+								Reason:   string(ex.Reason),
+								HeldSec:  int(ex.HeldFor.Seconds()),
+							})
+						}
+						// Source stays keyed by posID; Take only on the final
+						// tranche so earlier tranches can still attribute.
+						var source, openOID string
+						if ex.Final {
+							source, openOID = src.Take(p.ID)
+						} else {
+							source, openOID = src.Peek(p.ID)
+						}
+						trancheID := closedTranche.ID + "." + ex.Tranche
+						if err := jrn.Append(journal.TradeRecord{
+							ID:           trancheID,
+							AssetID:      closedTranche.AssetID,
+							Market:       closedTranche.Market,
+							Question:     metaQ(meta, closedTranche.AssetID),
+							Outcome:      metaOutcome(meta, closedTranche.AssetID),
+							Side:         "buy",
+							SizeUSD:      closedTranche.SizeUSD,
+							Units:        closedTranche.Units,
+							EntryMid:     closedTranche.EntryMid,
+							EntryTime:    closedTranche.EntryTime,
+							ExitMid:      closedTranche.ExitMid,
+							ExitTime:     closedTranche.ExitTime,
+							ExitReason:   string(closedTranche.ExitReason),
+							HeldSec:      int(ex.HeldFor.Seconds()),
+							PnLUSD:       closedTranche.PnLUSD,
+							EntryFeeUSD:  entryFeeShare,
+							ExitFeeUSD:   exitFee,
+							NetPnLUSD:    netPnL,
+							Tranche:      ex.Tranche,
+							OpenOrderID:  openOID,
+							CloseOrderID: res.OrderID,
+							Mode:         "paper",
+							SignalSource: source,
+						}); err != nil {
+							slog.Warn("journal_append_fail",
+								"pos", p.ID,
+								"asset", short(ex.AssetID),
+								"tranche", ex.Tranche,
+								"err", err.Error())
+						}
+						slog.Info("ladder_exit",
+							"pos", p.ID,
+							"asset", short(ex.AssetID),
+							"q", metaQ(meta, ex.AssetID),
+							"tranche", ex.Tranche,
+							"reason", string(ex.Reason),
+							"final", ex.Final,
+							"order_id", res.OrderID,
+							"entry", ex.EntryMid,
+							"exit_fill", res.AvgPrice,
+							"close_units", ex.CloseUnits,
+							"held_sec", int(ex.HeldFor.Seconds()),
+							"gross_pnl_usd", closedTranche.PnLUSD,
+							"entry_fee_usd", entryFeeShare,
+							"exit_fee_usd", exitFee,
+							"net_pnl_usd", netPnL,
+							"open_positions", stats.Open,
+							"realized_pnl", stats.RealizedPnLUSD,
+						)
+					}
+				}
+			}
+		}()
+	}
 
 	go func() {
 		for {
@@ -746,10 +949,14 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 					)
 					continue
 				}
-				if !holdToSettlement {
+				_ = pm.SetOpenFee(pos.ID, res.FeeUSD)
+				switch exitMode {
+				case "auto":
 					exit.Open(sig.AssetID, sig.Market, entryTick)
+				case "ladder":
+					ladder.Open(pos.ID, sig.Market, sig.AssetID, entryTick, pos.Units)
 				}
-				src.Mark(sig.AssetID, "auto", res.OrderID)
+				src.Mark(pos.ID, "auto", res.OrderID)
 				stats := pm.Stats()
 				slog.Info("paper_open",
 					"id", pos.ID,
@@ -848,7 +1055,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 	// OutcomePrices[SlotIdx] as the final fill — 1.0 for the winning side,
 	// 0.0 for the loser. Does the same risk/journal/notify bookkeeping the
 	// auto-exit tracker does. SPEC §2 exit_mode=hold.
-	if holdToSettlement {
+	if wantSettlement {
 		go func() {
 			tk := time.NewTicker(60 * time.Second)
 			defer tk.Stop()
@@ -941,9 +1148,20 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 						slog.Warn("settlement_close_miss", "pos", p.ID, "asset", short(p.AssetID), "err", cerr.Error())
 						continue
 					}
+					// Drop any ladder state that was still tracking this
+					// position — settlement supersedes TP/SL/timeout.
+					ladder.Forget(p.ID)
 					orderID := fmt.Sprintf("settle-%s", short(p.AssetID))
+					// Apportion remaining open fee to the portion of units
+					// still open at settlement (p.InitUnits may be > p.Units
+					// if ladder TP1 already fired); settlement has no exit fee.
+					entryFeeShare := 0.0
+					if p.InitUnits > 0 {
+						entryFeeShare = p.OpenFeeUSD * (p.Units / p.InitUnits)
+					}
+					netPnL := closed.PnLUSD - entryFeeShare
 					stats := pm.Stats()
-					if tripped := rm.OnClose(closed.PnLUSD, now); tripped {
+					if tripped := rm.OnClose(netPnL, now); tripped {
 						rst := rm.State()
 						slog.Error("risk_trip",
 							"reason", string(rst.BlockReason),
@@ -957,20 +1175,20 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 							OpenPositions: stats.Open,
 						})
 					}
-					if closed.PnLUSD <= -largeFillUSD || closed.PnLUSD >= largeFillUSD {
+					if netPnL <= -largeFillUSD || netPnL >= largeFillUSD {
 						notifier.LargeFill(notify.LargeFillEvent{
 							Question: metaQ(meta, p.AssetID),
 							AssetID:  p.AssetID,
 							Side:     "sell",
 							SizeUSD:  p.SizeUSD,
-							PnLUSD:   closed.PnLUSD,
+							PnLUSD:   netPnL,
 							EntryPx:  p.EntryMid,
 							ExitPx:   settleMid,
 							Reason:   string(strategy.ExitSettlement),
 							HeldSec:  int(sig.HeldFor.Seconds()),
 						})
 					}
-					source, openOID := src.Take(p.AssetID)
+					source, openOID := src.Take(closed.ID)
 					if jerr := jrn.Append(journal.TradeRecord{
 						ID: closed.ID, AssetID: closed.AssetID, Market: closed.Market,
 						Question:     metaQ(meta, closed.AssetID),
@@ -985,6 +1203,10 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 						ExitReason:   string(closed.ExitReason),
 						HeldSec:      int(sig.HeldFor.Seconds()),
 						PnLUSD:       closed.PnLUSD,
+						EntryFeeUSD:  entryFeeShare,
+						ExitFeeUSD:   0,
+						NetPnLUSD:    netPnL,
+						Tranche:      "settle",
 						OpenOrderID:  openOID,
 						CloseOrderID: orderID,
 						Mode:         "paper",
@@ -998,7 +1220,9 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 						"outcome", metaOutcome(meta, p.AssetID),
 						"entry", p.EntryMid,
 						"settle", settleMid,
-						"pnl_usd", closed.PnLUSD,
+						"gross_pnl_usd", closed.PnLUSD,
+						"entry_fee_usd", entryFeeShare,
+						"net_pnl_usd", netPnL,
 						"held_sec", int(sig.HeldFor.Seconds()),
 						"open_positions", stats.Open,
 						"realized_pnl", stats.RealizedPnLUSD,
@@ -1317,16 +1541,17 @@ func runPromptTest(ctx context.Context, _ float64) error {
 // Executes synchronously on the longpoll goroutine; Telegram dispatch of the
 // resulting DM is async via notifier.
 type buyHandler struct {
-	pm               *strategy.PositionManager
-	exit             *strategy.ExitTracker
-	paper            order.Client
-	rm               *risk.Manager
-	pending          *notify.PendingStore
-	notifier         notify.Notifier
-	meta             map[string]*assetMeta
-	src              *sourceTracker
-	largeFillUSD     float64
-	holdToSettlement bool
+	pm           *strategy.PositionManager
+	exit         *strategy.ExitTracker
+	ladder       *strategy.LadderTracker
+	paper        order.Client
+	rm           *risk.Manager
+	pending      *notify.PendingStore
+	notifier     notify.Notifier
+	meta         map[string]*assetMeta
+	src          *sourceTracker
+	largeFillUSD float64
+	exitMode     string
 }
 
 func (h *buyHandler) OnBuy(ctx context.Context, nonce string, slot int, sizeUSD float64, messageID int64) (string, error) {
@@ -1371,11 +1596,19 @@ func (h *buyHandler) OnBuy(ctx context.Context, nonce string, slot int, sizeUSD 
 	if err != nil {
 		return "", fmt.Errorf("开仓失败: %s", err.Error())
 	}
-	if !h.holdToSettlement {
-		h.exit.Open(choice.AssetID, p.Market, entryTick)
+	_ = h.pm.SetOpenFee(pos.ID, res.FeeUSD)
+	switch h.exitMode {
+	case "auto":
+		if h.exit != nil {
+			h.exit.Open(choice.AssetID, p.Market, entryTick)
+		}
+	case "ladder":
+		if h.ladder != nil {
+			h.ladder.Open(pos.ID, p.Market, choice.AssetID, entryTick, pos.Units)
+		}
 	}
 	if h.src != nil {
-		h.src.Mark(choice.AssetID, "manual", res.OrderID)
+		h.src.Mark(pos.ID, "manual", res.OrderID)
 	}
 	stats := h.pm.Stats()
 	slog.Info("manual_open",
@@ -1463,14 +1696,29 @@ func (s *sourceTracker) Mark(assetID, source, openOID string) {
 
 // Take returns the recorded source + open order id and removes the entry.
 // Missing entries default to "auto" with empty order id (safe for legacy).
-func (s *sourceTracker) Take(assetID string) (string, string) {
+// Keyed by posID so stacked positions on one asset keep distinct sources
+// and ladder mode can Peek across partial closes without evicting prematurely.
+func (s *sourceTracker) Take(posID string) (string, string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	e, ok := s.m[assetID]
+	e, ok := s.m[posID]
 	if !ok {
 		return "auto", ""
 	}
-	delete(s.m, assetID)
+	delete(s.m, posID)
+	return e.source, e.openOrderID
+}
+
+// Peek is like Take but leaves the entry in place — used for non-final
+// ladder tranches so subsequent tranches of the same posID can still
+// attribute their source + open order id.
+func (s *sourceTracker) Peek(posID string) (string, string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e, ok := s.m[posID]
+	if !ok {
+		return "auto", ""
+	}
 	return e.source, e.openOrderID
 }
 

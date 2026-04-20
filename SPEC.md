@@ -45,16 +45,22 @@
 
 ### 2.4 待验证（Phase 7.b+）
 
-- **ladder TP 出场模式** — `-exit_mode=ladder`：+30% 出 1/3、+60% 出 1/2 剩余、余量 hold。Phase 7.b 落地。
-- **长尾市场扫描** — gamma tag `politics/news` 子集开 prompt，Phase 7.c。
+- **激进 ladder TP + 止损 + 手续费**（`-exit_mode=ladder`，Phase 7.b 已实现）：
+  - **TP1** 价格较入场涨 15% → 清 50%（默认；`-ladder_tp1_pct=0.15` `-ladder_tp1_frac=0.50`）
+  - **TP2** 价格较入场涨 30% → 清剩余 100%（默认；`-ladder_tp2_pct=0.30` `-ladder_tp2_frac=1.0`）
+  - **Stop-loss** 价格较入场跌 10% → 清 100%（`-ladder_sl_pct=0.10`）
+  - **MaxHold** 4h 强平（避免锁死资金）
+  - 相比老方案 (+30%/+60%/余量 hold) 更激进：拉早 TP1、补足 TP2 清仓、加硬止损、加超时，不保留 hold tail
+- **手续费建模** — `-fee_bp`（per-side 基点，默认 0 匹配 CLOB V1 实测；V2 官方数字发布后更新）。paper 双边计费写 journal，净 PnL = 毛 PnL − entry_fee − exit_fee。
+- ~~**Phase 7.c 长尾市场**~~ — 老板 04-20 21:42 拍板**不做**：周期太长不适合 90 USDC 资金体量。
 - **历史回放** — 把 python trades 的 entry_price × market_id 灌进 Go backtester 验 ladder_TP 期望曲线，Phase 7.d。
 
-### 2.5 出场（保持 `-exit_mode=hold` 作 R3 阶段默认）
+### 2.5 出场模式
 
-- `-exit_mode=hold`（当前默认）：**买了就等最终结果**——不看 SL/TP/timeout，开仓后**只等 market resolve**，按 gamma `OutcomePrices[SlotIdx]` 清算（赢家侧 1.0、输家侧 0.0）。settlement watcher 每 60s 轮询 gamma，`closed=true` 即清算；5 min 打一行 `hold_status` 便于 grep。
+- `-exit_mode=hold`（当前默认，手动点单用）：**买了就等最终结果**——不看 SL/TP/timeout，开仓后**只等 market resolve**，按 gamma `OutcomePrices[SlotIdx]` 清算（赢家侧 1.0、输家侧 0.0）。settlement watcher 每 60s 轮询 gamma，`closed=true` 即清算；5 min 打一行 `hold_status` 便于 grep。
 - `-exit_mode=auto`（legacy）：ExitTracker 按旧版（反转 3 tick / 回撤 2pp / 入场-3pp 止损 / 30min 超时）。
-- `-exit_mode=ladder`（**Phase 7.b 待实现**）：+30% 出 1/3，+60% 出 1/2 剩余，余量 hold。
-- 所有模式都保留日亏损熔断 + 单笔亏损 flag + feed-silence watchdog。
+- `-exit_mode=ladder`（Phase 7.b）：TP1/TP2/SL/Timeout 分级，见 §2.4 参数。paper 期支持 tranche 级别的分批平仓，journal 每个 tranche 一行。
+- 所有模式都保留日亏损熔断 + 单笔亏损 flag + feed-silence watchdog，且扣 fee 计净 PnL。
 
 ### 2.6 仓位（prompt 模式）
 

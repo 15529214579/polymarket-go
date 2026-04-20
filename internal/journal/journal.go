@@ -18,8 +18,12 @@ import (
 // because the boss reads the report on SGT clock.
 var SGT = time.FixedZone("SGT", 8*3600)
 
-// TradeRecord is a single closed position. Field names are stable JSON contract;
-// the daily-report mode reads them by name.
+// TradeRecord is a single closed position (or ladder tranche). Field names
+// are a stable JSON contract; the daily-report mode reads them by name.
+//
+// Phase 7.b added fee + net + tranche fields. Legacy records without these
+// fields decode with zero values — report.Summarize prefers NetPnLUSD when
+// non-zero and falls back to PnLUSD.
 type TradeRecord struct {
 	ID           string    `json:"id"`
 	AssetID      string    `json:"asset_id"`
@@ -35,7 +39,11 @@ type TradeRecord struct {
 	ExitTime     time.Time `json:"exit_time"`
 	ExitReason   string    `json:"exit_reason"`
 	HeldSec      int       `json:"held_sec"`
-	PnLUSD       float64   `json:"pnl_usd"`
+	PnLUSD       float64   `json:"pnl_usd"`                 // gross: units × (exit - entry)
+	EntryFeeUSD  float64   `json:"entry_fee_usd,omitempty"` // apportioned across ladder tranches
+	ExitFeeUSD   float64   `json:"exit_fee_usd,omitempty"`  // fee on the closing leg
+	NetPnLUSD    float64   `json:"net_pnl_usd,omitempty"`   // PnLUSD − EntryFeeUSD − ExitFeeUSD
+	Tranche      string    `json:"tranche,omitempty"`       // "" / "t1" / "t2" / "sl" / "timeout" / "settle"
 	OpenOrderID  string    `json:"open_order_id"`
 	CloseOrderID string    `json:"close_order_id"`
 	Mode         string    `json:"mode"`          // "paper" / "live"

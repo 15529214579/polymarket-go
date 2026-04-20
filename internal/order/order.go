@@ -59,7 +59,11 @@ type Result struct {
 	AvgPrice   float64
 	SubmitAt   time.Time
 	FilledAt   time.Time
-	Error      string // non-empty only on rejected
+	// FeeUSD is the platform fee paid on this fill, in USDC. Paper mode
+	// computes it from the configured feeBp; real V2 will populate it from
+	// the CLOB fill receipt. Net PnL accounting subtracts this per-leg.
+	FeeUSD float64
+	Error  string // non-empty only on rejected
 }
 
 // Client is the submission surface. Paper + V2-real both satisfy it.

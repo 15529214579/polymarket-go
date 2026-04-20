@@ -99,8 +99,13 @@
 
 ### Phase 7 — prompt-only + 扬长避短
 - [x] 2026-04-20 21:3x — **Phase 7.a 价带过滤**：`-min_entry_price=0.15 -max_entry_price=0.70` 上线；detect 信号命中才发 SignalPrompt，不在区间的打 `signal_filtered_price_band` 日志后 continue。daemon 62192 已吃新 bin。
-- [ ] **Phase 7.b ladder TP 出场**（`-exit_mode=ladder`）：+30% 出 1/3 / +60% 出 1/2 剩余 / 余量 hold。需 PositionManager 支持分批平仓 + 价轨跟踪。
-- [ ] **Phase 7.c 长尾市场扫描**：gamma tag `politics/news/crypto-event` 扩 filter，人工筛选+ladder TP 默认开。
+- [x] 2026-04-20 21:5x — **Phase 7.b 激进 ladder TP + 止损 + 手续费**（`-exit_mode=ladder`）：
+    - `internal/strategy/ladder.go` LadderTracker：TP1/TP2/SL/Timeout 四规则状态机
+    - `PositionManager.PartialClose` 分批平仓 bookkeeping（tranche 级 posID 后缀，剩余仓位保留 EntryTime 不丢 lineage）
+    - `order.Result.FeeUSD` + `paper.Submit` 计费，journal 多出 `entry_fee_usd / exit_fee_usd / net_pnl_usd / tranche` 字段
+    - 默认：TP1 +15% 清 50%，TP2 +30% 清余下 100%，SL -10% 清 100%，MaxHold 4h；fee 默认 0（V1 实测），cutover 后按 V2 官方数字调 flag
+    - 单测：LadderTracker 状态机（TP1→TP2 链、SL 一击清、timeout、jitter 容忍、未知 asset 安全）+ PartialClose tranche 数学
+- ~~**Phase 7.c 长尾市场扫描**~~ — 04-20 21:42 老板拍板**不做**：政治/长尾周期与 90 USDC 资金体量不匹配。
 - [ ] **Phase 7.d 历史回放**：灌 python trades 的 market_id × entry_price 进 Go backtester，跑 ladder_TP 策略得期望曲线和最大回撤；过关才谈实盘。
 
 当前所有 >Phase 7 的计划（3.0 wrap / 3 V2 签名 / 实盘）**暂停**，cutover 还是到，但实盘 go-live 视 7.d 结果。

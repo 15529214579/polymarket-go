@@ -20,12 +20,18 @@ const (
 
 // Position represents a single paper (and eventually real) position.
 // Paper mode: no orders hit the network; we just book entry/exit at the tick mid.
+//
+// Units shrinks as ladder tranches close; InitUnits is the original size at
+// open time — keep it around so fee apportionment (entry fee × tranche share)
+// stays consistent after a partial close.
 type Position struct {
 	ID         string
 	AssetID    string
 	Market     string // Polymarket conditionID
 	SizeUSD    float64
-	Units      float64 // = SizeUSD / EntryMid
+	Units      float64 // current remaining units
+	InitUnits  float64 // units at open — invariant after partial closes
+	OpenFeeUSD float64 // fee paid on the buy; apportioned across tranches
 	EntryMid   float64
 	EntryTime  time.Time
 	ExitMid    float64
@@ -136,12 +142,14 @@ func (pm *PositionManager) OpenSized(assetID, market string, entry feed.Tick, si
 	}
 
 	pm.nextID++
+	units := sizeUSD / entry.Mid
 	p := &Position{
 		ID:        fmt.Sprintf("p%d", pm.nextID),
 		AssetID:   assetID,
 		Market:    market,
 		SizeUSD:   sizeUSD,
-		Units:     sizeUSD / entry.Mid,
+		Units:     units,
+		InitUnits: units,
 		EntryMid:  entry.Mid,
 		EntryTime: entry.Time,
 		Status:    PosOpen,
@@ -158,6 +166,58 @@ func (pm *PositionManager) OpenSized(assetID, market string, entry feed.Tick, si
 		pm.byMarket[market][p.ID] = p
 	}
 	return p, nil
+}
+
+// SetOpenFee records the fee paid on the buy leg for later apportionment
+// across ladder tranches. Safe to call once per position right after Open.
+func (pm *PositionManager) SetOpenFee(posID string, feeUSD float64) error {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	p, ok := pm.open[posID]
+	if !ok {
+		return ErrPositionNotFound
+	}
+	p.OpenFeeUSD = feeUSD
+	return nil
+}
+
+// PartialClose closes closeUnits from an open position at the given exit
+// signal and records the closed portion as its own tranche in closed[].
+// If closeUnits covers (effectively) all remaining Units, the position is
+// fully closed — equivalent to Close. Returns a copy of the tranche record.
+func (pm *PositionManager) PartialClose(posID string, closeUnits float64, exit ExitSignal) (Position, error) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	p, ok := pm.open[posID]
+	if !ok {
+		return Position{}, ErrPositionNotFound
+	}
+	if closeUnits <= 0 {
+		return Position{}, fmt.Errorf("%w: close units=%v", ErrInvalidEntry, closeUnits)
+	}
+	if closeUnits >= p.Units-1e-9 {
+		pm.closeLocked(p, exit)
+		return *p, nil
+	}
+	tranche := &Position{
+		ID:         p.ID,
+		AssetID:    p.AssetID,
+		Market:     p.Market,
+		SizeUSD:    closeUnits * p.EntryMid,
+		Units:      closeUnits,
+		InitUnits:  closeUnits,
+		EntryMid:   p.EntryMid,
+		EntryTime:  p.EntryTime,
+		ExitMid:    exit.ExitMid,
+		ExitTime:   exit.Time,
+		ExitReason: exit.Reason,
+		PnLUSD:     closeUnits * (exit.ExitMid - p.EntryMid),
+		Status:     PosClosed,
+	}
+	p.Units -= closeUnits
+	p.SizeUSD = p.Units * p.EntryMid
+	pm.closed = append(pm.closed, tranche)
+	return *tranche, nil
 }
 
 // Close realizes PnL against the exit signal for the given posID and moves

@@ -30,8 +30,10 @@ start() {
   cd "$ROOT" || exit 1
   shift_args=("${@:2}")
   # Default mode: prompt-only (R3: no auto-open; boss hand-picks via DM buttons),
-  # 20 markets, 60s window, hold-to-settlement. Override by passing extra args.
-  args=(-mode=detect -signal_mode=prompt -exit_mode=hold -markets=20 -window=60)
+  # 20 markets, 60s window, Phase 7.b ladder exits (TP1 +15% / TP2 +30% /
+  # SL -10% / 4h timeout). fee_bp=0 matches CLOB V1 reality — flip after
+  # 2026-04-28 V2 cutover. Override by passing extra args.
+  args=(-mode=detect -signal_mode=prompt -exit_mode=ladder -markets=20 -window=60 -fee_bp=0)
   if [ "${#shift_args[@]}" -gt 0 ]; then
     args=("${shift_args[@]}")
   fi
