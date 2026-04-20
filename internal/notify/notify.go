@@ -24,6 +24,17 @@ type Notifier interface {
 	// (Phase 3.5 UX). Each row is Buy 1U / 5U / 10U; callback_data is
 	// "buy:<nonce>:<slot>:<sizeUSD>" where slot indexes into PendingIntent.Choices.
 	SignalPrompt(ev SignalPromptEvent)
+	// EditSignalExpired rewrites the original prompt to "⌛ 已过期 · 未下单" and
+	// strips the inline keyboard, called when the TTL-reaper evicts an unclicked
+	// pending. No-op when messageID == 0 (prompt's send response hadn't landed).
+	EditSignalExpired(messageID int64)
+	// EditSignalFilled rewrites the original prompt to "✅ 已下单 …" and strips
+	// the inline keyboard, called after a successful click.
+	EditSignalFilled(ev FillReceiptEvent, messageID int64)
+	// FillReceipt pushes a durable DM receipt for a successful manual open
+	// (Phase 3.5 C — "成交凭据留档", complement to the callback toast which is
+	// ephemeral).
+	FillReceipt(ev FillReceiptEvent)
 	Close(ctx context.Context) error
 }
 
@@ -67,6 +78,12 @@ type SignalPromptEvent struct {
 
 	SizesUSD  []float64     // default {1, 5, 10}
 	ExpiresIn time.Duration // visual-only hint in the DM body
+
+	// OnSent, if set, is called asynchronously by the Telegram backend after
+	// the prompt has been delivered. messageID is the Telegram message_id of
+	// the prompt DM (0 on error). Main uses this to stash the id in the
+	// PendingStore so later TTL-expire / click-success edits can target it.
+	OnSent func(messageID int64, err error)
 }
 
 // SignalChoice is one selectable outcome rendered as a button row.
@@ -75,6 +92,19 @@ type SignalChoice struct {
 	Outcome  string
 	Mid      float64
 	IsSignal bool
+}
+
+// FillReceiptEvent is a durable DM after a successful manual_open (Phase 3.5
+// click-to-buy) so the boss has a record beyond the transient callback toast.
+type FillReceiptEvent struct {
+	Question string
+	Match    string // optional, nicer header if we have it
+	Outcome  string // YES / NO / team name
+	SizeUSD  float64
+	Units    float64
+	FillPx   float64
+	OrderID  string
+	Source   string // "manual" for click-to-buy; "auto" if we ever use this for auto opens
 }
 
 // LargeFillEvent carries a closed-position summary worth surfacing in DM.
@@ -202,6 +232,38 @@ func signalChoice(cs []SignalChoice) (SignalChoice, bool) {
 // DefaultSizesUSD is the Buy 1/5/10 inline-button row used when
 // SignalPromptEvent.SizesUSD is empty.
 var DefaultSizesUSD = []float64{1, 5, 10}
+
+// FormatFillReceipt renders the durable DM body for a successful manual open.
+// Kept minimal — the boss already saw the prompt + toast; this is the archive
+// copy.
+func FormatFillReceipt(ev FillReceiptEvent) string {
+	tag := "🧾 成交凭据 · 手动"
+	if ev.Source == "auto" {
+		tag = "🧾 成交凭据 · 自动"
+	}
+	header := ev.Match
+	if header == "" {
+		header = ev.Question
+	}
+	if len(header) > 100 {
+		header = header[:97] + "..."
+	}
+	return fmt.Sprintf(
+		"%s\n%s · %s\n%gU @ %.4f · units %.2f\norder %s",
+		tag, header, ev.Outcome, ev.SizeUSD, ev.FillPx, ev.Units, ev.OrderID,
+	)
+}
+
+// FormatSignalExpired is the body used to rewrite an unclicked prompt once the
+// TTL reaper evicts it.
+func FormatSignalExpired() string { return "⌛ 已过期 · 未下单" }
+
+// FormatSignalFilled rewrites the original prompt to reflect a successful fill
+// after the boss clicks a size button.
+func FormatSignalFilled(ev FillReceiptEvent) string {
+	return fmt.Sprintf("✅ 已下单 · %s %gU @ %.4f\norder %s",
+		ev.Outcome, ev.SizeUSD, ev.FillPx, ev.OrderID)
+}
 
 func FormatLargeFill(ev LargeFillEvent) string {
 	tag := "💰 大单平仓"

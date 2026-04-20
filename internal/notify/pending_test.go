@@ -52,11 +52,33 @@ func TestPendingStore_Reap(t *testing.T) {
 	if got := s.Size(); got != 3 {
 		t.Fatalf("size=%d", got)
 	}
-	n := s.Reap(now)
-	if n != 1 {
-		t.Errorf("reap removed %d, want 1 (only the -20s entry is past its 10s TTL)", n)
+	evicted := s.Reap(now)
+	if len(evicted) != 1 {
+		t.Errorf("reap removed %d, want 1 (only the -20s entry is past its 10s TTL)", len(evicted))
+	}
+	if len(evicted) == 1 && evicted[0].Choices[0].AssetID != "1" {
+		t.Errorf("wrong evicted entry: %+v", evicted[0])
 	}
 	if got := s.Size(); got != 2 {
 		t.Errorf("size after reap=%d, want 2", got)
+	}
+}
+
+func TestPendingStore_SetMessageID(t *testing.T) {
+	s := NewPendingStore(60 * time.Second)
+	now := time.Now()
+	p := s.Put(PendingIntent{Choices: []Choice{{AssetID: "a"}}}, now)
+	if ok := s.SetMessageID(p.Nonce, 12345); !ok {
+		t.Fatal("SetMessageID should succeed while nonce is live")
+	}
+	got, ok := s.Claim(p.Nonce, now.Add(1*time.Second))
+	if !ok || got.MessageID != 12345 {
+		t.Fatalf("Claim after SetMessageID: ok=%v msgID=%d", ok, got.MessageID)
+	}
+	if ok := s.SetMessageID(p.Nonce, 99); ok {
+		t.Error("SetMessageID should fail after Claim")
+	}
+	if ok := s.SetMessageID("unknown", 7); ok {
+		t.Error("SetMessageID should fail on unknown nonce")
 	}
 }

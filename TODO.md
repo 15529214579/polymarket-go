@@ -21,7 +21,7 @@
 - [x] Makefile + .gitignore + build 通过
 - [x] git init + 首个 commit（3d072a7）
 - [x] github public repo（`github.com/15529214579/polymarket-go`）
-- [ ] golangci-lint 配置（非阻塞）
+- [x] 2026-04-20 15:36 — Phase 0 golangci-lint 配置（非阻塞）：`.golangci.yml` v2 格式，启用 errcheck/govet/ineffassign/staticcheck/unused/gocritic/gosec/misspell/unconvert + gofmt/goimports 格式化。gosec 排除 G104/G301/G302/G304/G306/G704/G706（配置驱动路径 + 自家 API HTTP）；`_test.go` 排除 errcheck/gosec；`cmd/bot/main.go` 排除 gocritic（wiring-heavy）。13 个现有文件 gofmt 过一遍。commit `05a90b4` 已入。
 
 ### Phase 1 — 数据层（进行中）
 - [x] gamma REST 客户端（LoL 市场筛选）— 04-20 00:02 跑通，`./bin/bot -mode=discover` 拉到 59 个活跃 LoL 市场（LPL/LCK/LEC/LCS）
@@ -63,9 +63,9 @@
 - [x] 2026-04-20 12:35 — Phase 3.5.c 按钮 UX 改版（老板反馈 "应该给我买 yes 和 no 的选项；赛事信息不全"）：`SignalPromptEvent` 拆出 `Match/Context/EndIn/Choices[]`，`PendingIntent.Choices []Choice{AssetID,Outcome,Mid,IsSignal}`，callback_data 扩成 `buy:<nonce>:<slot>:<sizeUSD>`；`buildAssetMeta` 从 gamma 一次性做 asset→{Question,Match,Context,Outcome,Sibling,EndTime} 索引，prompt 渲染时 signal 行 ⚡ 标记 + 对手盘行并列。`notify` 包 4 个测试（ParseMarketTitle/HumanizeEndIn/FormatSignalPrompt/InlineKeyboard 2 行 3 列）+ callback parse 4-part 格式全绿。实盘验收：Gen.G vs Nongshim BO3 prompt 两行（⚡ Gen.G / Nongshim），老板点 slot 0 × 1U，`callback_click nonce=5b4fa5be slot=0 size=1` → `manual_open p1 outcome=Gen.G Global Academy order=paper-8de4f5598b3a` 18 秒闭环。
 - [x] 2026-04-20 12:45 — Phase 3.5.e：按钮有效期 60s→10m（老板反馈 "可能没那么及时看群消息"）。`NewPendingStore` + `SignalPromptEvent.ExpiresIn` 改成 10 分钟，`FormatSignalPrompt` 末行渲染走 `humanizeTTL`（≥1m 用 "10m"，<1m 走 "30s"）。`notify_test.go` 对齐。commit `7422206` 已 push。
 - [x] 2026-04-20 12:45 — Phase 3.5.f：只推信号侧按钮（老板反馈 "你觉得对的让我选金额就行"）。`FormatSignalPrompt` 去掉对手盘 "选 X (当前 ...)" 段，正文尾行改成 `当前 0.xxxx`；`telegram.SignalPrompt` 只渲染 `IsSignal=true` 的 choice 行（1U/5U/10U）。`signalChoice()` 辅助在 notify.go。`notify_test.go` / `telegram_test.go` 锁死"only signal shown"。
-- [ ] 超时作废视觉升级：>TTL 编辑原 DM 为 "已过期"（可选，当前 callback 已 return "已过期或已点过"）
+- [x] 2026-04-20 15:36 — Phase 3.5.g：超时作废视觉升级。`PendingStore.Reap` 返回 `[]PendingIntent`（原 int）→ reaper 循环对每条有 `MessageID` 的条目调 `notifier.EditSignalExpired`，正文改写成 "⌛ 已过期 · 未下单" + 清空 `reply_markup.inline_keyboard`。`PendingIntent.MessageID int64` 新字段，`PendingStore.SetMessageID(nonce, id)` 由 Telegram drain 回调异步填入。`SignalPromptEvent.OnSent func(messageID int64, err error)` 暴露 message_id 给主程序（runDetect + prompt-test 两处设置 OnSent → `pending.SetMessageID`）。Telegram.send 现在解析 `result.message_id`，支持 `editMessageText` 路径（`outgoing.editMessageID` + `stripKeyboard`）；edits 经 prompt bot 发（和原 DM 同一只）。Notifier 接口扩了 `EditSignalExpired(int64)`，Nop noop。新单测：`TestPendingStore_SetMessageID` + `TestTelegram_SignalPrompt_OnSent_ReportsMessageID` + `TestTelegram_EditSignalExpired_StripsKeyboard` + `TestTelegram_EditSignalExpired_ZeroIsNoOp` 全过。
+- [x] 2026-04-20 15:36 — Phase 3.5.h：成交凭据留档（C）。Notifier 接口扩了 `EditSignalFilled(FillReceiptEvent, int64)` + `FillReceipt(FillReceiptEvent)`（Nop noop）。`buyHandler.OnBuy` 在 `manual_open` 成功后调用两者：edit 原 prompt → "✅ 已下单 · `<outcome>` `<size>U` @ `<px>`" + 清空键盘（走 prompt bot）；并额外发一条 "🧾 成交凭据 · 手动" DM（走 alert bot，留档）。Telegram.FillReceipt / EditSignalFilled 实现 + `TestTelegram_EditSignalFilled_Renders` + `TestTelegram_FillReceipt_GoesToAlertBot` 全过。
 - [ ] Paper 期间：点了按钮走 paper 路径；Day 9 起自动走真下单（Phase 3 V2 签名 client 接同一 `order.Client` 接口）
-- [ ] 成交回执：目前 callback toast 已带 `order_id / fill price`，可后续另发一条小 DM 作为凭据留档
 
 ### Phase 4 — 风控 + 可观测（1 天）
 - [x] 2026-04-20 11:4x — Phase 4.a：`internal/risk/risk.go` 上线。日亏损熔断（15% × 90.41 = -13.56 USDC 上限）+ per-trade 单笔损失 ≥ 3 USDC 计数旗标 + WSS feed-silence watchdog（30s 无 book/trade → trip）+ 手动 Pause/Resume。SGT 日切滚动但不自动解除 breaker（SPEC §6 "等老板手动恢复"）。8 个单测全过。接进 detect 循环：开仓前 `AllowOpen` 门控，close 后 `OnClose` 累计，5s 心跳 `CheckFeed`，60s `risk_status` 日志。35s 实盘烟测：`risk.ready` + 无 trip（预期，LoL 市场平静）。

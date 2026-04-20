@@ -374,6 +374,9 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 	}
 
 	// Pending-store reaper so expired button prompts don't accumulate.
+	// For each evicted entry we rewrite the original DM to "已过期" and strip
+	// its keyboard — so the boss's chat history shows the outcome of every
+	// prompt (Phase 3.5 B).
 	go func() {
 		tk := time.NewTicker(15 * time.Second)
 		defer tk.Stop()
@@ -382,9 +385,22 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 			case <-ctx.Done():
 				return
 			case now := <-tk.C:
-				if n := pending.Reap(now); n > 0 {
-					slog.Info("pending_reap", "expired", n, "remaining", pending.Size())
+				evicted := pending.Reap(now)
+				if len(evicted) == 0 {
+					continue
 				}
+				edited := 0
+				for _, p := range evicted {
+					if p.MessageID != 0 {
+						notifier.EditSignalExpired(p.MessageID)
+						edited++
+					}
+				}
+				slog.Info("pending_reap",
+					"expired", len(evicted),
+					"edited_expired_dm", edited,
+					"remaining", pending.Size(),
+				)
 			}
 		}
 	}()
@@ -606,6 +622,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 						ctxLine = me.Context
 						endIn = notify.HumanizeEndIn(time.Now(), me.EndTime)
 					}
+					nonceSnap := p.Nonce
 					notifier.SignalPrompt(notify.SignalPromptEvent{
 						Nonce:     p.Nonce,
 						Match:     match,
@@ -617,6 +634,12 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 						TailLen:   sig.TailLen,
 						BuyRatio:  sig.BuyRatio,
 						ExpiresIn: 10 * time.Minute,
+						OnSent: func(msgID int64, err error) {
+							if err != nil || msgID == 0 {
+								return
+							}
+							pending.SetMessageID(nonceSnap, msgID)
+						},
 					})
 					slog.Info("signal_prompt_sent",
 						"asset", short(sig.AssetID),
@@ -864,6 +887,15 @@ func metaQ(m map[string]*assetMeta, id string) string {
 	return ""
 }
 
+// metaMatch returns the parsed match title for an asset, or "" if unknown.
+// Falls back to empty so the FillReceipt formatter can use Question instead.
+func metaMatch(m map[string]*assetMeta, id string) string {
+	if me := m[id]; me != nil {
+		return me.Match
+	}
+	return ""
+}
+
 // outcomeOrDefault pulls the outcome label for a meta entry, falling back to
 // def when the market has no outcome list (rare but defensive).
 func outcomeOrDefault(me *assetMeta, def string) string {
@@ -981,6 +1013,7 @@ func runPromptTest(ctx context.Context, slippageBp float64) error {
 	} else {
 		ctxLine = "[PROMPT-TEST]"
 	}
+	nonceSnap := p.Nonce
 	notifier.SignalPrompt(notify.SignalPromptEvent{
 		Nonce:     p.Nonce,
 		Match:     match,
@@ -992,6 +1025,12 @@ func runPromptTest(ctx context.Context, slippageBp float64) error {
 		TailLen:   0,
 		BuyRatio:  0,
 		ExpiresIn: 2 * time.Minute,
+		OnSent: func(msgID int64, err error) {
+			if err != nil || msgID == 0 {
+				return
+			}
+			pending.SetMessageID(nonceSnap, msgID)
+		},
 	})
 	slog.Info("prompt_test.sent",
 		"nonce", p.Nonce,
@@ -1101,6 +1140,24 @@ func (h *buyHandler) OnBuy(ctx context.Context, nonce string, slot int, sizeUSD 
 		"open_positions", stats.Open,
 		"total_exposure_usd", stats.TotalExposure,
 	)
+
+	// Phase 3.5 B + C: rewrite the original prompt to "已下单 …" + strip buttons,
+	// and push a durable archive DM so the boss has a permanent record.
+	receipt := notify.FillReceiptEvent{
+		Question: metaQ(h.meta, choice.AssetID),
+		Match:    metaMatch(h.meta, choice.AssetID),
+		Outcome:  choice.Outcome,
+		SizeUSD:  sizeUSD,
+		Units:    pos.Units,
+		FillPx:   res.AvgPrice,
+		OrderID:  res.OrderID,
+		Source:   "manual",
+	}
+	if h.notifier != nil {
+		h.notifier.EditSignalFilled(receipt, p.MessageID)
+		h.notifier.FillReceipt(receipt)
+	}
+
 	return fmt.Sprintf("✅ %s %gU @ %.4f · order %s",
 		choice.Outcome, sizeUSD, res.AvgPrice, short(res.OrderID)), nil
 }

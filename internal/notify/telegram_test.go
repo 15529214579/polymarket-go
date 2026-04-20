@@ -239,3 +239,161 @@ func TestFormatRiskTrip_FeedSilence(t *testing.T) {
 		t.Errorf("bad format: %q", s)
 	}
 }
+
+type capturedHit struct {
+	path string
+	body map[string]any
+}
+
+func newCaptureServer(hits chan<- capturedHit) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		var m map[string]any
+		_ = json.Unmarshal(raw, &m)
+		hits <- capturedHit{path: r.URL.Path, body: m}
+		w.WriteHeader(200)
+		switch {
+		case strings.Contains(r.URL.Path, "/sendMessage"):
+			_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":4242}}`))
+		case strings.Contains(r.URL.Path, "/editMessageText"):
+			_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":4242}}`))
+		default:
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		}
+	}))
+}
+
+func TestTelegram_SignalPrompt_OnSent_ReportsMessageID(t *testing.T) {
+	hits := make(chan capturedHit, 4)
+	srv := newCaptureServer(hits)
+	defer srv.Close()
+
+	tg := NewTelegram(TelegramConfig{
+		BotToken: "ALERT", PromptBotToken: "PROMPT", ChatID: "1",
+		BaseURL: srv.URL, QueueSize: 4,
+	})
+
+	gotID := make(chan int64, 1)
+	tg.SignalPrompt(SignalPromptEvent{
+		Nonce:     "n",
+		Choices:   []SignalChoice{{Slot: 0, Outcome: "Yes", Mid: 0.5, IsSignal: true}},
+		ExpiresIn: time.Minute,
+		OnSent: func(id int64, err error) {
+			if err != nil {
+				t.Errorf("OnSent err: %v", err)
+			}
+			gotID <- id
+		},
+	})
+	if err := tg.Close(context.Background()); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	select {
+	case id := <-gotID:
+		if id != 4242 {
+			t.Errorf("OnSent msgID = %d, want 4242", id)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("OnSent never fired")
+	}
+	// Sanity: prompt path was used.
+	h := <-hits
+	if !strings.Contains(h.path, "/botPROMPT/sendMessage") {
+		t.Errorf("prompt sent on wrong path: %s", h.path)
+	}
+}
+
+func TestTelegram_EditSignalExpired_StripsKeyboard(t *testing.T) {
+	hits := make(chan capturedHit, 2)
+	srv := newCaptureServer(hits)
+	defer srv.Close()
+
+	tg := NewTelegram(TelegramConfig{
+		BotToken: "ALERT", PromptBotToken: "PROMPT", ChatID: "9",
+		BaseURL: srv.URL, QueueSize: 4,
+	})
+	tg.EditSignalExpired(77)
+	if err := tg.Close(context.Background()); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	h := <-hits
+	if !strings.Contains(h.path, "/botPROMPT/editMessageText") {
+		t.Errorf("expected editMessageText via PROMPT, got %s", h.path)
+	}
+	if h.body["message_id"].(float64) != 77 {
+		t.Errorf("message_id = %v, want 77", h.body["message_id"])
+	}
+	text, _ := h.body["text"].(string)
+	if !strings.Contains(text, "已过期") {
+		t.Errorf("text missing 已过期: %q", text)
+	}
+	rm, ok := h.body["reply_markup"].(map[string]any)
+	if !ok {
+		t.Fatal("reply_markup missing")
+	}
+	kb, _ := rm["inline_keyboard"].([]any)
+	if len(kb) != 0 {
+		t.Errorf("inline_keyboard should be empty, got %d rows", len(kb))
+	}
+}
+
+func TestTelegram_EditSignalExpired_ZeroIsNoOp(t *testing.T) {
+	hits := make(chan capturedHit, 1)
+	srv := newCaptureServer(hits)
+	defer srv.Close()
+	tg := NewTelegram(TelegramConfig{BotToken: "A", ChatID: "1", BaseURL: srv.URL, QueueSize: 2})
+	tg.EditSignalExpired(0)
+	_ = tg.Close(context.Background())
+	select {
+	case h := <-hits:
+		t.Fatalf("unexpected hit: %s", h.path)
+	default:
+	}
+}
+
+func TestTelegram_EditSignalFilled_Renders(t *testing.T) {
+	hits := make(chan capturedHit, 2)
+	srv := newCaptureServer(hits)
+	defer srv.Close()
+	tg := NewTelegram(TelegramConfig{
+		BotToken: "ALERT", PromptBotToken: "PROMPT", ChatID: "1",
+		BaseURL: srv.URL, QueueSize: 4,
+	})
+	tg.EditSignalFilled(FillReceiptEvent{
+		Outcome: "Gen.G", SizeUSD: 5, FillPx: 0.4321, OrderID: "paper-abc",
+	}, 123)
+	_ = tg.Close(context.Background())
+	h := <-hits
+	if !strings.Contains(h.path, "/botPROMPT/editMessageText") {
+		t.Errorf("path: %s", h.path)
+	}
+	text, _ := h.body["text"].(string)
+	if !strings.Contains(text, "已下单") || !strings.Contains(text, "Gen.G") || !strings.Contains(text, "0.4321") {
+		t.Errorf("text missing bits: %q", text)
+	}
+}
+
+func TestTelegram_FillReceipt_GoesToAlertBot(t *testing.T) {
+	hits := make(chan capturedHit, 2)
+	srv := newCaptureServer(hits)
+	defer srv.Close()
+	tg := NewTelegram(TelegramConfig{
+		BotToken: "ALERT", PromptBotToken: "PROMPT", ChatID: "1",
+		BaseURL: srv.URL, QueueSize: 4,
+	})
+	tg.FillReceipt(FillReceiptEvent{
+		Question: "LoL: Gen.G vs Nongshim - Game 1 Winner",
+		Match:    "LoL: Gen.G vs Nongshim",
+		Outcome:  "Gen.G", SizeUSD: 1, Units: 2, FillPx: 0.5, OrderID: "paper-xyz",
+		Source: "manual",
+	})
+	_ = tg.Close(context.Background())
+	h := <-hits
+	if !strings.Contains(h.path, "/botALERT/sendMessage") {
+		t.Errorf("receipt should go via alert bot, got path %s", h.path)
+	}
+	text, _ := h.body["text"].(string)
+	if !strings.Contains(text, "成交凭据") || !strings.Contains(text, "paper-xyz") {
+		t.Errorf("text missing bits: %q", text)
+	}
+}

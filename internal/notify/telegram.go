@@ -108,7 +108,49 @@ func (t *Telegram) SignalPrompt(ev SignalPromptEvent) {
 	if tok == "" {
 		tok = t.cfg.BotToken
 	}
-	t.enqueue(outgoing{text: FormatSignalPrompt(ev), tag: "signal_prompt", replyMarkup: kb, sendToken: tok})
+	t.enqueue(outgoing{
+		text: FormatSignalPrompt(ev), tag: "signal_prompt",
+		replyMarkup: kb, sendToken: tok, onSent: ev.OnSent,
+	})
+}
+
+// EditSignalExpired rewrites the original prompt to "已过期" + strips buttons.
+// Called from the pending reaper. Uses the prompt bot (the one the boss sees
+// the DM from); falls back to the alert bot when PromptBotToken is unset.
+func (t *Telegram) EditSignalExpired(messageID int64) {
+	if messageID == 0 {
+		return
+	}
+	tok := t.cfg.PromptBotToken
+	if tok == "" {
+		tok = t.cfg.BotToken
+	}
+	t.enqueue(outgoing{
+		tag: "edit_expired", text: FormatSignalExpired(),
+		editMessageID: messageID, stripKeyboard: true, sendToken: tok,
+	})
+}
+
+// EditSignalFilled rewrites the original prompt to "已下单 …" and strips the
+// keyboard. Called after a successful callback click (Phase 3.5 C).
+func (t *Telegram) EditSignalFilled(ev FillReceiptEvent, messageID int64) {
+	if messageID == 0 {
+		return
+	}
+	tok := t.cfg.PromptBotToken
+	if tok == "" {
+		tok = t.cfg.BotToken
+	}
+	t.enqueue(outgoing{
+		tag: "edit_filled", text: FormatSignalFilled(ev),
+		editMessageID: messageID, stripKeyboard: true, sendToken: tok,
+	})
+}
+
+// FillReceipt enqueues a durable archive DM for a manual open. Goes via the
+// alert bot (not the prompt bot) so the boss's prompt-bot chat stays lean.
+func (t *Telegram) FillReceipt(ev FillReceiptEvent) {
+	t.enqueue(outgoing{text: FormatFillReceipt(ev), tag: "fill_receipt"})
 }
 
 // buttonLabel trims the outcome to fit Telegram's ~40-char inline-button cap.
@@ -142,6 +184,17 @@ type outgoing struct {
 	// for SignalPrompt so the message originates from the sidecar bot that the
 	// LongPoll watches for callback_query.
 	sendToken string
+	// editMessageID, when non-zero, switches the dispatch from sendMessage to
+	// editMessageText on that existing message. Used to rewrite a prompt to
+	// "已过期" / "已下单" post-hoc.
+	editMessageID int64
+	// stripKeyboard, when true on an edit, replaces reply_markup with an empty
+	// inline_keyboard so the buttons disappear.
+	stripKeyboard bool
+	// onSent, if set, is called after the HTTP send completes with the returned
+	// message_id (0 on error). Used by SignalPrompt to hand the message id to
+	// the PendingStore for later edits.
+	onSent func(messageID int64, err error)
 }
 
 func (t *Telegram) enqueue(o outgoing) {
@@ -193,35 +246,77 @@ func (t *Telegram) send(o outgoing) {
 	if tok == "" {
 		tok = t.cfg.BotToken
 	}
-	url := fmt.Sprintf("%s/bot%s/sendMessage", t.cfg.BaseURL, tok)
+
+	endpoint := "sendMessage"
 	body := map[string]any{
 		"chat_id":                  t.cfg.ChatID,
 		"text":                     o.text,
 		"disable_web_page_preview": true,
 	}
-	if o.replyMarkup != nil {
+	if o.editMessageID != 0 {
+		endpoint = "editMessageText"
+		body["message_id"] = o.editMessageID
+		if o.stripKeyboard {
+			body["reply_markup"] = map[string]any{"inline_keyboard": [][]map[string]string{}}
+		}
+	} else if o.replyMarkup != nil {
 		body["reply_markup"] = o.replyMarkup
 	}
+
+	url := fmt.Sprintf("%s/bot%s/%s", t.cfg.BaseURL, tok, endpoint)
 	payload, _ := json.Marshal(body)
 	ctx, cancel := context.WithTimeout(context.Background(), t.cfg.SendTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
 	if err != nil {
 		t.logger.Warn("notify_send_build_err", "err", err.Error())
+		if o.onSent != nil {
+			o.onSent(0, err)
+		}
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := t.client.Do(req)
 	if err != nil {
 		t.logger.Warn("notify_send_http_err", "err", err.Error())
+		if o.onSent != nil {
+			o.onSent(0, err)
+		}
 		return
 	}
 	defer resp.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if resp.StatusCode >= 400 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		t.logger.Warn("notify_send_status",
 			"status", resp.StatusCode,
-			"body", string(body),
+			"tag", o.tag,
+			"body", string(raw),
 		)
+		if o.onSent != nil {
+			o.onSent(0, fmt.Errorf("telegram status=%d", resp.StatusCode))
+		}
+		return
 	}
+	if o.onSent != nil {
+		msgID := parseMessageID(raw)
+		o.onSent(msgID, nil)
+	}
+}
+
+// parseMessageID pulls result.message_id out of a Bot API success envelope.
+// Returns 0 on any parse failure.
+func parseMessageID(body []byte) int64 {
+	var env struct {
+		OK     bool `json:"ok"`
+		Result struct {
+			MessageID int64 `json:"message_id"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(body, &env); err != nil {
+		return 0
+	}
+	if !env.OK {
+		return 0
+	}
+	return env.Result.MessageID
 }

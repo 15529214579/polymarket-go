@@ -22,11 +22,17 @@ type Choice struct {
 // callback consumer looks it up by nonce, picks Choices[slot], and replays it
 // through the order path at the chosen size. Stored in memory only; process
 // restarts wipe pending prompts (desired — 10min TTL anyway).
+//
+// MessageID is filled asynchronously after Telegram confirms the send — so
+// TTL-expiry / click-success can edit the original prompt to "已过期" / "已下单".
+// A zero MessageID means the Telegram response hasn't landed yet (extremely
+// rare for normal flows; edits are skipped silently if still zero).
 type PendingIntent struct {
 	Nonce     string
 	Market    string
 	Question  string
 	Choices   []Choice
+	MessageID int64
 	CreatedAt time.Time
 	ExpiresAt time.Time
 }
@@ -79,18 +85,35 @@ func (s *PendingStore) Claim(nonce string, now time.Time) (PendingIntent, bool) 
 	return p, true
 }
 
-// Reap drops expired entries. Safe to call from a background ticker.
-func (s *PendingStore) Reap(now time.Time) int {
+// Reap drops expired entries and returns them so the caller can edit the
+// original prompt DM to "已过期" (or whatever Phase 3.5 TTL UX is). Safe to
+// call from a background ticker.
+func (s *PendingStore) Reap(now time.Time) []PendingIntent {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	n := 0
+	var evicted []PendingIntent
 	for k, v := range s.m {
 		if now.After(v.ExpiresAt) {
 			delete(s.m, k)
-			n++
+			evicted = append(evicted, v)
 		}
 	}
-	return n
+	return evicted
+}
+
+// SetMessageID records the Telegram message_id that a prompt was sent as.
+// Called from the Telegram drain goroutine once the send succeeds. Returns
+// false if the nonce has already been claimed or reaped.
+func (s *PendingStore) SetMessageID(nonce string, id int64) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.m[nonce]
+	if !ok {
+		return false
+	}
+	p.MessageID = id
+	s.m[nonce] = p
+	return true
 }
 
 // Size returns the current count — useful for risk_status logs.
