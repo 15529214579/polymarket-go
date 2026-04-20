@@ -288,6 +288,8 @@ func runDetect(ctx context.Context, topN, windowSec int) error {
 		cfg.MinSamplesWarm = windowSec / 2
 	}
 	det := strategy.NewDetector(cfg, sampler)
+	exitCfg := strategy.DefaultExitConfig()
+	exit := strategy.NewExitTracker(exitCfg)
 
 	go func() {
 		if err := sampler.Run(ctx, ws.Books(), ws.Trades()); err != nil && ctx.Err() == nil {
@@ -297,6 +299,51 @@ func runDetect(ctx context.Context, topN, windowSec int) error {
 	go func() {
 		if err := det.Run(ctx); err != nil && ctx.Err() == nil {
 			slog.Error("detector exited", "err", err)
+		}
+	}()
+
+	// Fan-out ticks to the exit tracker (only tracks opened positions).
+	// Uses a fresh Sampler subscription via a side goroutine: we tap the detector's
+	// upstream by reading ticks *through* the sampler's Ticks() channel which the
+	// detector already consumes. To avoid a fight for one channel, run a dedicated
+	// tap via TickTail polling on each detected open asset instead.
+	// Simpler: have detect subscribe to ticks directly alongside the detector.
+	//
+	// Here we piggyback on the fact that only the detector consumes sampler.Ticks().
+	// Instead of stealing them, expose a separate TickTail-based poller below.
+	// Update: cleanest is to have the sampler fan-out — but we only have one
+	// consumer right now. Workaround: poll sampler.Window for open positions.
+	go func() {
+		tk := time.NewTicker(1 * time.Second)
+		defer tk.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-tk.C:
+				for _, w := range sampler.Snapshot() {
+					if !exit.Has(w.AssetID) {
+						continue
+					}
+					tail, ok := sampler.TickTail(w.AssetID, 1)
+					if !ok || len(tail) == 0 {
+						continue
+					}
+					if sig, fired := exit.OnTick(tail[0]); fired {
+						slog.Info("exit",
+							"asset", short(sig.AssetID),
+							"q", assetToQ[sig.AssetID],
+							"reason", string(sig.Reason),
+							"entry", sig.EntryMid,
+							"peak", sig.PeakMid,
+							"exit", sig.ExitMid,
+							"delta_pp", sig.ChangePP,
+							"drawdown_pp", sig.DrawdownPP,
+							"held_sec", int(sig.HeldFor.Seconds()),
+						)
+					}
+				}
+			}
 		}
 	}()
 
@@ -318,6 +365,20 @@ func runDetect(ctx context.Context, topN, windowSec int) error {
 					"tail_len", sig.TailLen,
 					"buy_ratio", sig.BuyRatio,
 					"reason", sig.Reason,
+				)
+				// Paper-open a position; exit tracker will watch for reversal / stop / timeout.
+				if exit.Has(sig.AssetID) {
+					continue
+				}
+				entryTick := feed.Tick{
+					AssetID: sig.AssetID, Market: sig.Market,
+					Time: sig.Time, Mid: sig.Mid,
+				}
+				exit.Open(sig.AssetID, sig.Market, entryTick)
+				slog.Info("paper_open",
+					"asset", short(sig.AssetID),
+					"q", assetToQ[sig.AssetID],
+					"entry", sig.Mid,
 				)
 			}
 		}

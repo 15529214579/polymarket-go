@@ -33,7 +33,7 @@
 
 ### Phase 2 — 策略层（2 天）
 - [x] 动量信号检测（N秒涨幅、tick 单调性、主动成交占比）— 04-20 00:42 `internal/strategy/detector.go` 上线，`./bin/bot -mode=detect -markets=10 -window=30` 75s 实测首发信号：LOUD vs Leviatan LCS Game 1 Winner, Δ+4.00pp, tail 4/5 ups, buy_ratio 1.00. 5min per-asset cooldown 生效。
-- [ ] 出场信号（反转、止损、超时）
+- [x] 出场信号（反转、止损、超时）— 04-20 08:45 `internal/strategy/exit.go` 上线，ExitTracker：反转(3下行tick/2pp回撤) + 3pp硬止损 + 30min超时。5 个单测全过；主 detect 模式 paper-open→exit 链路已接；75s 实盘烟测此时段 LoL 盘全平静未触发（预期）。
 - [ ] 仓位管理（单仓去重、总敞口）
 
 ### Phase 3 — 下单（1-2 天，方案 A：自签+broadcast）
