@@ -24,6 +24,14 @@ if [ "$hour" -lt 8 ]; then quiet=1; fi
   echo
 } >> "$log" 2>&1
 
+# Day-1+ paper sanity: keep the detect daemon alive across reboots/crashes.
+# Quietly restart if PID file says dead. Logs go to db/agent.{log,err}.
+bot_status=$("$ROOT/scripts/bot-daemon.sh" status 2>&1 | head -1 || true)
+if echo "$bot_status" | grep -q 'NOT RUNNING'; then
+  echo "[bot] not running, restarting" >> "$log"
+  "$ROOT/scripts/bot-daemon.sh" start >> "$log" 2>&1 || true
+fi
+
 # 提炼状态（从刚跑完的 heartbeat 重跑一次拿原始值 — 比解析日志稳）
 out=$("$ROOT/scripts/heartbeat.sh" 2>/dev/null)
 build_fail=$(echo "$out" | grep -c 'go build: FAIL' || true)

@@ -74,7 +74,8 @@
 
 ### Phase 5 — Paper 跑 8 天（Apr 20 → Apr 28 cutover）
 > 04-20 10:36 老板拍板 A：顺延 Paper 跨过 V2 cutover，Apr 29 起实盘（原 7 天 → 8 天）
-- [ ] Day 1-3（Apr 20-22）：数据/信号合理性检查
+- [x] 2026-04-20 13:54 — Day-1 paper detect daemon 起飞：`scripts/bot-daemon.sh start` → `-mode=detect -signal_mode=auto -markets=20 -window=60`，logs 进 `db/agent.{log,err}`，pidfile `db/bot.pid`。`cron-poke.sh` 每 20 min 自动重启如果挂掉。startup ok：detect.start markets=20 assets=40，wss connected，risk 0/13.56 cap，notify telegram，sidecar long-poll ready。
+- [ ] Day 1-3（Apr 20-22）：信号密度 + 假阳性观察（每 4-6h 看一次 db/agent.log，凑足 20+ 信号样本）
 - [ ] Day 4-7（Apr 23-26）：策略参数微调
 - [ ] Day 8（Apr 27-28）：出 paper 报表；28 日晚 cutover 烟测 + wrap USDC→pUSD
 - [ ] **Apr 29**：老板 review paper + V2 验证 → 实盘启用
