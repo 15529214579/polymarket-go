@@ -369,6 +369,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 	pm := strategy.NewPositionManager(posCfg)
 	paper := order.NewPaperClientWithFee(slippageBp, feeBp)
 	riskCfg := risk.DefaultConfig()
+	riskCfg.FeedConnected = ws.Connected
 	rm := risk.New(riskCfg, time.Now())
 	notifier := buildNotifier()
 	defer func() {
@@ -1051,6 +1052,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					slog.Error("risk_trip",
 						"reason", string(risk.BlockFeedSilence),
 						"silent_sec", int(silent.Seconds()),
+						"connected", ws.Connected(),
 					)
 					notifier.RiskTrip(notify.RiskTripEvent{
 						Reason:        string(risk.BlockFeedSilence),
@@ -1061,13 +1063,11 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					})
 				}
 				// Auto-resume when the breaker tripped ONLY because of feed
-				// silence and feed has recovered for a healthy interval. In
-				// paper mode this is benign: stale prices can't lose real
-				// money, and manual intervention every time a WSS hiccup hits
-				// just starves us of data. Daily-loss + manual-pause still
-				// require an explicit human resume.
-				if st.Blocked && st.BlockReason == risk.BlockFeedSilence &&
-					silent < time.Duration(riskCfg.FeedSilenceSec)*time.Second/2 {
+				// silence and the WSS reconnected. Socket-back is the real
+				// "feed is healthy again" signal — waiting for trade chatter
+				// starves us during quiet markets. Daily-loss + manual-pause
+				// still require an explicit human resume.
+				if st.Blocked && st.BlockReason == risk.BlockFeedSilence && ws.Connected() {
 					rm.Resume()
 					slog.Info("risk_auto_resume",
 						"prev_reason", string(risk.BlockFeedSilence),

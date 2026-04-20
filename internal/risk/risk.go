@@ -36,9 +36,17 @@ type Config struct {
 	// MaxSingleLossUSD: per-trade realized loss ceiling. Observational only
 	// (the trade already closed by the time we see it).
 	MaxSingleLossUSD float64
-	// FeedSilenceSec: trip the feed-silence breaker if no book/trade event for
-	// this many seconds. SPEC §6: 30s → close all positions.
+	// FeedSilenceSec: trip the feed-silence breaker if the WSS is disconnected
+	// AND no book/trade event arrived in this many seconds. Silence alone on a
+	// healthy connection (quiet off-hours market) does NOT trip — SPEC §6
+	// revised 2026-04-20: nighttime LoL/NBA gaps routinely exceed 60s without
+	// a live trade, so we require an actual socket drop as the primary trigger.
 	FeedSilenceSec int
+	// FeedConnected, when non-nil, reports whether the WSS session is live.
+	// CheckFeed only trips when this returns false. If nil (e.g. unit tests
+	// that don't wire a client), legacy "trip on pure silence" behavior is
+	// preserved.
+	FeedConnected func() bool
 	// Location for "today" rollover. Defaults to Asia/Singapore.
 	Loc *time.Location
 }
@@ -50,7 +58,7 @@ func DefaultConfig() Config {
 		StartingBankrollUSD: 90.41,
 		DailyLossPct:        0.15,
 		MaxSingleLossUSD:    3.0,
-		FeedSilenceSec:      30,
+		FeedSilenceSec:      120,
 		Loc:                 loc,
 	}
 }
@@ -145,8 +153,12 @@ func (m *Manager) OnFeedHeartbeat(at time.Time) {
 	m.mu.Unlock()
 }
 
-// CheckFeed evaluates feed health. If silent ≥ cfg.FeedSilenceSec and not
-// already blocked, trips BlockFeedSilence. Returns (silentFor, trippedNow).
+// CheckFeed evaluates feed health. Trips BlockFeedSilence only when the WSS
+// probe reports disconnected AND silence has exceeded cfg.FeedSilenceSec. A
+// healthy socket with a quiet market (common during off-hours) never trips.
+// If no probe was configured, falls back to the legacy "trip on silence"
+// behavior so older tests / wiring keep working. Returns (silentFor,
+// trippedNow).
 func (m *Manager) CheckFeed(now time.Time) (silentFor time.Duration, trippedNow bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -154,12 +166,17 @@ func (m *Manager) CheckFeed(now time.Time) (silentFor time.Duration, trippedNow 
 	if m.blocked {
 		return silentFor, false
 	}
-	if silentFor >= time.Duration(m.cfg.FeedSilenceSec)*time.Second {
-		m.blocked = true
-		m.blockReason = BlockFeedSilence
-		m.blockedAt = now
-		trippedNow = true
+	if silentFor < time.Duration(m.cfg.FeedSilenceSec)*time.Second {
+		return silentFor, false
 	}
+	// Connected + quiet is fine — don't trip.
+	if m.cfg.FeedConnected != nil && m.cfg.FeedConnected() {
+		return silentFor, false
+	}
+	m.blocked = true
+	m.blockReason = BlockFeedSilence
+	m.blockedAt = now
+	trippedNow = true
 	return silentFor, trippedNow
 }
 

@@ -17,6 +17,14 @@ func testCfg() Config {
 	}
 }
 
+// testCfgWithProbe mirrors testCfg but wires a FeedConnected probe. `connected`
+// points at an external bool the test mutates to simulate socket up/down.
+func testCfgWithProbe(connected *bool) Config {
+	c := testCfg()
+	c.FeedConnected = func() bool { return *connected }
+	return c
+}
+
 func TestAllowOpen_FreshManager(t *testing.T) {
 	now := time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC)
 	m := New(testCfg(), now)
@@ -80,6 +88,47 @@ func TestCheckFeed_TripsOnSilence(t *testing.T) {
 	silent, tripped = m.CheckFeed(start.Add(30 * time.Second))
 	if !tripped {
 		t.Fatalf("30s should trip, got silentFor=%v", silent)
+	}
+	if got := m.State().BlockReason; got != BlockFeedSilence {
+		t.Fatalf("expected BlockFeedSilence, got %q", got)
+	}
+}
+
+func TestCheckFeed_ConnectedQuietDoesNotTrip(t *testing.T) {
+	// C semantics: pure silence on a healthy socket never trips — off-hours
+	// LoL/NBA routinely go >60s without a trade but that's not a real outage.
+	start := time.Date(2026, 4, 20, 15, 0, 0, 0, time.UTC) // 23:00 SGT lull
+	connected := true
+	m := New(testCfgWithProbe(&connected), start)
+	m.OnFeedHeartbeat(start)
+
+	// Well past the 30s threshold, but socket is up → must not trip.
+	silent, tripped := m.CheckFeed(start.Add(5 * time.Minute))
+	if tripped {
+		t.Fatalf("connected+quiet must not trip; silentFor=%v", silent)
+	}
+	if m.State().Blocked {
+		t.Fatal("state must not be Blocked while connected")
+	}
+}
+
+func TestCheckFeed_DisconnectedPlusSilenceTrips(t *testing.T) {
+	// A+C: only when the socket is actually gone AND silence ≥ threshold.
+	start := time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC)
+	connected := true
+	m := New(testCfgWithProbe(&connected), start)
+	m.OnFeedHeartbeat(start)
+
+	// 29s silent but still connected → no trip.
+	if _, tripped := m.CheckFeed(start.Add(29 * time.Second)); tripped {
+		t.Fatal("29s connected must not trip")
+	}
+
+	// Socket drops; next tick at 31s past threshold → trip.
+	connected = false
+	_, tripped := m.CheckFeed(start.Add(31 * time.Second))
+	if !tripped {
+		t.Fatal("disconnected + threshold exceeded should trip")
 	}
 	if got := m.State().BlockReason; got != BlockFeedSilence {
 		t.Fatalf("expected BlockFeedSilence, got %q", got)

@@ -68,6 +68,12 @@ type WSSClient struct {
 	// decoded. Read by the risk feed-silence watchdog (SPEC §6).
 	lastEventNs atomic.Int64
 
+	// connected is true while a WSS session is live. The risk watchdog uses
+	// this to distinguish "the feed is quiet because the market is quiet"
+	// (don't trip) from "the feed is quiet because the socket is gone"
+	// (trip after grace period).
+	connected atomic.Bool
+
 	mu       sync.Mutex
 	orderbks map[string]*bookState // per-assetID local reconstruction
 }
@@ -107,6 +113,11 @@ func (w *WSSClient) LastEventAt() time.Time {
 	}
 	return time.Unix(0, ns)
 }
+
+// Connected reports whether a WSS session is currently live. Flips to true
+// right after a successful subscribe and back to false when runOnce returns
+// (which is always followed by backoff + redial).
+func (w *WSSClient) Connected() bool { return w.connected.Load() }
 
 // Run blocks until ctx is canceled. Reconnects on error.
 func (w *WSSClient) Run(ctx context.Context) error {
@@ -165,6 +176,8 @@ func (w *WSSClient) runOnce(ctx context.Context) error {
 	if err := conn.WriteJSON(sub); err != nil {
 		return fmt.Errorf("subscribe: %w", err)
 	}
+	w.connected.Store(true)
+	defer w.connected.Store(false)
 
 	// reader deadline loop
 	_ = conn.SetReadDeadline(time.Now().Add(readIdleLimit))
