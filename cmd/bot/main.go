@@ -5,14 +5,19 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	nethttp "net/http"
+	neturl "net/url"
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/15529214579/polymarket-go/internal/config"
 	"github.com/15529214579/polymarket-go/internal/feed"
+	"github.com/15529214579/polymarket-go/internal/journal"
 	"github.com/15529214579/polymarket-go/internal/notify"
 	"github.com/15529214579/polymarket-go/internal/order"
 	"github.com/15529214579/polymarket-go/internal/risk"
@@ -20,13 +25,16 @@ import (
 )
 
 func main() {
-	mode := flag.String("mode", "run", "run | discover | feed | sample | detect | prompt-test")
+	mode := flag.String("mode", "run", "run | discover | feed | sample | detect | prompt-test | daily-report")
 	maxMarkets := flag.Int("markets", 20, "top-N LoL markets by vol24h to subscribe")
 	windowSec := flag.Int("window", 60, "sampler window in seconds")
 	slippageBp := flag.Float64("slippage_bp", 0, "paper fill slippage in bp applied against you")
 	largeFillUSD := flag.Float64("large_fill_usd", 3.0, "DM notifier threshold on |realized pnl|")
 	envFile := flag.String("env_file", ".env.local", "dotenv file to load before reading env")
 	signalMode := flag.String("signal_mode", "auto", "auto (paper-submit on signal) | prompt (DM + Buy 1/5/10 inline buttons, boss picks size)")
+	journalDir := flag.String("journal_dir", "db/journal", "trade-journal directory (one JSONL per SGT day)")
+	reportDay := flag.String("report_day", "", "daily-report mode: SGT day YYYY-MM-DD (default: yesterday SGT)")
+	reportPush := flag.Bool("report_push", false, "daily-report mode: also push summary via Telegram alert bot")
 	flag.Parse()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -56,8 +64,13 @@ func main() {
 			os.Exit(1)
 		}
 	case "detect":
-		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *largeFillUSD, *signalMode); err != nil && ctx.Err() == nil {
+		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *largeFillUSD, *signalMode, *journalDir); err != nil && ctx.Err() == nil {
 			slog.Error("detect failed", "err", err)
+			os.Exit(1)
+		}
+	case "daily-report":
+		if err := runDailyReport(ctx, *journalDir, *reportDay, *reportPush); err != nil {
+			slog.Error("daily-report failed", "err", err)
 			os.Exit(1)
 		}
 	case "prompt-test":
@@ -256,10 +269,16 @@ func runSample(ctx context.Context, topN, windowSec int) error {
 	return ws.Run(ctx)
 }
 
-func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUSD float64, signalMode string) error {
+func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUSD float64, signalMode, journalDir string) error {
 	if signalMode != "auto" && signalMode != "prompt" {
 		return fmt.Errorf("invalid signal_mode %q (want auto|prompt)", signalMode)
 	}
+	jrn, err := journal.New(journalDir)
+	if err != nil {
+		return fmt.Errorf("journal init: %w", err)
+	}
+	defer jrn.Close()
+	src := newSourceTracker()
 	gc := feed.NewGammaClient()
 	all, err := gc.ListActiveMarkets(ctx, 500)
 	if err != nil {
@@ -335,6 +354,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 				pending:      pending,
 				notifier:     notifier,
 				meta:         meta,
+				src:          src,
 				largeFillUSD: largeFillUSD,
 			}
 			lp := notify.NewLongPoll(notify.LongPollConfig{
@@ -460,6 +480,28 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 								Reason:   string(sig.Reason),
 								HeldSec:  int(sig.HeldFor.Seconds()),
 							})
+						}
+						source, openOID := src.Take(sig.AssetID)
+						if err := jrn.Append(journal.TradeRecord{
+							ID: closed.ID, AssetID: closed.AssetID, Market: closed.Market,
+							Question:     metaQ(meta, closed.AssetID),
+							Outcome:      metaOutcome(meta, closed.AssetID),
+							Side:         "buy",
+							SizeUSD:      closed.SizeUSD,
+							Units:        closed.Units,
+							EntryMid:     closed.EntryMid,
+							EntryTime:    closed.EntryTime,
+							ExitMid:      closed.ExitMid,
+							ExitTime:     closed.ExitTime,
+							ExitReason:   string(closed.ExitReason),
+							HeldSec:      int(sig.HeldFor.Seconds()),
+							PnLUSD:       closed.PnLUSD,
+							OpenOrderID:  openOID,
+							CloseOrderID: res.OrderID,
+							Mode:         "paper",
+							SignalSource: source,
+						}); err != nil {
+							slog.Warn("journal_append_fail", "asset", short(sig.AssetID), "err", err.Error())
 						}
 						slog.Info("exit",
 							"asset", short(sig.AssetID),
@@ -617,6 +659,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 					continue
 				}
 				exit.Open(sig.AssetID, sig.Market, entryTick)
+				src.Mark(sig.AssetID, "auto", res.OrderID)
 				stats := pm.Stats()
 				slog.Info("paper_open",
 					"id", pos.ID,
@@ -802,6 +845,14 @@ func buildAssetMeta(ms []feed.Market) map[string]*assetMeta {
 		}
 	}
 	return out
+}
+
+// metaOutcome returns the Outcome label for an asset, or "" if unknown.
+func metaOutcome(m map[string]*assetMeta, id string) string {
+	if me := m[id]; me != nil {
+		return me.Outcome
+	}
+	return ""
 }
 
 // metaQ returns the Question string for an asset, or "" if unknown. Used by log
@@ -990,6 +1041,7 @@ type buyHandler struct {
 	pending      *notify.PendingStore
 	notifier     notify.Notifier
 	meta         map[string]*assetMeta
+	src          *sourceTracker
 	largeFillUSD float64
 }
 
@@ -1031,6 +1083,9 @@ func (h *buyHandler) OnBuy(ctx context.Context, nonce string, slot int, sizeUSD 
 		return "", fmt.Errorf("开仓失败: %s", err.Error())
 	}
 	h.exit.Open(choice.AssetID, p.Market, entryTick)
+	if h.src != nil {
+		h.src.Mark(choice.AssetID, "manual", res.OrderID)
+	}
 	stats := h.pm.Stats()
 	slog.Info("manual_open",
 		"id", pos.ID,
@@ -1070,4 +1125,97 @@ func buildNotifier() notify.Notifier {
 		"prompt_via_sidecar", cfg.PromptBotToken != "",
 	)
 	return notify.NewTelegram(cfg)
+}
+
+// sourceTracker remembers which path opened a position (auto detector vs manual
+// click) so the journal can attribute closed trades correctly. Position state
+// itself is in PositionManager; this is a small sidecar keyed by AssetID.
+type sourceTracker struct {
+	mu sync.Mutex
+	m  map[string]sourceEntry
+}
+
+type sourceEntry struct {
+	source      string // "auto" or "manual"
+	openOrderID string
+}
+
+func newSourceTracker() *sourceTracker {
+	return &sourceTracker{m: map[string]sourceEntry{}}
+}
+
+func (s *sourceTracker) Mark(assetID, source, openOID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.m[assetID] = sourceEntry{source: source, openOrderID: openOID}
+}
+
+// Take returns the recorded source + open order id and removes the entry.
+// Missing entries default to "auto" with empty order id (safe for legacy).
+func (s *sourceTracker) Take(assetID string) (string, string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e, ok := s.m[assetID]
+	if !ok {
+		return "auto", ""
+	}
+	delete(s.m, assetID)
+	return e.source, e.openOrderID
+}
+
+// runDailyReport reads one SGT day's trade journal, prints the summary to
+// stdout, and (when -report_push is set) DMs it via the Telegram alert bot.
+// Default day = yesterday SGT — this matches the cron firing at 00:00:30 SGT
+// to summarize the day that just ended.
+func runDailyReport(ctx context.Context, dir, day string, push bool) error {
+	if day == "" {
+		yesterday := time.Now().In(journal.SGT).AddDate(0, 0, -1)
+		day = yesterday.Format("2006-01-02")
+	}
+	trades, err := journal.Read(dir, day)
+	if err != nil {
+		return fmt.Errorf("read journal: %w", err)
+	}
+	summary := journal.Summarize(day, trades)
+	out := journal.FormatTelegram(summary)
+	fmt.Print(out)
+	if !push {
+		return nil
+	}
+	tok := os.Getenv("TELEGRAM_BOT_TOKEN")
+	chat := os.Getenv("TELEGRAM_CHAT_ID")
+	if tok == "" || chat == "" {
+		return fmt.Errorf("report_push: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID missing")
+	}
+	if err := sendTelegram(ctx, tok, chat, out); err != nil {
+		return fmt.Errorf("telegram push: %w", err)
+	}
+	slog.Info("daily_report.pushed", "day", day, "trades", summary.Trades, "pnl_usd", summary.RealizedPnLUSD)
+	return nil
+}
+
+// sendTelegram fires a single sendMessage to the alert bot. We don't use the
+// notify package because that's wired for fire-and-forget queues; the cron
+// wants a synchronous send-and-exit.
+func sendTelegram(ctx context.Context, token, chat, body string) error {
+	api := "https://api.telegram.org/bot" + token + "/sendMessage"
+	form := neturl.Values{}
+	form.Set("chat_id", chat)
+	form.Set("text", body)
+	form.Set("disable_web_page_preview", "true")
+	req, err := nethttp.NewRequestWithContext(ctx, "POST", api, strings.NewReader(form.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	cl := &nethttp.Client{Timeout: 10 * time.Second}
+	resp, err := cl.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		return fmt.Errorf("telegram http %d", resp.StatusCode)
+	}
+	return nil
 }

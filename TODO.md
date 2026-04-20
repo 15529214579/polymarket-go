@@ -70,7 +70,7 @@
 ### Phase 4 — 风控 + 可观测（1 天）
 - [x] 2026-04-20 11:4x — Phase 4.a：`internal/risk/risk.go` 上线。日亏损熔断（15% × 90.41 = -13.56 USDC 上限）+ per-trade 单笔损失 ≥ 3 USDC 计数旗标 + WSS feed-silence watchdog（30s 无 book/trade → trip）+ 手动 Pause/Resume。SGT 日切滚动但不自动解除 breaker（SPEC §6 "等老板手动恢复"）。8 个单测全过。接进 detect 循环：开仓前 `AllowOpen` 门控，close 后 `OnClose` 累计，5s 心跳 `CheckFeed`，60s `risk_status` 日志。35s 实盘烟测：`risk.ready` + 无 trip（预期，LoL 市场平静）。
 - [x] 2026-04-20 11:55 — Phase 4.b：`internal/notify/` 上线（Notifier interface + TelegramNotifier + Nop）。事件：`RiskTrip`（daily_loss / feed_silence / manual_pause，每次 trip 一次）+ `RiskResume`（breaker 恢复）+ `LargeFill`（|realized_pnl| ≥ `-large_fill_usd`，默认 3 USDC）。异步 goroutine queue（32 buf，满则 drop 不阻塞交易）。detect 循环两个 trip site + close site 都接好；resume 在 watchdog 跟踪 prevBlocked→!blocked 转换触发。`internal/config/dotenv.go` 辅助（启动加载 .env.local，不覆盖已有 env）。5 notify 单测 + 2 dotenv 单测全过，实盘 smoke ok (`notify.ready mode=telegram`)。
-- [ ] 日结报表 cron（SGT 00:00 汇总 realized PnL / trade 分布 / block 时长）
+- [x] 2026-04-20 13:53 — Phase 4.c：日结报表 cron。`internal/journal/` 包（JSONL 持久化 + Summarize + FormatTelegram）；detect 关仓后 append（auto/manual 都标 source）；`-mode=daily-report [-report_day=YYYY-MM-DD] [-report_push]` 读取 SGT 当日 JSONL → 渲染 → 可选 Telegram alert bot 推送；`scripts/daily-report.sh` 包装 + crontab `0 0 * * *` SGT；6 单测全过；wrapper 烟测推 04-19 "无成交" + 04-20 seed 数据 PnL/胜率/持仓/出场原因渲染都对。
 
 ### Phase 5 — Paper 跑 8 天（Apr 20 → Apr 28 cutover）
 > 04-20 10:36 老板拍板 A：顺延 Paper 跨过 V2 cutover，Apr 29 起实盘（原 7 天 → 8 天）
