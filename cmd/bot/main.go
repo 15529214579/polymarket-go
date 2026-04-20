@@ -1257,28 +1257,35 @@ func runPromptTest(ctx context.Context, slippageBp float64) error {
 		"choices", len(choices),
 	)
 
-	// Wait for either: first fill (pm.Stats().Open > 0), the user's click
-	// arriving but failing (history shows a Result), context cancel, or timeout.
+	// Stay alive for the full 2-min window so the boss can stack multiple
+	// clicks (1U → 5U → 10U) on the same prompt. Exits on context cancel
+	// or deadline; the longpoll goroutine handles each click independently.
 	deadline := time.After(2 * time.Minute)
-	tk := time.NewTicker(1 * time.Second)
+	tk := time.NewTicker(5 * time.Second)
 	defer tk.Stop()
+	var lastReported int
 	for {
 		select {
 		case <-ctx.Done():
-			return nil
-		case <-deadline:
-			slog.Warn("prompt_test.timeout", "hint", "no click within 2 min")
 			lpCancel()
 			<-lpDone
 			return nil
+		case <-deadline:
+			lpCancel()
+			<-lpDone
+			slog.Info("prompt_test.done",
+				"open_positions", pm.Stats().Open,
+				"hint", "2-min window elapsed",
+			)
+			return nil
 		case <-tk.C:
-			if pm.Stats().Open > 0 {
-				// Give the toast 1s to flush, then exit.
-				time.Sleep(1 * time.Second)
-				lpCancel()
-				<-lpDone
-				slog.Info("prompt_test.done", "open_positions", pm.Stats().Open)
-				return nil
+			stats := pm.Stats()
+			if stats.Open != lastReported {
+				slog.Info("prompt_test.progress",
+					"open_positions", stats.Open,
+					"total_exposure_usd", stats.TotalExposure,
+				)
+				lastReported = stats.Open
 			}
 		}
 	}
@@ -1304,12 +1311,10 @@ type buyHandler struct {
 
 func (h *buyHandler) OnBuy(ctx context.Context, nonce string, slot int, sizeUSD float64, messageID int64) (string, error) {
 	now := time.Now()
-	// Peek rather than Claim so the boss can stack multiple paper orders on
-	// the same prompt (1U then 5U then 10U) until the 2h TTL. The reaper
-	// edits the message to "已过期" on expiry; here we only hit the "unknown
-	// nonce" branch if the daemon never saw it (restart wiped memory) or it
-	// already reaped.
-	p, ok := h.pending.Peek(nonce, now)
+	// One prompt = one order. Claim consumes the nonce so a second click on
+	// the same DM collapses to "已过期". Multiple orders per market come from
+	// multiple prompts (a new signal = a new DM with fresh buttons).
+	p, ok := h.pending.Claim(nonce, now)
 	if !ok {
 		if h.notifier != nil && messageID != 0 {
 			h.notifier.EditSignalExpired(messageID)
@@ -1368,10 +1373,8 @@ func (h *buyHandler) OnBuy(ctx context.Context, nonce string, slot int, sizeUSD 
 		"total_exposure_usd", stats.TotalExposure,
 	)
 
-	// Paper stacking: keep the prompt live with its keyboard so the boss can
-	// fire additional sizes against the same nonce. Only the durable receipt
-	// DM fires — no EditSignalFilled (that stripped keys in V1). The reaper
-	// will edit to "已过期" at TTL.
+	// Collapse the prompt into "✅ 已下单 …" (strips keyboard) and archive a
+	// durable receipt DM.
 	receipt := notify.FillReceiptEvent{
 		Question: metaQ(h.meta, choice.AssetID),
 		Match:    metaMatch(h.meta, choice.AssetID),
@@ -1383,6 +1386,9 @@ func (h *buyHandler) OnBuy(ctx context.Context, nonce string, slot int, sizeUSD 
 		Source:   "manual",
 	}
 	if h.notifier != nil {
+		if messageID != 0 {
+			h.notifier.EditSignalFilled(receipt, messageID)
+		}
 		h.notifier.FillReceipt(receipt)
 	}
 
