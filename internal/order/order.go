@@ -42,24 +42,24 @@ const (
 // Intent is the minimum the strategy layer owns. The signer/client turns this
 // into a V2-shaped Order before submission.
 type Intent struct {
-	AssetID  string    // ERC1155 token id
-	Market   string    // conditionID (for dedupe + logs)
+	AssetID  string // ERC1155 token id
+	Market   string // conditionID (for dedupe + logs)
 	Side     Side
-	SizeUSD  float64   // notional; units = SizeUSD / Price
-	LimitPx  float64   // 0..1 probability
+	SizeUSD  float64 // notional; units = SizeUSD / Price
+	LimitPx  float64 // 0..1 probability
 	Type     OrderType
 	Deadline time.Time // for GTD; zero for GTC
 }
 
 // Result is what Submit returns — unified for paper + real.
 type Result struct {
-	OrderID    string    // paper: local uuid; real: CLOB id
+	OrderID    string // paper: local uuid; real: CLOB id
 	Status     Status
-	FilledSize float64   // units filled
+	FilledSize float64 // units filled
 	AvgPrice   float64
 	SubmitAt   time.Time
 	FilledAt   time.Time
-	Error      string    // non-empty only on rejected
+	Error      string // non-empty only on rejected
 }
 
 // Client is the submission surface. Paper + V2-real both satisfy it.

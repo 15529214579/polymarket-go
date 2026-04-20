@@ -219,7 +219,7 @@ func TestTelegram_SignalPromptRoutesThroughPromptBot(t *testing.T) {
 	tg.LargeFill(LargeFillEvent{PnLUSD: 5})
 	tg.SignalPrompt(SignalPromptEvent{
 		Nonce: "n", Match: "m",
-		Choices: []SignalChoice{{Slot: 0, Outcome: "Yes", Mid: 0.5, IsSignal: true}},
+		Choices:   []SignalChoice{{Slot: 0, Outcome: "Yes", Mid: 0.5, IsSignal: true}},
 		ExpiresIn: time.Minute,
 	})
 	if err := tg.Close(context.Background()); err != nil {

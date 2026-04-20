@@ -56,10 +56,10 @@ func TestOnClose_TripsDailyLossBreaker(t *testing.T) {
 func TestOnClose_CountsSingleLossFlags(t *testing.T) {
 	now := time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC)
 	m := New(testCfg(), now)
-	m.OnClose(-1, now)   // not flagged
-	m.OnClose(-3, now)   // boundary: MaxSingleLossUSD=3 → -3 is NOT < -3
+	m.OnClose(-1, now)    // not flagged
+	m.OnClose(-3, now)    // boundary: MaxSingleLossUSD=3 → -3 is NOT < -3
 	m.OnClose(-3.01, now) // flagged
-	m.OnClose(-5, now)   // flagged
+	m.OnClose(-5, now)    // flagged
 	if got := m.State().SingleLossFlags; got != 2 {
 		t.Fatalf("expected 2 single-loss flags, got %d", got)
 	}

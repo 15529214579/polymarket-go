@@ -21,25 +21,25 @@ var SGT = time.FixedZone("SGT", 8*3600)
 // TradeRecord is a single closed position. Field names are stable JSON contract;
 // the daily-report mode reads them by name.
 type TradeRecord struct {
-	ID            string    `json:"id"`
-	AssetID       string    `json:"asset_id"`
-	Market        string    `json:"market"`
-	Question      string    `json:"question"`
-	Outcome       string    `json:"outcome"`
-	Side          string    `json:"side"` // always "buy" for now (long-only)
-	SizeUSD       float64   `json:"size_usd"`
-	Units         float64   `json:"units"`
-	EntryMid      float64   `json:"entry_mid"`
-	EntryTime     time.Time `json:"entry_time"`
-	ExitMid       float64   `json:"exit_mid"`
-	ExitTime      time.Time `json:"exit_time"`
-	ExitReason    string    `json:"exit_reason"`
-	HeldSec       int       `json:"held_sec"`
-	PnLUSD        float64   `json:"pnl_usd"`
-	OpenOrderID   string    `json:"open_order_id"`
-	CloseOrderID  string    `json:"close_order_id"`
-	Mode          string    `json:"mode"` // "paper" / "live"
-	SignalSource  string    `json:"signal_source"` // "auto" / "manual"
+	ID           string    `json:"id"`
+	AssetID      string    `json:"asset_id"`
+	Market       string    `json:"market"`
+	Question     string    `json:"question"`
+	Outcome      string    `json:"outcome"`
+	Side         string    `json:"side"` // always "buy" for now (long-only)
+	SizeUSD      float64   `json:"size_usd"`
+	Units        float64   `json:"units"`
+	EntryMid     float64   `json:"entry_mid"`
+	EntryTime    time.Time `json:"entry_time"`
+	ExitMid      float64   `json:"exit_mid"`
+	ExitTime     time.Time `json:"exit_time"`
+	ExitReason   string    `json:"exit_reason"`
+	HeldSec      int       `json:"held_sec"`
+	PnLUSD       float64   `json:"pnl_usd"`
+	OpenOrderID  string    `json:"open_order_id"`
+	CloseOrderID string    `json:"close_order_id"`
+	Mode         string    `json:"mode"`          // "paper" / "live"
+	SignalSource string    `json:"signal_source"` // "auto" / "manual"
 }
 
 // Journal appends TradeRecords into ./db/trades-YYYY-MM-DD.jsonl partitioned

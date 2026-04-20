@@ -85,9 +85,9 @@ func TestExit_ReversalTicksResetByUptick(t *testing.T) {
 	e := NewExitTracker(cfg)
 	t0 := time.Now()
 	e.Open("A", "m", mkTick("A", t0, 0.600))
-	_, _ = e.OnTick(mkTick("A", t0.Add(1*time.Second), 0.598)) // down 1
-	_, _ = e.OnTick(mkTick("A", t0.Add(2*time.Second), 0.600)) // up → reset
-	_, _ = e.OnTick(mkTick("A", t0.Add(3*time.Second), 0.598)) // down 1
+	_, _ = e.OnTick(mkTick("A", t0.Add(1*time.Second), 0.598))      // down 1
+	_, _ = e.OnTick(mkTick("A", t0.Add(2*time.Second), 0.600))      // up → reset
+	_, _ = e.OnTick(mkTick("A", t0.Add(3*time.Second), 0.598))      // down 1
 	_, fired := e.OnTick(mkTick("A", t0.Add(4*time.Second), 0.596)) // down 2 only
 	if fired {
 		t.Fatalf("uptick should reset consec-down counter")

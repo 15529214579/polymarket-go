@@ -1,0 +1,50 @@
+version: "2"
+
+run:
+  timeout: 3m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gocritic
+    - gosec
+    - misspell
+    - unconvert
+  settings:
+    gosec:
+      excludes:
+        - G104  # unhandled errors — errcheck handles these with better context
+        - G301  # mkdir perms: journal writes to home, 0755 is fine
+        - G302  # file perms: journal JSONL, 0644 is fine
+        - G304  # variable file paths — our paths are config-driven
+        - G306  # write file perms
+        - G704  # SSRF via taint: we call Telegram API from config
+        - G706  # log injection via taint: we log config strings intentionally
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gosec
+      # main.go carries a lot of wiring; tolerate its size
+      - path: cmd/bot/main\.go
+        linters:
+          - gocritic
+    presets:
+      - common-false-positives
+      - std-error-handling
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

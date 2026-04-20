@@ -21,10 +21,10 @@ import (
 type BlockReason string
 
 const (
-	BlockNone         BlockReason = ""
-	BlockDailyLoss    BlockReason = "daily_loss"
-	BlockFeedSilence  BlockReason = "feed_silence"
-	BlockManualPause  BlockReason = "manual_pause"
+	BlockNone        BlockReason = ""
+	BlockDailyLoss   BlockReason = "daily_loss"
+	BlockFeedSilence BlockReason = "feed_silence"
+	BlockManualPause BlockReason = "manual_pause"
 )
 
 // Config is the static tuning knob set — see SPEC §6.
@@ -57,7 +57,7 @@ func DefaultConfig() Config {
 
 // State is the serializable snapshot emitted for logs / heartbeat / reports.
 type State struct {
-	Day             string      // YYYY-MM-DD in cfg.Loc
+	Day             string // YYYY-MM-DD in cfg.Loc
 	DayRealizedPnL  float64
 	DayLossCapUSD   float64 // cfg.StartingBankrollUSD × DailyLossPct (positive number)
 	Blocked         bool

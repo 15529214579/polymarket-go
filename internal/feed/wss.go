@@ -241,11 +241,11 @@ func (w *WSSClient) dispatchOne(data []byte) {
 	switch head.EventType {
 	case "book":
 		var p struct {
-			AssetID string      `json:"asset_id"`
-			Market  string      `json:"market"`
-			Bids    []rawLevel  `json:"bids"`
-			Asks    []rawLevel  `json:"asks"`
-			Hash    string      `json:"hash"`
+			AssetID string     `json:"asset_id"`
+			Market  string     `json:"market"`
+			Bids    []rawLevel `json:"bids"`
+			Asks    []rawLevel `json:"asks"`
+			Hash    string     `json:"hash"`
 		}
 		if err := json.Unmarshal(data, &p); err != nil {
 			return

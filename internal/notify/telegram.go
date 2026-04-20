@@ -71,9 +71,15 @@ func NewTelegram(cfg TelegramConfig) *Telegram {
 
 // RiskTrip formats and enqueues a risk-breaker trip. Drops silently if the
 // queue is saturated (a stuck Telegram pipe must not block the trading loop).
-func (t *Telegram) RiskTrip(ev RiskTripEvent)     { t.enqueue(outgoing{text: FormatRiskTrip(ev), tag: "risk_trip"}) }
-func (t *Telegram) RiskResume(ev RiskResumeEvent) { t.enqueue(outgoing{text: FormatRiskResume(ev), tag: "risk_resume"}) }
-func (t *Telegram) LargeFill(ev LargeFillEvent)   { t.enqueue(outgoing{text: FormatLargeFill(ev), tag: "large_fill"}) }
+func (t *Telegram) RiskTrip(ev RiskTripEvent) {
+	t.enqueue(outgoing{text: FormatRiskTrip(ev), tag: "risk_trip"})
+}
+func (t *Telegram) RiskResume(ev RiskResumeEvent) {
+	t.enqueue(outgoing{text: FormatRiskResume(ev), tag: "risk_resume"})
+}
+func (t *Telegram) LargeFill(ev LargeFillEvent) {
+	t.enqueue(outgoing{text: FormatLargeFill(ev), tag: "large_fill"})
+}
 
 // SignalPrompt enqueues a DM with a single inline-keyboard row for the signal
 // side only (boss picks amount, not direction). Buttons are "Buy 1U / 5U / 10U";

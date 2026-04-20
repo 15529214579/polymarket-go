@@ -68,17 +68,17 @@ type trackedPosition struct {
 	EntryMid  float64
 
 	// runtime
-	peakMid       float64
-	lastMid       float64
-	consecDown    int
+	peakMid    float64
+	lastMid    float64
+	consecDown int
 }
 
 // ExitTracker holds open positions and emits exits when rules trip.
 // Thread model: feed ticks in from one goroutine; callers pull ExitSignal from Signals().
 type ExitTracker struct {
-	cfg  ExitConfig
-	pos  map[string]*trackedPosition
-	out  chan ExitSignal
+	cfg ExitConfig
+	pos map[string]*trackedPosition
+	out chan ExitSignal
 }
 
 func NewExitTracker(cfg ExitConfig) *ExitTracker {

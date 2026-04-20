@@ -16,8 +16,8 @@ import (
 type PaperClient struct {
 	slippageBp float64
 
-	mu      sync.Mutex
-	orders  []Result
+	mu     sync.Mutex
+	orders []Result
 }
 
 // NewPaperClient — slippageBp ≥ 0 pulls fill price against you (BUY fills

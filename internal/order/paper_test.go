@@ -67,9 +67,9 @@ func TestPaperRejectsOutOfRange(t *testing.T) {
 func TestPaperRejectsBadIntent(t *testing.T) {
 	p := NewPaperClient(0)
 	cases := []Intent{
-		{Side: Buy, SizeUSD: 5, LimitPx: 0.5},              // missing AssetID
+		{Side: Buy, SizeUSD: 5, LimitPx: 0.5},                // missing AssetID
 		{AssetID: "a", Side: "??", SizeUSD: 5, LimitPx: 0.5}, // bad side
-		{AssetID: "a", Side: Buy, SizeUSD: 0, LimitPx: 0.5}, // zero size
+		{AssetID: "a", Side: Buy, SizeUSD: 0, LimitPx: 0.5},  // zero size
 	}
 	for i, c := range cases {
 		if _, err := p.Submit(context.Background(), c); err == nil {

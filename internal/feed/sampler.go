@@ -9,15 +9,15 @@ import (
 // Tick is a 1-second summary for one asset.
 // Emitted at the close of each second; counters cover that second only.
 type Tick struct {
-	AssetID  string
-	Market   string
-	Time     time.Time
-	BestBid  float64
-	BestAsk  float64
-	Mid      float64
-	Trades   int
-	BuyVol   float64
-	SellVol  float64
+	AssetID string
+	Market  string
+	Time    time.Time
+	BestBid float64
+	BestAsk float64
+	Mid     float64
+	Trades  int
+	BuyVol  float64
+	SellVol float64
 }
 
 // WindowStats summarizes the last N 1-second ticks for one asset.

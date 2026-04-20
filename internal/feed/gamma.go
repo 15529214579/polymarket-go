@@ -27,24 +27,24 @@ func NewGammaClient() *GammaClient {
 }
 
 type Market struct {
-	ID                string  `json:"id"`
-	ConditionID       string  `json:"conditionId"`
-	Slug              string  `json:"slug"`
-	Question          string  `json:"question"`
-	Category          string  `json:"category"`
-	Active            bool    `json:"active"`
-	Closed            bool    `json:"closed"`
-	AcceptingOrders   bool    `json:"acceptingOrders"`
-	EndDate           string  `json:"endDate"`
-	Volume24hr        float64 `json:"volume24hr"`
-	LiquidityClob     float64 `json:"liquidityClob"`
-	ClobTokenIDsRaw   string  `json:"clobTokenIds"`
-	OutcomePricesRaw  string  `json:"outcomePrices"`
-	OutcomesRaw       string  `json:"outcomes"`
+	ID               string  `json:"id"`
+	ConditionID      string  `json:"conditionId"`
+	Slug             string  `json:"slug"`
+	Question         string  `json:"question"`
+	Category         string  `json:"category"`
+	Active           bool    `json:"active"`
+	Closed           bool    `json:"closed"`
+	AcceptingOrders  bool    `json:"acceptingOrders"`
+	EndDate          string  `json:"endDate"`
+	Volume24hr       float64 `json:"volume24hr"`
+	LiquidityClob    float64 `json:"liquidityClob"`
+	ClobTokenIDsRaw  string  `json:"clobTokenIds"`
+	OutcomePricesRaw string  `json:"outcomePrices"`
+	OutcomesRaw      string  `json:"outcomes"`
 }
 
-func (m Market) ClobTokenIDs() []string { return parseStringArray(m.ClobTokenIDsRaw) }
-func (m Market) Outcomes() []string     { return parseStringArray(m.OutcomesRaw) }
+func (m Market) ClobTokenIDs() []string  { return parseStringArray(m.ClobTokenIDsRaw) }
+func (m Market) Outcomes() []string      { return parseStringArray(m.OutcomesRaw) }
 func (m Market) OutcomePrices() []string { return parseStringArray(m.OutcomePricesRaw) }
 
 func parseStringArray(s string) []string {
