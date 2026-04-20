@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -9,6 +10,7 @@ import (
 	neturl "net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -340,6 +342,15 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 		_ = notifier.Close(sctx)
 	}()
 	pending := notify.NewPendingStore(2 * time.Hour)
+	// Admin trigger dir: external callers (e.g. `-mode=prompt-test`) drop a JSON
+	// blob into db/admin/send-prompt.trigger; the daemon watcher below picks it
+	// up, emits a synthetic signal prompt, and stores the nonce in its OWN
+	// pending store — so the sidecar longpoll can Claim it on callback.
+	// Without this, a short-lived prompt-test subprocess registers the nonce in
+	// its own memory, exits, and the callback lands on a daemon that doesn't
+	// know the nonce → "已过期或已点过" even on a fresh click.
+	const adminTrigger = "db/admin/send-prompt.trigger"
+	_ = os.MkdirAll(filepath.Dir(adminTrigger), 0o755)
 	slog.Info("paper_client.ready", "slippage_bp", slippageBp, "per_pos_usd", posCfg.PerPositionUSD)
 	slog.Info("risk.ready",
 		"bankroll_usd", riskCfg.StartingBankrollUSD,
@@ -420,6 +431,30 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 					"edited_expired_dm", edited,
 					"remaining", pending.Size(),
 				)
+			}
+		}
+	}()
+
+	// Admin trigger watcher: 1 Hz poll of db/admin/send-prompt.trigger.
+	// Any process (e.g. `-mode=prompt-test`) that drops a JSON file here gets
+	// a synthetic prompt emitted by *this* daemon, with the nonce registered
+	// in the shared pending store the longpoll consumer reads from.
+	go func() {
+		tk := time.NewTicker(1 * time.Second)
+		defer tk.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-tk.C:
+				data, err := os.ReadFile(adminTrigger)
+				if err != nil {
+					continue
+				}
+				_ = os.Remove(adminTrigger)
+				if err := sendAdminPrompt(data, mkts, meta, sampler, pending, notifier); err != nil {
+					slog.Warn("admin_prompt_fail", "err", err.Error())
+				}
 			}
 		}
 	}()
@@ -1122,77 +1157,44 @@ func outcomeOrDefault(me *assetMeta, def string) string {
 	return me.Outcome
 }
 
-// runPromptTest drives the Phase 3.5.b button loop end-to-end against real
-// Telegram APIs, without needing a live momentum signal. Picks the top-vol LoL
-// market, seeds a PendingStore entry, sends a SignalPrompt DM, runs the sidecar
-// LongPoll, and waits up to 2 minutes for one click — then logs manual_open
-// or the error toast and exits. Paper only.
-func runPromptTest(ctx context.Context, slippageBp float64) error {
-	gc := feed.NewGammaClient()
-	all, err := gc.ListActiveMarkets(ctx, 200)
-	if err != nil {
-		return err
-	}
-	mkts := feed.FilterSports(all)
-	if len(mkts) == 0 {
-		return fmt.Errorf("no active sports markets")
-	}
-	top := mkts[0]
-	tokens := top.ClobTokenIDs()
-	if len(tokens) == 0 {
-		return fmt.Errorf("top market has no clob tokens: %s", top.Slug)
-	}
-	assetID := tokens[0]
-	meta := buildAssetMeta(mkts)
+// adminPromptReq is the payload for db/admin/send-prompt.trigger.
+type adminPromptReq struct {
+	AssetID string `json:"asset_id,omitempty"` // optional; defaults to top market's first token
+	Note    string `json:"note,omitempty"`     // freeform tag appended to Context line
+}
 
-	posCfg := strategy.DefaultPositionConfig()
-	pm := strategy.NewPositionManager(posCfg)
-	exit := strategy.NewExitTracker(strategy.DefaultExitConfig())
-	paper := order.NewPaperClient(slippageBp)
-	rm := risk.New(risk.DefaultConfig(), time.Now())
-	notifier := buildNotifier()
-	defer func() {
-		sctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		_ = notifier.Close(sctx)
-	}()
-	pending := notify.NewPendingStore(2 * time.Minute)
-
-	sidecarToken := os.Getenv("SIDECAR_BOT_TOKEN")
-	sidecarChat := os.Getenv("SIDECAR_CHAT_ID")
-	if sidecarChat == "" {
-		sidecarChat = os.Getenv("TELEGRAM_CHAT_ID")
+// sendAdminPrompt is invoked in-process by the daemon when the admin trigger
+// file appears. It emits a SignalPrompt DM that routes through the SAME
+// pending store the sidecar longpoll reads from, so callbacks Claim cleanly
+// no matter which process wrote the trigger.
+func sendAdminPrompt(raw []byte, mkts []feed.Market, meta map[string]*assetMeta, sampler *feed.Sampler, pending *notify.PendingStore, notifier notify.Notifier) error {
+	var req adminPromptReq
+	if len(strings.TrimSpace(string(raw))) > 0 {
+		if err := json.Unmarshal(raw, &req); err != nil {
+			return fmt.Errorf("parse trigger: %w", err)
+		}
 	}
-	if sidecarToken == "" || sidecarChat == "" {
-		return fmt.Errorf("prompt-test needs SIDECAR_BOT_TOKEN and chat_id in env")
+	assetID := req.AssetID
+	if assetID == "" {
+		if len(mkts) == 0 {
+			return fmt.Errorf("no markets subscribed")
+		}
+		tokens := mkts[0].ClobTokenIDs()
+		if len(tokens) == 0 {
+			return fmt.Errorf("top market has no clob tokens")
+		}
+		assetID = tokens[0]
 	}
-	chatID, err := strconv.ParseInt(sidecarChat, 10, 64)
-	if err != nil {
-		return fmt.Errorf("parse chat_id: %w", err)
-	}
-
-	h := &buyHandler{
-		pm: pm, exit: exit, paper: paper, rm: rm,
-		pending: pending, notifier: notifier,
-		meta: meta, largeFillUSD: 3.0,
-	}
-	lp := notify.NewLongPoll(notify.LongPollConfig{
-		BotToken: sidecarToken, ExpectedChatID: chatID,
-	}, h)
-
-	lpCtx, lpCancel := context.WithCancel(ctx)
-	defer lpCancel()
-	lpDone := make(chan error, 1)
-	go func() {
-		slog.Info("prompt_test.longpoll_start", "chat_id", chatID)
-		lpDone <- lp.Run(lpCtx)
-	}()
-
-	// Seed one pending intent at the current mid (use 0.50 as a placeholder —
-	// paper fill math is the same since slippage is bp-relative). Build full
-	// Choices so the prompt shows both YES/NO (or team-A/team-B) rows.
-	mid := 0.50
 	me := meta[assetID]
+	if me == nil {
+		return fmt.Errorf("asset %s not in subscribed set", short(assetID))
+	}
+
+	mid := 0.50
+	if w, ok := sampler.Window(assetID); ok && w.Samples > 0 {
+		mid = w.EndMid
+	}
+
 	choices := []notify.Choice{{
 		AssetID: assetID, Outcome: outcomeOrDefault(me, "Yes"),
 		Mid: mid, IsSignal: true,
@@ -1200,48 +1202,44 @@ func runPromptTest(ctx context.Context, slippageBp float64) error {
 	sigChoices := []notify.SignalChoice{{
 		Slot: 0, Outcome: choices[0].Outcome, Mid: mid, IsSignal: true,
 	}}
-	if me != nil && me.Sibling != "" {
+	if me.Sibling != "" {
+		sibMid := 1.0 - mid
+		if w, ok := sampler.Window(me.Sibling); ok && w.Samples > 0 {
+			sibMid = w.EndMid
+		}
 		sibOutcome := me.SiblingOutcome
 		if sibOutcome == "" {
 			sibOutcome = "No"
 		}
-		sibMid := 1.0 - mid
-		choices = append(choices, notify.Choice{
-			AssetID: me.Sibling, Outcome: sibOutcome, Mid: sibMid,
-		})
-		sigChoices = append(sigChoices, notify.SignalChoice{
-			Slot: 1, Outcome: sibOutcome, Mid: sibMid,
-		})
+		choices = append(choices, notify.Choice{AssetID: me.Sibling, Outcome: sibOutcome, Mid: sibMid})
+		sigChoices = append(sigChoices, notify.SignalChoice{Slot: 1, Outcome: sibOutcome, Mid: sibMid})
 	}
+
 	p := pending.Put(notify.PendingIntent{
-		Market:   top.Slug,
-		Question: top.Question,
+		Market:   "admin-test",
+		Question: me.Question,
 		Choices:  choices,
 	}, time.Now())
 
-	var match, ctxLine, endIn string
-	if me != nil {
-		match = me.Match
-		ctxLine = me.Context
-		endIn = notify.HumanizeEndIn(time.Now(), me.EndTime)
+	ctxLine := me.Context
+	note := strings.TrimSpace(req.Note)
+	if note == "" {
+		note = "PROMPT-TEST"
 	}
 	if ctxLine != "" {
-		ctxLine += " · [PROMPT-TEST]"
+		ctxLine += " · " + note
 	} else {
-		ctxLine = "[PROMPT-TEST]"
+		ctxLine = note
 	}
+
 	nonceSnap := p.Nonce
 	notifier.SignalPrompt(notify.SignalPromptEvent{
 		Nonce:     p.Nonce,
-		Match:     match,
+		Match:     me.Match,
 		Context:   ctxLine,
-		EndIn:     endIn,
+		EndIn:     notify.HumanizeEndIn(time.Now(), me.EndTime),
 		Choices:   sigChoices,
-		DeltaPP:   0,
-		TailUps:   0,
-		TailLen:   0,
-		BuyRatio:  0,
-		ExpiresIn: 2 * time.Minute,
+		ExpiresIn: 10 * time.Minute,
 		OnSent: func(msgID int64, err error) {
 			if err != nil || msgID == 0 {
 				return
@@ -1249,46 +1247,50 @@ func runPromptTest(ctx context.Context, slippageBp float64) error {
 			pending.SetMessageID(nonceSnap, msgID)
 		},
 	})
-	slog.Info("prompt_test.sent",
-		"nonce", p.Nonce,
-		"q", top.Question,
-		"mid", mid,
+	slog.Info("admin_prompt_sent",
 		"asset", short(assetID),
+		"nonce", p.Nonce,
+		"mid", mid,
 		"choices", len(choices),
+		"note", note,
 	)
+	return nil
+}
 
-	// Stay alive for the full 2-min window so the boss can stack multiple
-	// clicks (1U → 5U → 10U) on the same prompt. Exits on context cancel
-	// or deadline; the longpoll goroutine handles each click independently.
-	deadline := time.After(2 * time.Minute)
-	tk := time.NewTicker(5 * time.Second)
-	defer tk.Stop()
-	var lastReported int
-	for {
+// runPromptTest now simply writes an admin trigger file and exits. The running
+// daemon's watcher (see runDetect) will emit the prompt on its own pending
+// store, so callbacks are Claim-able no matter how many daemon restarts or
+// subprocess lifecycles happen between send and click.
+func runPromptTest(ctx context.Context, _ float64) error {
+	if _, err := os.Stat("db"); err != nil {
+		return fmt.Errorf("db/ not found — run from the polymarket-go repo root (%w)", err)
+	}
+	if err := os.MkdirAll("db/admin", 0o755); err != nil {
+		return fmt.Errorf("mkdir db/admin: %w", err)
+	}
+	payload, _ := json.Marshal(adminPromptReq{Note: "PROMPT-TEST"})
+	triggerPath := "db/admin/send-prompt.trigger"
+	if err := os.WriteFile(triggerPath, payload, 0o644); err != nil {
+		return fmt.Errorf("write trigger: %w", err)
+	}
+	slog.Info("prompt_test.trigger_dropped",
+		"path", triggerPath,
+		"hint", "running daemon will pick it up within 1s and emit a prompt via its own pending store",
+	)
+	// Brief watch loop so the operator sees confirmation (trigger consumed).
+	deadline := time.Now().Add(8 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(triggerPath); err != nil {
+			slog.Info("prompt_test.consumed", "ok", true)
+			return nil
+		}
 		select {
 		case <-ctx.Done():
-			lpCancel()
-			<-lpDone
 			return nil
-		case <-deadline:
-			lpCancel()
-			<-lpDone
-			slog.Info("prompt_test.done",
-				"open_positions", pm.Stats().Open,
-				"hint", "2-min window elapsed",
-			)
-			return nil
-		case <-tk.C:
-			stats := pm.Stats()
-			if stats.Open != lastReported {
-				slog.Info("prompt_test.progress",
-					"open_positions", stats.Open,
-					"total_exposure_usd", stats.TotalExposure,
-				)
-				lastReported = stats.Open
-			}
+		case <-time.After(500 * time.Millisecond):
 		}
 	}
+	return fmt.Errorf("trigger still present after 8s — is the daemon running? (-mode=detect)")
 }
 
 // buyHandler wires a click on one outcome's Buy 1/5/10 → same paper-submit →
