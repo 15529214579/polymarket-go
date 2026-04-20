@@ -39,12 +39,12 @@
 ### Phase 3 — 下单（1-2 天，方案 A：自签+broadcast，**直接按 V2 出生**）
 > 04-20 10:36 老板拍板：Paper 顺延到 Apr 29，cutover 后 wrap + 实盘。
 - [x] 2026-04-20 11:4x — Phase 3.a 骨架：`internal/order/` Intent/Result/Client 接口 + PaperClient（slippage 模型）+ 7 单测 ✅
+- [x] 2026-04-20 11:4x — Phase 3.b：PaperClient 接进 detect 循环。signal → `Buy Intent` Submit → 用 fill 价开仓；exit → `Sell Intent` Submit → 用 fill 价平仓 → 实现 slippage-priced PnL。新增 `-slippage_bp` flag，order_id 写入日志。35s 实盘烟测：paper_client.ready 正常，无信号（market quiet）。build+test 绿。
 - [ ] Phase 3.0 前置（Apr 28 19:00 SGT cutover 后执行）：Bitwarden 取私钥 → Collateral Onramp `wrap(90.41 USDC.e)` → 拿等量 pUSD
 - [ ] Bitwarden 取助记词 → 派生私钥（启动时只驻内存）
 - [ ] EIP-712 typed data 签名（**V2** order struct：去 `taker/expiration/nonce/feeRateBps`，加 `timestamp/metadata/builder`；domain version `"2"`，V2 Exchange 地址）
 - [ ] CLOB **V2** REST `/order` POST 客户端
 - [ ] 成交回执轮询 + status 机
-- [ ] Paper → PositionManager 集成（strategy 开仓时走 order.Client，paper 期默认 PaperClient）
 - [ ] **Apr 28 cutover 当天 WSS 烟测**：18:45 SGT 待机 → 20:15 SGT 跑 `-mode=detect` 20min，验 3 种消息类型帧结构
 
 ### Phase 3.5 — 半自动点选下单（Hybrid UX，不急）

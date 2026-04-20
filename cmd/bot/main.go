@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/15529214579/polymarket-go/internal/feed"
+	"github.com/15529214579/polymarket-go/internal/order"
 	"github.com/15529214579/polymarket-go/internal/strategy"
 )
 
@@ -18,6 +19,7 @@ func main() {
 	mode := flag.String("mode", "run", "run | discover | feed | sample | detect")
 	maxMarkets := flag.Int("markets", 20, "top-N LoL markets by vol24h to subscribe")
 	windowSec := flag.Int("window", 60, "sampler window in seconds")
+	slippageBp := flag.Float64("slippage_bp", 0, "paper fill slippage in bp applied against you")
 	flag.Parse()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -43,7 +45,7 @@ func main() {
 			os.Exit(1)
 		}
 	case "detect":
-		if err := runDetect(ctx, *maxMarkets, *windowSec); err != nil && ctx.Err() == nil {
+		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp); err != nil && ctx.Err() == nil {
 			slog.Error("detect failed", "err", err)
 			os.Exit(1)
 		}
@@ -251,7 +253,7 @@ func runSample(ctx context.Context, topN, windowSec int) error {
 	return ws.Run(ctx)
 }
 
-func runDetect(ctx context.Context, topN, windowSec int) error {
+func runDetect(ctx context.Context, topN, windowSec int, slippageBp float64) error {
 	gc := feed.NewGammaClient()
 	all, err := gc.ListActiveMarkets(ctx, 500)
 	if err != nil {
@@ -290,7 +292,10 @@ func runDetect(ctx context.Context, topN, windowSec int) error {
 	det := strategy.NewDetector(cfg, sampler)
 	exitCfg := strategy.DefaultExitConfig()
 	exit := strategy.NewExitTracker(exitCfg)
-	pm := strategy.NewPositionManager(strategy.DefaultPositionConfig())
+	posCfg := strategy.DefaultPositionConfig()
+	pm := strategy.NewPositionManager(posCfg)
+	paper := order.NewPaperClient(slippageBp)
+	slog.Info("paper_client.ready", "slippage_bp", slippageBp, "per_pos_usd", posCfg.PerPositionUSD)
 
 	go func() {
 		if err := sampler.Run(ctx, ws.Books(), ws.Trades()); err != nil && ctx.Err() == nil {
@@ -331,18 +336,40 @@ func runDetect(ctx context.Context, topN, windowSec int) error {
 						continue
 					}
 					if sig, fired := exit.OnTick(tail[0]); fired {
+						sellIntent := order.Intent{
+							AssetID: sig.AssetID,
+							Market:  sig.Market,
+							Side:    order.Sell,
+							SizeUSD: posCfg.PerPositionUSD,
+							LimitPx: sig.ExitMid,
+							Type:    order.GTC,
+						}
+						res, err := paper.Submit(ctx, sellIntent)
+						if err != nil {
+							slog.Warn("paper_sell_reject",
+								"asset", short(sig.AssetID),
+								"limit", sig.ExitMid,
+								"err", err.Error())
+							continue
+						}
+						// Override exit mid with the actual fill price so realized PnL
+						// reflects paper slippage.
+						sig.ExitMid = res.AvgPrice
+						sig.ChangePP = (res.AvgPrice - sig.EntryMid) * 100
 						closed, err := pm.Close(sig.AssetID, sig)
 						if err != nil {
 							slog.Warn("paper_close_miss", "asset", short(sig.AssetID), "err", err.Error())
+							continue
 						}
 						stats := pm.Stats()
 						slog.Info("exit",
 							"asset", short(sig.AssetID),
 							"q", assetToQ[sig.AssetID],
 							"reason", string(sig.Reason),
+							"order_id", res.OrderID,
 							"entry", sig.EntryMid,
 							"peak", sig.PeakMid,
-							"exit", sig.ExitMid,
+							"exit_fill", res.AvgPrice,
 							"delta_pp", sig.ChangePP,
 							"drawdown_pp", sig.DrawdownPP,
 							"held_sec", int(sig.HeldFor.Seconds()),
@@ -375,17 +402,43 @@ func runDetect(ctx context.Context, topN, windowSec int) error {
 					"buy_ratio", sig.BuyRatio,
 					"reason", sig.Reason,
 				)
-				// Paper-open a position; PositionManager enforces dedupe + exposure caps,
-				// ExitTracker watches for reversal / stop / timeout.
+				// Dedupe checks before we bother submitting to the paper client;
+				// avoids polluting history with rejected paper orders.
+				if pm.Has(sig.AssetID) || pm.HasMarket(sig.Market) {
+					slog.Info("paper_open_skip",
+						"asset", short(sig.AssetID),
+						"q", assetToQ[sig.AssetID],
+						"reason", "already_open",
+					)
+					continue
+				}
+				buyIntent := order.Intent{
+					AssetID: sig.AssetID,
+					Market:  sig.Market,
+					Side:    order.Buy,
+					SizeUSD: posCfg.PerPositionUSD,
+					LimitPx: sig.Mid,
+					Type:    order.GTC,
+				}
+				res, err := paper.Submit(ctx, buyIntent)
+				if err != nil {
+					slog.Warn("paper_buy_reject",
+						"asset", short(sig.AssetID),
+						"limit", sig.Mid,
+						"err", err.Error())
+					continue
+				}
+				// Book the position at the actual fill price so slippage is priced in.
 				entryTick := feed.Tick{
 					AssetID: sig.AssetID, Market: sig.Market,
-					Time: sig.Time, Mid: sig.Mid,
+					Time: sig.Time, Mid: res.AvgPrice,
 				}
 				pos, err := pm.Open(sig.AssetID, sig.Market, entryTick)
 				if err != nil {
 					slog.Info("paper_open_skip",
 						"asset", short(sig.AssetID),
 						"q", assetToQ[sig.AssetID],
+						"order_id", res.OrderID,
 						"reason", err.Error(),
 					)
 					continue
@@ -394,9 +447,11 @@ func runDetect(ctx context.Context, topN, windowSec int) error {
 				stats := pm.Stats()
 				slog.Info("paper_open",
 					"id", pos.ID,
+					"order_id", res.OrderID,
 					"asset", short(sig.AssetID),
 					"q", assetToQ[sig.AssetID],
-					"entry", sig.Mid,
+					"signal_mid", sig.Mid,
+					"entry_fill", res.AvgPrice,
 					"size_usd", pos.SizeUSD,
 					"units", pos.Units,
 					"open_positions", stats.Open,
