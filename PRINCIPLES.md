@@ -83,3 +83,21 @@ Paper 阶段**不挂 SL/TP/timeout**。开仓后只等 market resolve，按 gamm
 
 - 2026-04-19 — P1~P7 初版（5号 开工首日）
 - 2026-04-20 17:29 — P8 hold-to-settlement 出场策略
+
+---
+
+## 8. 在建 infra 上烧钱前，先用历史数据做离线验证
+
+**2026-04-20 21:1x 拍板。**
+
+策略想法（追涨 / 宽 gap arb）在没有样本验证前容易自信。这个项目第一天就全 infra 堆栈铺开，但 Phase 6 方向讨论时才想起姐妹项目（python polymarket-agent）有 1325 条 theodds_h2h 快照 + 361 笔真实盘。一次 `cmd/backtest`（modernc.org/sqlite 只读打开）3 分钟产出硬数据：13/13 全败、-47.54% ROI、最大回撤 -101.76 USDC——直接推翻了 "PM vs bookmaker >5pp" 的主 edge 假设。
+
+**规则**：
+
+1. 每条新策略 SPEC 之前，先检查邻近项目 / 现有 DB / 现有日志里能不能凑出历史样本做离线验证
+2. 历史数据即使只有 1-2 周，胜率 0/13 这种极端值就已经足以下决定不走这条路
+3. 大 gap（>15pp）/ 大 delta（>10pp）这些极端信号大概率是 data pipeline 的 mismatch，不是真机会——**任何 gap 阈值上都必须先看 gap 的分布**
+
+**不要**：不做这一步就直接 "先把 infra 搭好再边跑边看"。先验证想法，再烧代码。
+
+---

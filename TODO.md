@@ -85,6 +85,22 @@
 - [ ] Day 8（Apr 27-28）：出 paper 报表；28 日晚 cutover 烟测 + wrap USDC→pUSD
 - [ ] **Apr 29**：老板 review paper + V2 验证 → 实盘启用
 
+### Phase 6 — 策略方向复盘（阻塞向前，待讨论）
+> 老板 20:19 提出方向性质疑（纯追涨 edge 不明）。20:58 开方向讨论 → 21:01 决定先用 python 历史数据做**零 API 离线回测**，再决定 Phase 6 是否落地。
+- [x] 2026-04-20 21:1x — `cmd/backtest` 上线：read-only 打开 python polymarket-agent.db（modernc.org/sqlite 纯 Go 无 cgo），聚合 trades × scan_type × gap_bucket + 累计 PnL 曲线。产出 `docs/backtest_2026-04-20.txt` 存档。
+- [x] 2026-04-20 21:1x — **回测结论（硬数据）**：
+    - python 182 笔 closed 合计 **-97.50 USDC**，峰值仅 +1.81 USDC @ 04-12，最大回撤 **-101.76 USDC** @ 04-19
+    - **theodds_h2h >5pp 策略**：74 开 / 13 平 / **0W 13L / -47.54% ROI**，另 36 仍 OPEN + 25 CANCELLED
+    - gap 分档（已平仓样本）：10-15pp 3/3 全败 / 25-50pp 10/10 全败 / 5-10pp **零 closed 样本**（python 自己都不追窄 gap）
+    - scan 分布：1325 theodds_h2h 中 1036 是 **15+pp**（avg 33.72pp），多为 league mismatch / outright 错配
+    - llm_scan: 4 closed / 2W 2L / +20.9% ROI（样本 n=4 不可下结论）
+- [ ] **路线抉择**（等老板拍板，不动手）：
+    - R1. 放弃 "PM 内部动量" 和 "宽 gap arb" 两条路，回到结算确定盘（清尾）+ 人工筛市场
+    - R2. 只做 **窄 gap（5-10pp）+ 严格 league/market 匹配 guard**，需新建 bookmaker 源 + 真 league 匹配器；要收集 8-12 周数据才有统计意义
+    - R3. 先关掉纯 momentum auto 开仓（daemon 继续订阅 + 发 prompt，但只在**你亲手点**的情况下开仓），保留信号流做观察，等策略想清楚再动
+    - R4. 方向未定 → Apr 29 不切实盘，Paper 顺延
+- [ ] 路线定下来后，Phase 6 SPEC 落地；当前所有 >Phase 5 的计划（3.0 wrap / 3 V2 签名 / 实盘）**暂停**，cutover 还是到，但实盘 go-live 视抉择结果
+
 ## ✅ 已完成
 
 - [x] 2026-04-19 23:33 — 策略方向对齐（动量跟进 / LoL 练手 / 7 天 paper）

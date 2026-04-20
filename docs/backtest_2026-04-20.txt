@@ -1,0 +1,39 @@
+════════════════════════════════════════
+ polymarket-go OFFLINE backtest
+ source: /Users/murphyma/.openclaw/workspace-dev3/polymarket-agent/db/polymarket_agent.db
+ trades: 361
+════════════════════════════════════════
+
+── opportunity_log × scan_type ──
+  scan_type            n    avg_gap     avg_pm   avg_book
+  llm_scan          2736      23.15      0.475      0.402
+  theodds_h2h       1325      29.12      0.370      0.376
+  internal_arb        24       5.33      0.223      0.277
+
+── trades × scan_type ──
+  strategy            n  closed  wins  loss    pnl_usd    capital       roi%     hit%  mdd_usd
+  llm_scan           16       4     2     2       0.50       2.40     +20.88     50.0     1.94
+  internal_arb       23       0     0     0       0.00       0.00      +0.00      0.0     0.00
+  theodds_h2h        74      13     0    13     -36.51      76.79     -47.54      0.0    36.51
+  none              248     170     6   136     -61.49     442.53     -13.90      3.5    62.70
+
+── theodds_h2h × gap_bucket （实盘已平仓样本）──
+  gap            n  closed  wins  loss    pnl_usd    capital       roi%     hit%
+  5-7pp          0       -     -     -          -          -          -        -
+  7-10pp         0       -     -     -          -          -          -        -
+  10-15pp        4       3     0     3      -4.47       7.28     -61.39      0.0
+  15-25pp        1       0     0     0       0.00       0.00      +0.00      0.0
+  25-50pp       69      10     0    10     -32.04      69.52     -46.09      0.0
+  50+pp          0       -     -     -          -          -          -        -
+
+── 累计 PnL 曲线（全策略合并，按 close_time 排序）──
+  第一笔 close:  2026-03-28T15:18:04.320136  equity=-0.01
+  中段 (#91):     2026-04-18T02:08:30.253540+00:00  equity=-55.41
+  最新 (#182):     2026-04-19T21:56:56.156333+00:00  equity=-97.50
+  峰值 equity=+1.81 @ 2026-04-12T22:05:26.723871
+  最大回撤  -101.76 USDC  谷底 @ 2026-04-19T09:23:40.938046+00:00
+
+── 结论提示 ──
+  theodds_h2h 的已平仓胜率 / ROI 是 gap-bucket 策略最直接的实盘答卷。
+  gap 越大（>15pp）多是 league mismatch / outright 错配，不是真 arb。
+  窄 gap 段（5-10pp）样本稀少，需要更多数据才能判断是否可交易。
