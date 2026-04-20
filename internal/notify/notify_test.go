@@ -78,7 +78,7 @@ func TestFormatSignalPrompt_ShowsMatchAndChoices(t *testing.T) {
 			{Slot: 1, Outcome: "G2 Esports", Mid: 0.765, IsSignal: false},
 		},
 		DeltaPP: 4.2, TailUps: 4, TailLen: 5, BuyRatio: 0.78,
-		ExpiresIn: 60 * time.Second,
+		ExpiresIn: 10 * time.Minute,
 	})
 	for _, want := range []string{
 		"Shifters ↑",
@@ -88,7 +88,7 @@ func TestFormatSignalPrompt_ShowsMatchAndChoices(t *testing.T) {
 		"选 Shifters (当前 0.2350)",
 		"← 信号",
 		"选 G2 Esports (当前 0.7650)",
-		"60s 内有效",
+		"10m 内有效",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("FormatSignalPrompt missing %q; got:\n%s", want, s)

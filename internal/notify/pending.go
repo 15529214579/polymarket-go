@@ -21,7 +21,7 @@ type Choice struct {
 // PendingIntent is the snapshot captured when a signal prompt is sent. The
 // callback consumer looks it up by nonce, picks Choices[slot], and replays it
 // through the order path at the chosen size. Stored in memory only; process
-// restarts wipe pending prompts (desired — 60s TTL anyway).
+// restarts wipe pending prompts (desired — 10min TTL anyway).
 type PendingIntent struct {
 	Nonce     string
 	Market    string
@@ -44,7 +44,7 @@ type PendingStore struct {
 // tied to the returned stop func. Call stop() on shutdown.
 func NewPendingStore(ttl time.Duration) *PendingStore {
 	if ttl <= 0 {
-		ttl = 60 * time.Second
+		ttl = 10 * time.Minute
 	}
 	return &PendingStore{ttl: ttl, m: make(map[string]PendingIntent)}
 }

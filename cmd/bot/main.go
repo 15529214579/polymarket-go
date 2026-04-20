@@ -303,7 +303,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 		defer cancel()
 		_ = notifier.Close(sctx)
 	}()
-	pending := notify.NewPendingStore(60 * time.Second)
+	pending := notify.NewPendingStore(10 * time.Minute)
 	slog.Info("paper_client.ready", "slippage_bp", slippageBp, "per_pos_usd", posCfg.PerPositionUSD)
 	slog.Info("risk.ready",
 		"bankroll_usd", riskCfg.StartingBankrollUSD,
@@ -574,7 +574,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 						TailUps:   sig.TailUps,
 						TailLen:   sig.TailLen,
 						BuyRatio:  sig.BuyRatio,
-						ExpiresIn: 60 * time.Second,
+						ExpiresIn: 10 * time.Minute,
 					})
 					slog.Info("signal_prompt_sent",
 						"asset", short(sig.AssetID),

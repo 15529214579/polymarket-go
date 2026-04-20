@@ -141,7 +141,7 @@ func FormatRiskResume(ev RiskResumeEvent) string {
 //	  [按钮行]
 //	选 <outcome> (当前 0.xxxx):
 //	  [按钮行]
-//	按钮 60s 内有效
+//	按钮 10m 内有效
 func FormatSignalPrompt(ev SignalPromptEvent) string {
 	var b strings.Builder
 
@@ -190,9 +190,9 @@ func FormatSignalPrompt(ev SignalPromptEvent) string {
 
 	ttl := ev.ExpiresIn
 	if ttl <= 0 {
-		ttl = 60 * time.Second
+		ttl = 10 * time.Minute
 	}
-	fmt.Fprintf(&b, "\n按钮 %ds 内有效", int(ttl.Seconds()))
+	fmt.Fprintf(&b, "\n按钮 %s 内有效", humanizeTTL(ttl))
 	return b.String()
 }
 
@@ -292,6 +292,18 @@ func HumanizeEndIn(now, end time.Time) string {
 		return fmt.Sprintf("%dh %02dm", h, m)
 	}
 	return fmt.Sprintf("%dm", m)
+}
+
+func humanizeTTL(d time.Duration) string {
+	if d >= time.Minute {
+		m := int(d / time.Minute)
+		s := int((d % time.Minute) / time.Second)
+		if s == 0 {
+			return fmt.Sprintf("%dm", m)
+		}
+		return fmt.Sprintf("%dm%02ds", m, s)
+	}
+	return fmt.Sprintf("%ds", int(d.Seconds()))
 }
 
 func truncateStr(s string, n int) string {
