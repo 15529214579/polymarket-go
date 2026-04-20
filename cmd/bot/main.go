@@ -1297,10 +1297,17 @@ type buyHandler struct {
 	holdToSettlement bool
 }
 
-func (h *buyHandler) OnBuy(ctx context.Context, nonce string, slot int, sizeUSD float64) (string, error) {
+func (h *buyHandler) OnBuy(ctx context.Context, nonce string, slot int, sizeUSD float64, messageID int64) (string, error) {
 	now := time.Now()
 	p, ok := h.pending.Claim(nonce, now)
 	if !ok {
+		// Strip stale buttons so the boss can't keep poking an already-dead prompt.
+		// Only fires when the daemon has never seen the nonce (old session) or the
+		// pending already expired — genuine risk/dedupe rejections preserve the
+		// keyboard so the boss can retry or pick a different size.
+		if h.notifier != nil && messageID != 0 {
+			h.notifier.EditSignalExpired(messageID)
+		}
 		return "", fmt.Errorf("已过期或已点过")
 	}
 	if slot < 0 || slot >= len(p.Choices) {

@@ -15,21 +15,23 @@ import (
 type stubHandler struct {
 	calls atomic.Int64
 	last  struct {
-		nonce string
-		slot  int
-		size  float64
+		nonce     string
+		slot      int
+		size      float64
+		messageID int64
 	}
 	ack string
 	err error
 	mu  sync.Mutex
 }
 
-func (s *stubHandler) OnBuy(ctx context.Context, nonce string, slot int, size float64) (string, error) {
+func (s *stubHandler) OnBuy(ctx context.Context, nonce string, slot int, size float64, messageID int64) (string, error) {
 	s.calls.Add(1)
 	s.mu.Lock()
 	s.last.nonce = nonce
 	s.last.slot = slot
 	s.last.size = size
+	s.last.messageID = messageID
 	s.mu.Unlock()
 	return s.ack, s.err
 }
@@ -176,6 +178,9 @@ func TestLongPoll_DispatchesValidBuy(t *testing.T) {
 	}
 	if h.last.nonce != "nonce1" || h.last.slot != 1 || h.last.size != 5 {
 		t.Fatalf("got nonce=%q slot=%d size=%v", h.last.nonce, h.last.slot, h.last.size)
+	}
+	if h.last.messageID != 1 {
+		t.Fatalf("messageID not plumbed: got %d, want 1", h.last.messageID)
 	}
 	ft.mu.Lock()
 	defer ft.mu.Unlock()

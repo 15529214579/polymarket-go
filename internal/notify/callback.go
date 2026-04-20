@@ -18,7 +18,7 @@ import (
 // Slot indexes into PendingIntent.Choices (YES/NO etc). The ack string (if
 // any) is surfaced as the Telegram toast on the clicker's screen.
 type CallbackHandler interface {
-	OnBuy(ctx context.Context, nonce string, slot int, sizeUSD float64) (ack string, err error)
+	OnBuy(ctx context.Context, nonce string, slot int, sizeUSD float64, messageID int64) (ack string, err error)
 }
 
 // LongPollConfig bounds a single long-poll consumer. Use a DEDICATED bot token
@@ -193,7 +193,7 @@ func (l *LongPoll) dispatch(ctx context.Context, u tgUpdate) {
 		"from", cq.From.Username,
 	)
 
-	ack, err := l.handler.OnBuy(ctx, nonce, slot, size)
+	ack, err := l.handler.OnBuy(ctx, nonce, slot, size, cq.Message.MessageID)
 	if err != nil {
 		l.answerCallback(ctx, cq.ID, "❌ "+truncate(err.Error(), 180), true)
 		return
