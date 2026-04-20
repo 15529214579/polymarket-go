@@ -290,6 +290,7 @@ func runDetect(ctx context.Context, topN, windowSec int) error {
 	det := strategy.NewDetector(cfg, sampler)
 	exitCfg := strategy.DefaultExitConfig()
 	exit := strategy.NewExitTracker(exitCfg)
+	pm := strategy.NewPositionManager(strategy.DefaultPositionConfig())
 
 	go func() {
 		if err := sampler.Run(ctx, ws.Books(), ws.Trades()); err != nil && ctx.Err() == nil {
@@ -330,6 +331,11 @@ func runDetect(ctx context.Context, topN, windowSec int) error {
 						continue
 					}
 					if sig, fired := exit.OnTick(tail[0]); fired {
+						closed, err := pm.Close(sig.AssetID, sig)
+						if err != nil {
+							slog.Warn("paper_close_miss", "asset", short(sig.AssetID), "err", err.Error())
+						}
+						stats := pm.Stats()
 						slog.Info("exit",
 							"asset", short(sig.AssetID),
 							"q", assetToQ[sig.AssetID],
@@ -340,6 +346,9 @@ func runDetect(ctx context.Context, topN, windowSec int) error {
 							"delta_pp", sig.ChangePP,
 							"drawdown_pp", sig.DrawdownPP,
 							"held_sec", int(sig.HeldFor.Seconds()),
+							"pnl_usd", closed.PnLUSD,
+							"open_positions", stats.Open,
+							"realized_pnl", stats.RealizedPnLUSD,
 						)
 					}
 				}
@@ -366,19 +375,32 @@ func runDetect(ctx context.Context, topN, windowSec int) error {
 					"buy_ratio", sig.BuyRatio,
 					"reason", sig.Reason,
 				)
-				// Paper-open a position; exit tracker will watch for reversal / stop / timeout.
-				if exit.Has(sig.AssetID) {
-					continue
-				}
+				// Paper-open a position; PositionManager enforces dedupe + exposure caps,
+				// ExitTracker watches for reversal / stop / timeout.
 				entryTick := feed.Tick{
 					AssetID: sig.AssetID, Market: sig.Market,
 					Time: sig.Time, Mid: sig.Mid,
 				}
+				pos, err := pm.Open(sig.AssetID, sig.Market, entryTick)
+				if err != nil {
+					slog.Info("paper_open_skip",
+						"asset", short(sig.AssetID),
+						"q", assetToQ[sig.AssetID],
+						"reason", err.Error(),
+					)
+					continue
+				}
 				exit.Open(sig.AssetID, sig.Market, entryTick)
+				stats := pm.Stats()
 				slog.Info("paper_open",
+					"id", pos.ID,
 					"asset", short(sig.AssetID),
 					"q", assetToQ[sig.AssetID],
 					"entry", sig.Mid,
+					"size_usd", pos.SizeUSD,
+					"units", pos.Units,
+					"open_positions", stats.Open,
+					"total_exposure_usd", stats.TotalExposure,
 				)
 			}
 		}

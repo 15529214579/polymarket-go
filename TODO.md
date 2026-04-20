@@ -34,14 +34,17 @@
 ### Phase 2 — 策略层（2 天）
 - [x] 动量信号检测（N秒涨幅、tick 单调性、主动成交占比）— 04-20 00:42 `internal/strategy/detector.go` 上线，`./bin/bot -mode=detect -markets=10 -window=30` 75s 实测首发信号：LOUD vs Leviatan LCS Game 1 Winner, Δ+4.00pp, tail 4/5 ups, buy_ratio 1.00. 5min per-asset cooldown 生效。
 - [x] 出场信号（反转、止损、超时）— 04-20 08:45 `internal/strategy/exit.go` 上线，ExitTracker：反转(3下行tick/2pp回撤) + 3pp硬止损 + 30min超时。5 个单测全过；主 detect 模式 paper-open→exit 链路已接；75s 实盘烟测此时段 LoL 盘全平静未触发（预期）。
-- [ ] 仓位管理（单仓去重、总敞口）
+- [x] 仓位管理（单仓去重、总敞口）— 04-20 10:41 `internal/strategy/position.go` 上线，`PositionManager`：per-asset/per-market 双重去重（拒绝同市场 YES+NO 同开）、MaxOpenPositions=6、MaxTotalOpen=45 USDC（50% of 90 本金）。实时 PnL 用 units×(exit-entry)。6 个单测全过（open/close/dedupe-by-market/dedupe-by-asset/max caps/reopen）。detect 模式已接 `pm.Open → exit.Open → pm.Close`；45s 实盘烟测此时段无信号（market quiet，预期）。**Phase 2 完成。**
 
-### Phase 3 — 下单（1-2 天，方案 A：自签+broadcast）
+### Phase 3 — 下单（1-2 天，方案 A：自签+broadcast，**直接按 V2 出生**）
+> 04-20 10:36 老板拍板：Paper 顺延到 Apr 29，cutover 后 wrap + 实盘。
+- [ ] Phase 3.0 前置（Apr 28 19:00 SGT cutover 后执行）：Bitwarden 取私钥 → Collateral Onramp `wrap(90.41 USDC.e)` → 拿等量 pUSD
 - [ ] Bitwarden 取助记词 → 派生私钥（启动时只驻内存）
-- [ ] EIP-712 typed data 签名（Polymarket CLOB order struct）
-- [ ] CLOB REST `/order` POST 客户端
+- [ ] EIP-712 typed data 签名（**V2** order struct：去 `taker/expiration/nonce/feeRateBps`，加 `timestamp/metadata/builder`；domain version `"2"`，V2 Exchange 地址）
+- [ ] CLOB **V2** REST `/order` POST 客户端
 - [ ] 成交回执轮询 + status 机
 - [ ] Paper mode（同一路径但不发真单，记模拟 fill）
+- [ ] **Apr 28 cutover 当天 WSS 烟测**：18:45 SGT 待机 → 20:15 SGT 跑 `-mode=detect` 20min，验 3 种消息类型帧结构
 
 ### Phase 3.5 — 半自动点选下单（Hybrid UX，不急）
 > 信号推 DM → 按钮点选 1U / 5U / 10U → 回调触发同一签名路径下单。依赖 Phase 2 信号 + Phase 3 下单。
@@ -58,10 +61,12 @@
 - [ ] telegram webhook 推送关键事件
 - [ ] 日结报表 cron
 
-### Phase 5 — Paper 跑 7 天
-- [ ] Day 1-3：数据/信号合理性检查
-- [ ] Day 4-7：策略参数微调
-- [ ] Day 7：出 paper 报表 → 老板审 → 打款 → 实盘
+### Phase 5 — Paper 跑 8 天（Apr 20 → Apr 28 cutover）
+> 04-20 10:36 老板拍板 A：顺延 Paper 跨过 V2 cutover，Apr 29 起实盘（原 7 天 → 8 天）
+- [ ] Day 1-3（Apr 20-22）：数据/信号合理性检查
+- [ ] Day 4-7（Apr 23-26）：策略参数微调
+- [ ] Day 8（Apr 27-28）：出 paper 报表；28 日晚 cutover 烟测 + wrap USDC→pUSD
+- [ ] **Apr 29**：老板 review paper + V2 验证 → 实盘启用
 
 ## ✅ 已完成
 
@@ -74,6 +79,9 @@
 - [x] 2026-04-20 00:09 — Phase 1.2/1.3 完成：真 WSS dial + book/price_change/last_trade_price 解码 + 本地 orderbook 重建；活 LEC 盘 VIT/GIANTX 实时 bid/ask 跑通
 - [x] 2026-04-20 00:13 — 老板预存启动资金到 Go 钱包：90.405327 USDC.e + 111.030024 POL，Day 0 PnL 基准已锁定（SPEC §5.1）
 - [x] 2026-04-20 00:42 — Phase 2.1 完成：momentum detector 上线并在实盘 LCS Game 1 Winner 触发首个信号（Δ+4pp、tail 4/5、buy_ratio 1.0）
+- [x] 2026-04-20 08:45 — Phase 2.2 完成：ExitTracker（反转/止损/超时 4 规则，5 单测）
+- [x] 2026-04-20 10:36 — SPEC/TODO 对齐 Polymarket V2 迁移：Paper 顺延 Apr 29，Phase 3 直接按 V2 签名，cutover 当天 wrap USDC→pUSD + WSS 烟测
+- [x] 2026-04-20 10:41 — Phase 2.3 完成：PositionManager（双重去重 + 敞口/仓位数上限，6 单测）；detect 链路 pm.Open → exit.Open → pm.Close 闭环。**Phase 2 整层通关。**
 
 ## ❌ 不做
 

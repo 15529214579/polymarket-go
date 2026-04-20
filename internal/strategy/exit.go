@@ -59,8 +59,9 @@ func DefaultExitConfig() ExitConfig {
 	}
 }
 
-// Position is an open paper/real position tracked by ExitTracker.
-type Position struct {
+// trackedPosition is ExitTracker's per-asset runtime state.
+// Public position bookkeeping lives in PositionManager (position.go).
+type trackedPosition struct {
 	AssetID   string
 	Market    string
 	EntryTime time.Time
@@ -76,14 +77,14 @@ type Position struct {
 // Thread model: feed ticks in from one goroutine; callers pull ExitSignal from Signals().
 type ExitTracker struct {
 	cfg  ExitConfig
-	pos  map[string]*Position
+	pos  map[string]*trackedPosition
 	out  chan ExitSignal
 }
 
 func NewExitTracker(cfg ExitConfig) *ExitTracker {
 	return &ExitTracker{
 		cfg: cfg,
-		pos: map[string]*Position{},
+		pos: map[string]*trackedPosition{},
 		out: make(chan ExitSignal, 64),
 	}
 }
@@ -96,7 +97,7 @@ func (e *ExitTracker) Open(assetID, market string, entry feed.Tick) {
 	if _, exists := e.pos[assetID]; exists {
 		return
 	}
-	e.pos[assetID] = &Position{
+	e.pos[assetID] = &trackedPosition{
 		AssetID:   assetID,
 		Market:    market,
 		EntryTime: entry.Time,
@@ -157,7 +158,7 @@ func (e *ExitTracker) OnTick(t feed.Tick) (ExitSignal, bool) {
 	return ExitSignal{}, false
 }
 
-func (e *ExitTracker) close(p *Position, t feed.Tick, reason ExitReason) ExitSignal {
+func (e *ExitTracker) close(p *trackedPosition, t feed.Tick, reason ExitReason) ExitSignal {
 	sig := ExitSignal{
 		AssetID:    p.AssetID,
 		Market:     p.Market,

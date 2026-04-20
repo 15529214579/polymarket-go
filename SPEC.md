@@ -56,11 +56,28 @@
 - 零 python 耦合、零订单污染
 - 签名密钥只在本地内存持有，启动时从 Bitwarden 拉
 
-## 5. 生命周期
+## 5. 生命周期（2026-04-20 10:36 调整：Polymarket V2 cutover 对齐）
 
-- **Day 0-7：** Paper trade（只记录不发单，对照实盘价格模拟 PnL）
-- **Day 7：** 老板 review paper 结果 → 实盘启用（资金已预存，见 §5.1）
+- **Day 0-8：** Paper trade，从 Apr 20 到 **Apr 28 cutover 结束**（原 7 天 → 8 天，跨过 V2 切换窗口）
+- **Apr 28 19:00 SGT：** Polymarket CLOB V2 cutover（~1h downtime，open order 清空，collateral 换 pUSD）
+  - Cutover 后立即执行：USDC.e `wrap()` → pUSD（Phase 3.0）
+  - 执行 WSS 帧烟测（3 种消息类型验证）
+- **Apr 29：** 老板 review paper + V2 验证结果 → 实盘启用
 - **实盘上限：** 启动资金 `90.41 USDC.e`（老板 2026-04-20 00:13 预存）
+
+### 5.2 Polymarket V2 迁移要点（2026-04-20 10:36 入档）
+
+| 接口 | 项目用途 | V2 影响 |
+|---|---|---|
+| `gamma-api.polymarket.com/markets` | Phase 1.1 市场发现 | 🟢 基本不变 |
+| `wss://ws-subscriptions-clob.polymarket.com/ws/market` | Phase 1.2/1.3/1.4 | 🟢 URL 与 book/price_change 结构基本不变，cutover 当天仍需烟测 |
+| CLOB REST `/order` POST + EIP-712 签名 | Phase 3（未写） | 🔴 schema 完全改，直接按 V2 出生 |
+| Collateral | USDC.e → **pUSD** | 🔴 cutover 后必须 `wrap()`，否则无法下单 |
+
+**Phase 3 签名代码直接按 V2 写：**
+- EIP-712 domain version `"2"`，使用新 Exchange 合约地址
+- Order struct 去掉 `taker/expiration/nonce/feeRateBps`，加 `timestamp/metadata/builder`
+- 不实现 V1 兼容分支
 
 ### 5.1 启动资金（2026-04-20 00:13 SGT 快照）
 
@@ -97,5 +114,5 @@
 
 1. ~~下单通道 A/B~~ → **A 已定（04-19 23:34）**
 2. "上升利好"具体参数（N秒、M tick、阈值）— 先按默认跑 paper，1-2 天后调
-3. 实盘首轮打款额度
+3. ~~Paper → 实盘切换日~~ → **Apr 29（V2 cutover 后，04-20 10:36 定）**
 4. 是否需要 Discord/其他告警冗余（目前只推 telegram 私聊）
