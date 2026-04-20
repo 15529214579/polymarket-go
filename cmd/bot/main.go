@@ -753,10 +753,22 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 						OpenPositions: pm.Stats().Open,
 					})
 				}
-				// Detect resume transition (boss manually resumed, or day rolled
-				// over while the breaker was a pure daily-loss one — in practice
-				// SPEC says we don't auto-clear, but keep this wired for when
-				// we add a /resume command).
+				// Auto-resume when the breaker tripped ONLY because of feed
+				// silence and feed has recovered for a healthy interval. In
+				// paper mode this is benign: stale prices can't lose real
+				// money, and manual intervention every time a WSS hiccup hits
+				// just starves us of data. Daily-loss + manual-pause still
+				// require an explicit human resume.
+				if st.Blocked && st.BlockReason == risk.BlockFeedSilence &&
+					silent < time.Duration(riskCfg.FeedSilenceSec)*time.Second/2 {
+					rm.Resume()
+					slog.Info("risk_auto_resume",
+						"prev_reason", string(risk.BlockFeedSilence),
+						"silent_sec", int(silent.Seconds()),
+					)
+					st = rm.State()
+				}
+				// Detect resume transition (auto or manual).
 				if prevBlocked && !st.Blocked {
 					notifier.RiskResume(notify.RiskResumeEvent{
 						PrevReason:    prevReason,

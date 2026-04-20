@@ -109,10 +109,14 @@ func (c *GammaClient) ListActiveMarkets(ctx context.Context, pageLimit int) ([]M
 
 // IsLoLMarket — real LoL markets on Polymarket always have "LoL:" prefix
 // in the question or "lol-" in the slug, so match on those to avoid matching
-// substrings like "election" (contains "lec").
+// substrings like "election" (contains "lec"). Excludes non-moneyline
+// derivatives (handicap / totals / O-U) that ride the same slug prefix.
 func IsLoLMarket(m Market) bool {
 	q := strings.ToLower(m.Question)
 	slug := strings.ToLower(m.Slug)
+	if !isMoneylineQuestion(q) || !isMoneylineSlug(slug) {
+		return false
+	}
 	if strings.HasPrefix(q, "lol:") || strings.HasPrefix(q, "lol ") {
 		return true
 	}
@@ -123,6 +127,24 @@ func IsLoLMarket(m Market) bool {
 		return true
 	}
 	return false
+}
+
+// isMoneylineQuestion — reject questions that are derivatives (handicap,
+// totals, over/under, prop, parlay). Polymarket surfaces these under the
+// same event slug as the moneyline so the slug-only filter isn't enough.
+func isMoneylineQuestion(q string) bool {
+	for _, bad := range []string{
+		"game handicap", "games total", "total:",
+		"over/under", "o/u", "spread", "prop", "parlay",
+		"exact score", "end in a draw", "leading at halftime",
+		"halftime result", "halftime winner", "first to score",
+		"both teams to score", "correct score",
+	} {
+		if strings.Contains(q, bad) {
+			return false
+		}
+	}
+	return true
 }
 
 // In-play daily sport matchups: slug shape `<league>-<teamA>-<teamB>-YYYY-MM-DD...`.
@@ -147,8 +169,9 @@ func isMoneylineSlug(slug string) bool {
 
 // IsBasketballMarket — NBA daily matchups + NBA playoff series winners, moneyline only.
 func IsBasketballMarket(m Market) bool {
+	q := strings.ToLower(m.Question)
 	slug := strings.ToLower(m.Slug)
-	if !isMoneylineSlug(slug) {
+	if !isMoneylineSlug(slug) || !isMoneylineQuestion(q) {
 		return false
 	}
 	return reNBADaily.MatchString(slug) || reNBAPlayoffs.MatchString(slug)
@@ -156,8 +179,9 @@ func IsBasketballMarket(m Market) bool {
 
 // IsFootballMarket — soccer daily matchups (EPL only for now), moneyline only.
 func IsFootballMarket(m Market) bool {
+	q := strings.ToLower(m.Question)
 	slug := strings.ToLower(m.Slug)
-	if !isMoneylineSlug(slug) {
+	if !isMoneylineSlug(slug) || !isMoneylineQuestion(q) {
 		return false
 	}
 	return reEPLDaily.MatchString(slug)
