@@ -30,7 +30,7 @@ func TestPositionManager_OpenAndClose(t *testing.T) {
 		AssetID: "asset-A", Market: "cond-1", Time: now.Add(2 * time.Minute),
 		EntryMid: 0.40, ExitMid: 0.46, Reason: ExitReversalTicks,
 	}
-	closed, err := pm.Close("asset-A", exit)
+	closed, err := pm.Close(p.ID, exit)
 	if err != nil {
 		t.Fatalf("close: %v", err)
 	}
@@ -46,30 +46,74 @@ func TestPositionManager_OpenAndClose(t *testing.T) {
 	}
 }
 
-func TestPositionManager_DedupeByMarket(t *testing.T) {
+// Stacking: same market on opposite sides may hold concurrent positions.
+func TestPositionManager_StacksByMarket(t *testing.T) {
 	pm := NewPositionManager(DefaultPositionConfig())
 	now := time.Now()
-	if _, err := pm.Open("yes-token", "cond-1", tick(0.6, now)); err != nil {
+	yes, err := pm.Open("yes-token", "cond-1", tick(0.6, now))
+	if err != nil {
 		t.Fatalf("open yes: %v", err)
 	}
-	// NO side of the SAME market must be rejected.
-	if _, err := pm.Open("no-token", "cond-1", tick(0.4, now)); !errors.Is(err, ErrMarketAlreadyOpen) {
-		t.Fatalf("want ErrMarketAlreadyOpen, got %v", err)
+	no, err := pm.Open("no-token", "cond-1", tick(0.4, now))
+	if err != nil {
+		t.Fatalf("open no (stacking should be allowed): %v", err)
 	}
-	// Different market OK.
-	if _, err := pm.Open("yes-token-2", "cond-2", tick(0.5, now)); err != nil {
-		t.Fatalf("open cond-2: %v", err)
+	if yes.ID == no.ID {
+		t.Fatalf("expected distinct position IDs, got %q/%q", yes.ID, no.ID)
+	}
+	if got := pm.Stats().Open; got != 2 {
+		t.Fatalf("expected 2 open, got %d", got)
 	}
 }
 
-func TestPositionManager_DedupeByAsset(t *testing.T) {
+// Stacking: same asset can hold many concurrent positions (used by manual
+// click-to-buy when the boss fires 1U then 5U then 10U on one prompt).
+func TestPositionManager_StacksByAsset(t *testing.T) {
 	pm := NewPositionManager(DefaultPositionConfig())
 	now := time.Now()
-	if _, err := pm.Open("asset-A", "", tick(0.5, now)); err != nil {
+	p1, err := pm.Open("asset-A", "", tick(0.5, now))
+	if err != nil {
 		t.Fatalf("open1: %v", err)
 	}
-	if _, err := pm.Open("asset-A", "", tick(0.5, now)); !errors.Is(err, ErrAssetAlreadyOpen) {
-		t.Fatalf("want ErrAssetAlreadyOpen, got %v", err)
+	p2, err := pm.Open("asset-A", "", tick(0.5, now))
+	if err != nil {
+		t.Fatalf("open2 (stacking should be allowed): %v", err)
+	}
+	if p1.ID == p2.ID {
+		t.Fatalf("expected distinct IDs, got %q/%q", p1.ID, p2.ID)
+	}
+	if got := pm.Stats().Open; got != 2 {
+		t.Fatalf("expected 2 open, got %d", got)
+	}
+}
+
+// CloseFirstByAsset closes the oldest stacked position and leaves the rest.
+func TestPositionManager_CloseFirstByAsset(t *testing.T) {
+	pm := NewPositionManager(DefaultPositionConfig())
+	now := time.Now()
+	oldest, err := pm.Open("asset-A", "m", tick(0.5, now))
+	if err != nil {
+		t.Fatal(err)
+	}
+	newer, err := pm.Open("asset-A", "m", tick(0.55, now.Add(5*time.Second)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed, err := pm.CloseFirstByAsset("asset-A", ExitSignal{
+		AssetID: "asset-A", Market: "m", Time: now.Add(time.Minute),
+		EntryMid: 0.5, ExitMid: 0.6, Reason: ExitReversalTicks,
+	})
+	if err != nil {
+		t.Fatalf("close first: %v", err)
+	}
+	if closed.ID != oldest.ID {
+		t.Fatalf("expected oldest %q closed, got %q", oldest.ID, closed.ID)
+	}
+	if got := pm.Stats().Open; got != 1 {
+		t.Fatalf("expected 1 remaining, got %d", got)
+	}
+	if !pm.Has("asset-A") {
+		t.Fatalf("newer %q should still be open", newer.ID)
 	}
 }
 
@@ -115,10 +159,11 @@ func TestPositionManager_InvalidEntry(t *testing.T) {
 func TestPositionManager_ReopenAfterClose(t *testing.T) {
 	pm := NewPositionManager(DefaultPositionConfig())
 	now := time.Now()
-	if _, err := pm.Open("a", "m", tick(0.5, now)); err != nil {
+	p, err := pm.Open("a", "m", tick(0.5, now))
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pm.Close("a", ExitSignal{AssetID: "a", Market: "m", Time: now.Add(time.Minute), EntryMid: 0.5, ExitMid: 0.55, Reason: ExitReversalTicks}); err != nil {
+	if _, err := pm.Close(p.ID, ExitSignal{AssetID: "a", Market: "m", Time: now.Add(time.Minute), EntryMid: 0.5, ExitMid: 0.55, Reason: ExitReversalTicks}); err != nil {
 		t.Fatal(err)
 	}
 	// Re-opening the same asset is fine once the previous closed.

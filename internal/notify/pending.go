@@ -70,7 +70,7 @@ func (s *PendingStore) Put(in PendingIntent, now time.Time) PendingIntent {
 }
 
 // Claim looks up and removes a nonce in one shot (prevents button replay).
-// Returns (_, false) if missing or expired.
+// Returns (_, false) if missing or expired. Prefer Peek for paper stacking.
 func (s *PendingStore) Claim(nonce string, now time.Time) (PendingIntent, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -79,6 +79,22 @@ func (s *PendingStore) Claim(nonce string, now time.Time) (PendingIntent, bool) 
 		return PendingIntent{}, false
 	}
 	delete(s.m, nonce)
+	if now.After(p.ExpiresAt) {
+		return PendingIntent{}, false
+	}
+	return p, true
+}
+
+// Peek looks up a nonce without deleting it, so the same prompt can be
+// clicked repeatedly inside its TTL. Used by paper-mode stacking. Returns
+// (_, false) if missing or expired; an expired entry is left to the reaper.
+func (s *PendingStore) Peek(nonce string, now time.Time) (PendingIntent, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.m[nonce]
+	if !ok {
+		return PendingIntent{}, false
+	}
 	if now.After(p.ExpiresAt) {
 		return PendingIntent{}, false
 	}

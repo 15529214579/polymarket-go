@@ -59,21 +59,23 @@ type PositionStats struct {
 }
 
 var (
-	ErrAssetAlreadyOpen  = errors.New("asset already has open position")
-	ErrMarketAlreadyOpen = errors.New("market already has open position (different side)")
-	ErrMaxPositions      = errors.New("max concurrent positions reached")
-	ErrMaxExposure       = errors.New("max total exposure reached")
-	ErrInvalidEntry      = errors.New("invalid entry mid")
-	ErrPositionNotFound  = errors.New("no open position for asset")
+	ErrMaxPositions     = errors.New("max concurrent positions reached")
+	ErrMaxExposure      = errors.New("max total exposure reached")
+	ErrInvalidEntry     = errors.New("invalid entry mid")
+	ErrPositionNotFound = errors.New("no open position for id/asset")
 )
 
 // PositionManager is the single source of truth for open/closed positions.
-// Concurrent-safe; the detect loop opens on signals, the exit watcher closes on exit signals.
+// Stacking is allowed: the same asset (and the same market) can hold multiple
+// concurrent positions — dedupe is intentionally absent so the paper run can
+// accumulate samples per market. Exposure and position-count caps still apply.
+// Concurrent-safe.
 type PositionManager struct {
 	cfg      PositionConfig
 	mu       sync.Mutex
-	open     map[string]*Position // by AssetID
-	byMarket map[string]string    // market → assetID (dedupe across YES/NO)
+	open     map[string]*Position            // by posID
+	byAsset  map[string]map[string]*Position // assetID → posID set
+	byMarket map[string]map[string]*Position // marketID → posID set
 	closed   []*Position
 	nextID   int
 }
@@ -82,27 +84,27 @@ func NewPositionManager(cfg PositionConfig) *PositionManager {
 	return &PositionManager{
 		cfg:      cfg,
 		open:     make(map[string]*Position),
-		byMarket: make(map[string]string),
+		byAsset:  make(map[string]map[string]*Position),
+		byMarket: make(map[string]map[string]*Position),
 	}
 }
 
-// Has returns true if assetID currently holds an open position.
+// Has returns true if assetID currently holds at least one open position.
 func (pm *PositionManager) Has(assetID string) bool {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
-	_, ok := pm.open[assetID]
-	return ok
+	return len(pm.byAsset[assetID]) > 0
 }
 
-// HasMarket returns true if conditionID has ANY side (YES/NO) open.
+// HasMarket returns true if the market currently holds at least one open
+// position on any side.
 func (pm *PositionManager) HasMarket(market string) bool {
 	if market == "" {
 		return false
 	}
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
-	_, ok := pm.byMarket[market]
-	return ok
+	return len(pm.byMarket[market]) > 0
 }
 
 // Open books a paper position at entry.Mid using the default PerPositionUSD
@@ -112,9 +114,10 @@ func (pm *PositionManager) Open(assetID, market string, entry feed.Tick) (*Posit
 	return pm.OpenSized(assetID, market, entry, pm.cfg.PerPositionUSD)
 }
 
-// OpenSized books a paper position at an explicit size. Used by the manual
-// button-select path where the boss picks 1 / 5 / 10 USDC per click. All the
-// dedupe + exposure caps that Open enforces still apply.
+// OpenSized books a paper position at an explicit size. Stacking allowed —
+// caller can open many positions on the same asset/market; only exposure and
+// count caps fail. Used by both the auto signal loop and the manual
+// button-select path (Phase 3.5, 1/5/10 USDC per click).
 func (pm *PositionManager) OpenSized(assetID, market string, entry feed.Tick, sizeUSD float64) (*Position, error) {
 	if entry.Mid <= 0 || entry.Mid >= 1 {
 		return nil, fmt.Errorf("%w: mid=%v", ErrInvalidEntry, entry.Mid)
@@ -125,14 +128,6 @@ func (pm *PositionManager) OpenSized(assetID, market string, entry feed.Tick, si
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
-	if _, ok := pm.open[assetID]; ok {
-		return nil, ErrAssetAlreadyOpen
-	}
-	if market != "" {
-		if _, ok := pm.byMarket[market]; ok {
-			return nil, ErrMarketAlreadyOpen
-		}
-	}
 	if len(pm.open) >= pm.cfg.MaxOpenPositions {
 		return nil, ErrMaxPositions
 	}
@@ -151,34 +146,79 @@ func (pm *PositionManager) OpenSized(assetID, market string, entry feed.Tick, si
 		EntryTime: entry.Time,
 		Status:    PosOpen,
 	}
-	pm.open[assetID] = p
+	pm.open[p.ID] = p
+	if pm.byAsset[assetID] == nil {
+		pm.byAsset[assetID] = map[string]*Position{}
+	}
+	pm.byAsset[assetID][p.ID] = p
 	if market != "" {
-		pm.byMarket[market] = assetID
+		if pm.byMarket[market] == nil {
+			pm.byMarket[market] = map[string]*Position{}
+		}
+		pm.byMarket[market][p.ID] = p
 	}
 	return p, nil
 }
 
-// Close realizes PnL against the exit signal and moves the position to closed.
-// PnL (paper): units × (exit - entry). Returns the closed copy.
-func (pm *PositionManager) Close(assetID string, exit ExitSignal) (Position, error) {
+// Close realizes PnL against the exit signal for the given posID and moves
+// the position to closed. PnL (paper): units × (exit - entry). Returns the
+// closed copy.
+func (pm *PositionManager) Close(posID string, exit ExitSignal) (Position, error) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
-	p, ok := pm.open[assetID]
+	p, ok := pm.open[posID]
 	if !ok {
 		return Position{}, ErrPositionNotFound
 	}
+	pm.closeLocked(p, exit)
+	return *p, nil
+}
+
+// CloseFirstByAsset closes the oldest open position for assetID. Kept as a
+// convenience for the exit-watch path which signals by asset, not by posID.
+// When multiple positions are stacked the remainder stay open — subsequent
+// exit events (or settlement) will close them.
+func (pm *PositionManager) CloseFirstByAsset(assetID string, exit ExitSignal) (Position, error) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	set := pm.byAsset[assetID]
+	if len(set) == 0 {
+		return Position{}, ErrPositionNotFound
+	}
+	var oldest *Position
+	for _, p := range set {
+		if oldest == nil || p.EntryTime.Before(oldest.EntryTime) {
+			oldest = p
+		}
+	}
+	pm.closeLocked(oldest, exit)
+	return *oldest, nil
+}
+
+// closeLocked mutates state; caller must hold pm.mu.
+func (pm *PositionManager) closeLocked(p *Position, exit ExitSignal) {
 	p.ExitMid = exit.ExitMid
 	p.ExitTime = exit.Time
 	p.ExitReason = exit.Reason
 	p.PnLUSD = p.Units * (exit.ExitMid - p.EntryMid)
 	p.Status = PosClosed
 
-	delete(pm.open, assetID)
+	delete(pm.open, p.ID)
+	if set := pm.byAsset[p.AssetID]; set != nil {
+		delete(set, p.ID)
+		if len(set) == 0 {
+			delete(pm.byAsset, p.AssetID)
+		}
+	}
 	if p.Market != "" {
-		delete(pm.byMarket, p.Market)
+		if set := pm.byMarket[p.Market]; set != nil {
+			delete(set, p.ID)
+			if len(set) == 0 {
+				delete(pm.byMarket, p.Market)
+			}
+		}
 	}
 	pm.closed = append(pm.closed, p)
-	return *p, nil
 }
 
 // Snapshot returns a copy of all open positions sorted by entry time.

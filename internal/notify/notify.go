@@ -344,18 +344,6 @@ func HumanizeEndIn(now, end time.Time) string {
 	return fmt.Sprintf("%dm", m)
 }
 
-func humanizeTTL(d time.Duration) string {
-	if d >= time.Minute {
-		m := int(d / time.Minute)
-		s := int((d % time.Minute) / time.Second)
-		if s == 0 {
-			return fmt.Sprintf("%dm", m)
-		}
-		return fmt.Sprintf("%dm%02ds", m, s)
-	}
-	return fmt.Sprintf("%ds", int(d.Seconds()))
-}
-
 func truncateStr(s string, n int) string {
 	if len(s) <= n {
 		return s

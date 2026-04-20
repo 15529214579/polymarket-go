@@ -339,7 +339,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 		defer cancel()
 		_ = notifier.Close(sctx)
 	}()
-	pending := notify.NewPendingStore(10 * time.Minute)
+	pending := notify.NewPendingStore(2 * time.Hour)
 	slog.Info("paper_client.ready", "slippage_bp", slippageBp, "per_pos_usd", posCfg.PerPositionUSD)
 	slog.Info("risk.ready",
 		"bankroll_usd", riskCfg.StartingBankrollUSD,
@@ -483,7 +483,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 						// reflects paper slippage.
 						sig.ExitMid = res.AvgPrice
 						sig.ChangePP = (res.AvgPrice - sig.EntryMid) * 100
-						closed, err := pm.Close(sig.AssetID, sig)
+						closed, err := pm.CloseFirstByAsset(sig.AssetID, sig)
 						if err != nil {
 							slog.Warn("paper_close_miss", "asset", short(sig.AssetID), "err", err.Error())
 							continue
@@ -590,16 +590,9 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 					)
 					continue
 				}
-				// Dedupe checks before we bother submitting to the paper client;
-				// avoids polluting history with rejected paper orders.
-				if pm.Has(sig.AssetID) || pm.HasMarket(sig.Market) {
-					slog.Info("paper_open_skip",
-						"asset", short(sig.AssetID),
-						"q", metaQ(meta, sig.AssetID),
-						"reason", "already_open",
-					)
-					continue
-				}
+				// Paper stacking: no per-asset/per-market dedupe here. Auto mode
+				// still has a 5-min cooldown in detector.go so one asset can't
+				// spam opens, and pm enforces MaxOpenPositions + exposure caps.
 
 				// Prompt mode: publish the signal as a DM with one button row per
 				// outcome (YES/NO or team-A/team-B) and stash the full Choices slice
@@ -890,9 +883,9 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 						ChangePP: (settleMid - p.EntryMid) * 100,
 						Reason:   strategy.ExitSettlement,
 					}
-					closed, cerr := pm.Close(p.AssetID, sig)
+					closed, cerr := pm.Close(p.ID, sig)
 					if cerr != nil {
-						slog.Warn("settlement_close_miss", "asset", short(p.AssetID), "err", cerr.Error())
+						slog.Warn("settlement_close_miss", "pos", p.ID, "asset", short(p.AssetID), "err", cerr.Error())
 						continue
 					}
 					orderID := fmt.Sprintf("settle-%s", short(p.AssetID))
@@ -1311,12 +1304,13 @@ type buyHandler struct {
 
 func (h *buyHandler) OnBuy(ctx context.Context, nonce string, slot int, sizeUSD float64, messageID int64) (string, error) {
 	now := time.Now()
-	p, ok := h.pending.Claim(nonce, now)
+	// Peek rather than Claim so the boss can stack multiple paper orders on
+	// the same prompt (1U then 5U then 10U) until the 2h TTL. The reaper
+	// edits the message to "已过期" on expiry; here we only hit the "unknown
+	// nonce" branch if the daemon never saw it (restart wiped memory) or it
+	// already reaped.
+	p, ok := h.pending.Peek(nonce, now)
 	if !ok {
-		// Strip stale buttons so the boss can't keep poking an already-dead prompt.
-		// Only fires when the daemon has never seen the nonce (old session) or the
-		// pending already expired — genuine risk/dedupe rejections preserve the
-		// keyboard so the boss can retry or pick a different size.
 		if h.notifier != nil && messageID != 0 {
 			h.notifier.EditSignalExpired(messageID)
 		}
@@ -1330,9 +1324,8 @@ func (h *buyHandler) OnBuy(ctx context.Context, nonce string, slot int, sizeUSD 
 		st := h.rm.State()
 		return "", fmt.Errorf("风控阻止: %s (day_pnl=%.2f)", st.BlockReason, st.DayRealizedPnL)
 	}
-	if h.pm.Has(choice.AssetID) || h.pm.HasMarket(p.Market) {
-		return "", fmt.Errorf("已有同市场仓位")
-	}
+	// No dedupe: paper stacks per asset/market. pm still enforces
+	// MaxOpenPositions + MaxTotalOpenUSD caps below.
 	intent := order.Intent{
 		AssetID: choice.AssetID,
 		Market:  p.Market,
@@ -1375,8 +1368,10 @@ func (h *buyHandler) OnBuy(ctx context.Context, nonce string, slot int, sizeUSD 
 		"total_exposure_usd", stats.TotalExposure,
 	)
 
-	// Phase 3.5 B + C: rewrite the original prompt to "已下单 …" + strip buttons,
-	// and push a durable archive DM so the boss has a permanent record.
+	// Paper stacking: keep the prompt live with its keyboard so the boss can
+	// fire additional sizes against the same nonce. Only the durable receipt
+	// DM fires — no EditSignalFilled (that stripped keys in V1). The reaper
+	// will edit to "已过期" at TTL.
 	receipt := notify.FillReceiptEvent{
 		Question: metaQ(h.meta, choice.AssetID),
 		Match:    metaMatch(h.meta, choice.AssetID),
@@ -1388,7 +1383,6 @@ func (h *buyHandler) OnBuy(ctx context.Context, nonce string, slot int, sizeUSD 
 		Source:   "manual",
 	}
 	if h.notifier != nil {
-		h.notifier.EditSignalFilled(receipt, p.MessageID)
 		h.notifier.FillReceipt(receipt)
 	}
 
