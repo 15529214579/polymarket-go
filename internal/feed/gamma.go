@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -124,11 +125,64 @@ func IsLoLMarket(m Market) bool {
 	return false
 }
 
+// In-play daily sport matchups: slug shape `<league>-<teamA>-<teamB>-YYYY-MM-DD...`.
+// Seasonal futures (e.g. "will-the-lakers-win-the-2026-nba-finals") do not match
+// and are intentionally excluded — they don't move on our 60s momentum horizon.
+var (
+	reNBADaily    = regexp.MustCompile(`^nba-[a-z]{2,4}-[a-z]{2,4}-\d{4}-\d{2}-\d{2}`)
+	reNBAPlayoffs = regexp.MustCompile(`^nba-playoffs-`) // series-winner in-play
+	reEPLDaily    = regexp.MustCompile(`^epl-[a-z]{2,4}-[a-z]{2,4}-\d{4}-\d{2}-\d{2}`)
+)
+
+// isMoneylineSlug — exclude derivatives (spread / total / over-under / prop)
+// so we only take clean win-probability markets where momentum semantics hold.
+func isMoneylineSlug(slug string) bool {
+	for _, bad := range []string{"-spread-", "-total-", "-ou-", "-over-", "-under-", "-prop-", "-parlay-"} {
+		if strings.Contains(slug, bad) {
+			return false
+		}
+	}
+	return true
+}
+
+// IsBasketballMarket — NBA daily matchups + NBA playoff series winners, moneyline only.
+func IsBasketballMarket(m Market) bool {
+	slug := strings.ToLower(m.Slug)
+	if !isMoneylineSlug(slug) {
+		return false
+	}
+	return reNBADaily.MatchString(slug) || reNBAPlayoffs.MatchString(slug)
+}
+
+// IsFootballMarket — soccer daily matchups (EPL only for now), moneyline only.
+func IsFootballMarket(m Market) bool {
+	slug := strings.ToLower(m.Slug)
+	if !isMoneylineSlug(slug) {
+		return false
+	}
+	return reEPLDaily.MatchString(slug)
+}
+
+// IsSportsMarket — union of LoL + basketball + football (soccer). Used for
+// subscription targeting. Keep narrow: only in-play daily / series markets.
+func IsSportsMarket(m Market) bool {
+	return IsLoLMarket(m) || IsBasketballMarket(m) || IsFootballMarket(m)
+}
+
 // FilterLoL returns only LoL markets from a list.
 func FilterLoL(ms []Market) []Market {
+	return filterBy(ms, IsLoLMarket)
+}
+
+// FilterSports — LoL + NBA (daily+playoffs) + EPL daily.
+func FilterSports(ms []Market) []Market {
+	return filterBy(ms, IsSportsMarket)
+}
+
+func filterBy(ms []Market, pred func(Market) bool) []Market {
 	out := make([]Market, 0, len(ms))
 	for _, m := range ms {
-		if IsLoLMarket(m) {
+		if pred(m) {
 			out = append(out, m)
 		}
 	}

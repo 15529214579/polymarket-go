@@ -75,6 +75,8 @@
 ### Phase 5 — Paper 跑 8 天（Apr 20 → Apr 28 cutover）
 > 04-20 10:36 老板拍板 A：顺延 Paper 跨过 V2 cutover，Apr 29 起实盘（原 7 天 → 8 天）
 - [x] 2026-04-20 13:54 — Day-1 paper detect daemon 起飞：`scripts/bot-daemon.sh start` → `-mode=detect -signal_mode=auto -markets=20 -window=60`，logs 进 `db/agent.{log,err}`，pidfile `db/bot.pid`。`cron-poke.sh` 每 20 min 自动重启如果挂掉。startup ok：detect.start markets=20 assets=40，wss connected，risk 0/13.56 cap，notify telegram，sidecar long-poll ready。
+- [x] 2026-04-20 16:03 — **多体育扩容**（老板 15:57 问"lol 数据不够，足球篮球也加上"）：`feed.FilterSports` 扩到 LoL + NBA daily/playoffs + EPL daily（moneyline 独占，`-spread-/-total-/-ou-/-over-/-under-/-prop-/-parlay-` 后缀一律排除）。gamma.discover 从 42 条 LoL → 111 条 sports；当前 top-20 订阅分布 `lol=5 / basketball=11 / football=4`。gamma_test.go 新增 LoL/NBA/EPL/union 4 套测试覆盖 seasonal futures 排除、derivative 排除、union 顺序。daemon 已用新 bin 重启（pid=69791，detect.start 绿）。
+- [x] 2026-04-20 16:03 — **heartbeat state.json 即时刷新**（老板 A：修 last_commit 20min 滞后 race）：`scripts/install-hooks.sh` + `.git/hooks/post-commit` 上线，每次 commit 后异步 disown `cron-poke.sh` 立刻重写 state.json，0s 滞后；`make hooks` 一键重装。不阻塞 commit UX（nohup + disown + 吞 error）。
 - [ ] Day 1-3（Apr 20-22）：信号密度 + 假阳性观察（每 4-6h 看一次 db/agent.log，凑足 20+ 信号样本）
 - [ ] Day 4-7（Apr 23-26）：策略参数微调
 - [ ] Day 8（Apr 27-28）：出 paper 报表；28 日晚 cutover 烟测 + wrap USDC→pUSD

@@ -26,7 +26,7 @@ import (
 
 func main() {
 	mode := flag.String("mode", "run", "run | discover | feed | sample | detect | prompt-test | daily-report")
-	maxMarkets := flag.Int("markets", 20, "top-N LoL markets by vol24h to subscribe")
+	maxMarkets := flag.Int("markets", 20, "top-N sports markets (LoL + NBA daily/playoffs + EPL daily) by vol24h to subscribe")
 	windowSec := flag.Int("window", 60, "sampler window in seconds")
 	slippageBp := flag.Float64("slippage_bp", 0, "paper fill slippage in bp applied against you")
 	largeFillUSD := flag.Float64("large_fill_usd", 3.0, "DM notifier threshold on |realized pnl|")
@@ -95,11 +95,16 @@ func runDiscover(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	lol := feed.FilterLoL(all)
-	slog.Info("gamma.discover", "total_active", len(all), "lol", len(lol))
-	for _, m := range lol {
+	mkts := feed.FilterSports(all)
+	slog.Info("gamma.discover",
+		"total_active", len(all),
+		"sports", len(mkts),
+		"lol", len(feed.FilterLoL(all)),
+		"nba_epl_playoffs", len(mkts)-len(feed.FilterLoL(all)),
+	)
+	for _, m := range mkts {
 		tokens := m.ClobTokenIDs()
-		slog.Info("lol_market",
+		slog.Info("sports_market",
 			"q", m.Question,
 			"slug", m.Slug,
 			"vol24h", m.Volume24hr,
@@ -118,21 +123,21 @@ func runFeed(ctx context.Context, topN int) error {
 	if err != nil {
 		return err
 	}
-	lol := feed.FilterLoL(all)
-	if len(lol) == 0 {
-		return fmt.Errorf("no active LoL markets")
+	mkts := feed.FilterSports(all)
+	if len(mkts) == 0 {
+		return fmt.Errorf("no active sports markets")
 	}
-	if topN > len(lol) {
-		topN = len(lol)
+	if topN > len(mkts) {
+		topN = len(mkts)
 	}
-	lol = lol[:topN]
+	mkts = mkts[:topN]
 
-	meta := buildAssetMeta(lol)
+	meta := buildAssetMeta(mkts)
 	assetIDs := make([]string, 0, len(meta))
 	for id := range meta {
 		assetIDs = append(assetIDs, id)
 	}
-	slog.Info("feed.start", "markets", len(lol), "assets", len(assetIDs))
+	slog.Info("feed.start", "markets", len(mkts), "assets", len(assetIDs))
 
 	ws := feed.NewWSSClient(assetIDs)
 
@@ -191,21 +196,21 @@ func runSample(ctx context.Context, topN, windowSec int) error {
 	if err != nil {
 		return err
 	}
-	lol := feed.FilterLoL(all)
-	if len(lol) == 0 {
-		return fmt.Errorf("no active LoL markets")
+	mkts := feed.FilterSports(all)
+	if len(mkts) == 0 {
+		return fmt.Errorf("no active sports markets")
 	}
-	if topN > len(lol) {
-		topN = len(lol)
+	if topN > len(mkts) {
+		topN = len(mkts)
 	}
-	lol = lol[:topN]
+	mkts = mkts[:topN]
 
-	meta := buildAssetMeta(lol)
+	meta := buildAssetMeta(mkts)
 	assetIDs := make([]string, 0, len(meta))
 	for id := range meta {
 		assetIDs = append(assetIDs, id)
 	}
-	slog.Info("sample.start", "markets", len(lol), "assets", len(assetIDs), "window_sec", windowSec)
+	slog.Info("sample.start", "markets", len(mkts), "assets", len(assetIDs), "window_sec", windowSec)
 
 	ws := feed.NewWSSClient(assetIDs)
 	sampler := feed.NewSampler(windowSec)
@@ -284,21 +289,28 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUS
 	if err != nil {
 		return err
 	}
-	lol := feed.FilterLoL(all)
-	if len(lol) == 0 {
-		return fmt.Errorf("no active LoL markets")
+	mkts := feed.FilterSports(all)
+	if len(mkts) == 0 {
+		return fmt.Errorf("no active sports markets")
 	}
-	if topN > len(lol) {
-		topN = len(lol)
+	if topN > len(mkts) {
+		topN = len(mkts)
 	}
-	lol = lol[:topN]
+	mkts = mkts[:topN]
 
-	meta := buildAssetMeta(lol)
+	meta := buildAssetMeta(mkts)
 	assetIDs := make([]string, 0, len(meta))
 	for id := range meta {
 		assetIDs = append(assetIDs, id)
 	}
-	slog.Info("detect.start", "markets", len(lol), "assets", len(assetIDs), "window_sec", windowSec)
+	slog.Info("detect.start",
+		"markets", len(mkts),
+		"lol", countBy(mkts, feed.IsLoLMarket),
+		"basketball", countBy(mkts, feed.IsBasketballMarket),
+		"football", countBy(mkts, feed.IsFootballMarket),
+		"assets", len(assetIDs),
+		"window_sec", windowSec,
+	)
 
 	ws := feed.NewWSSClient(assetIDs)
 	sampler := feed.NewSampler(windowSec)
@@ -807,6 +819,16 @@ func topWindow(ws []feed.WindowStats, n int) []feed.WindowStats {
 	return out[:n]
 }
 
+func countBy(ms []feed.Market, pred func(feed.Market) bool) int {
+	n := 0
+	for _, m := range ms {
+		if pred(m) {
+			n++
+		}
+	}
+	return n
+}
+
 func short(id string) string {
 	if len(id) <= 10 {
 		return id
@@ -916,17 +938,17 @@ func runPromptTest(ctx context.Context, slippageBp float64) error {
 	if err != nil {
 		return err
 	}
-	lol := feed.FilterLoL(all)
-	if len(lol) == 0 {
-		return fmt.Errorf("no active LoL markets")
+	mkts := feed.FilterSports(all)
+	if len(mkts) == 0 {
+		return fmt.Errorf("no active sports markets")
 	}
-	top := lol[0]
+	top := mkts[0]
 	tokens := top.ClobTokenIDs()
 	if len(tokens) == 0 {
 		return fmt.Errorf("top market has no clob tokens: %s", top.Slug)
 	}
 	assetID := tokens[0]
-	meta := buildAssetMeta(lol)
+	meta := buildAssetMeta(mkts)
 
 	posCfg := strategy.DefaultPositionConfig()
 	pm := strategy.NewPositionManager(posCfg)

@@ -1,6 +1,6 @@
 GO ?= /usr/local/go/bin/go
 
-.PHONY: build test lint run tidy
+.PHONY: build test lint run tidy hooks
 
 build:
 	$(GO) build -o bin/bot ./cmd/bot
@@ -16,3 +16,6 @@ lint:
 
 tidy:
 	$(GO) mod tidy
+
+hooks:
+	./scripts/install-hooks.sh
