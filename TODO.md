@@ -41,9 +41,8 @@
 - [x] 2026-04-20 11:4x — Phase 3.a 骨架：`internal/order/` Intent/Result/Client 接口 + PaperClient（slippage 模型）+ 7 单测 ✅
 - [x] 2026-04-20 11:4x — Phase 3.b：PaperClient 接进 detect 循环。signal → `Buy Intent` Submit → 用 fill 价开仓；exit → `Sell Intent` Submit → 用 fill 价平仓 → 实现 slippage-priced PnL。新增 `-slippage_bp` flag，order_id 写入日志。35s 实盘烟测：paper_client.ready 正常，无信号（market quiet）。build+test 绿。
 - [ ] Phase 3.0 前置（Apr 28 19:00 SGT cutover 后执行）：Bitwarden 取私钥 → Collateral Onramp `wrap(90.41 USDC.e)` → 拿等量 pUSD
-- [ ] Bitwarden 取助记词 → 派生私钥（启动时只驻内存）
-- [ ] EIP-712 typed data 签名（**V2** order struct：去 `taker/expiration/nonce/feeRateBps`，加 `timestamp/metadata/builder`；domain version `"2"`，V2 Exchange 地址）
-- [ ] CLOB **V2** REST `/order` POST 客户端
+- [x] 2026-04-21 00:2x — **Phase 3.c 钱包 + EIP-712 V2 签名骨架**：`internal/order/wallet.go`（BIP-39 mnemonic → BIP-44 `m/44'/60'/0'/0/0` → 内存 `*ecdsa.PrivateKey`，永不落盘/入日志；`LoadMnemonicFromBitwarden(item, field)` 直调 `bw get item` + JSON 解析，无 shell 拼接）+ `internal/order/signer_v2.go`（`V2Order` struct 按 SPEC §5.2 字段集；`EIP712HashV2Order` 走 `apitypes.TypedData`；`V2ExchangeAddress` 常量先空，`RequireExchangeAddress` 拒绝空地址；`SigSide/SigType` enum）。9 单测：known mnemonic 对齐 Hardhat acct0 `0xf39Fd...2266` / custom HD path / 空 mnemonic 拒 / 乱 mnemonic 拒 / 65-byte sig + V∈{27,28} + 恢复地址匹配 / 短 digest 拒 / 必填 bigint 拒 / 确定性哈希 / 签名-恢复端到端。`go-ethereum v1.17.2` + `miguelmota/go-ethereum-hdwallet v0.1.3` 入 go.mod。build/test/lint 全绿。**未接进 daemon** — 等 cutover 锁 ExchangeAddress + CLOB REST 后再拼 Submit()。
+- [ ] CLOB **V2** REST `/order` POST 客户端（等 4-28 cutover 锁 endpoint + Exchange 地址）
 - [ ] 成交回执轮询 + status 机
 - [ ] **Apr 28 cutover 当天 WSS 烟测**：18:45 SGT 待机 → 20:15 SGT 跑 `-mode=detect` 20min，验 3 种消息类型帧结构
 

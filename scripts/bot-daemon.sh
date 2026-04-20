@@ -29,11 +29,12 @@ start() {
   ( cd "$ROOT" && go build -o bin/bot ./cmd/bot ) || { echo "build failed"; exit 1; }
   cd "$ROOT" || exit 1
   shift_args=("${@:2}")
-  # Default mode: prompt-only (R3: no auto-open; boss hand-picks via DM buttons),
-  # 20 markets, 60s window, Phase 7.b ladder exits (TP1 +15% / TP2 +30% /
-  # SL -10% / 4h timeout). fee_bp=0 matches CLOB V1 reality — flip after
-  # 2026-04-28 V2 cutover. Override by passing extra args.
-  args=(-mode=detect -signal_mode=prompt -exit_mode=ladder -markets=20 -window=60 -fee_bp=0)
+  # Default mode (2026-04-21 00:12 SGT, R3 auto-open 放开): auto-open 恢复用于
+  # paper 样本积累，和 R3 的其余护栏叠加 — SL 5% (Phase 7.e)，价带 0.15-0.70
+  # (Phase 7.a)，ladder TP1 +15% / TP2 +30% / 4h timeout (Phase 7.b)。
+  # fee_bp=0 匹配 CLOB V1 实测，2026-04-28 V2 cutover 后再调。实盘签名仍
+  # 走 Phase 3（未完成），当前 paper-only。
+  args=(-mode=detect -signal_mode=auto -exit_mode=ladder -markets=20 -window=60 -fee_bp=0)
   if [ "${#shift_args[@]}" -gt 0 ]; then
     args=("${shift_args[@]}")
   fi
