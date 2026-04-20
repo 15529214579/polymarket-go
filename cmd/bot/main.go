@@ -10,7 +10,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/15529214579/polymarket-go/internal/config"
 	"github.com/15529214579/polymarket-go/internal/feed"
+	"github.com/15529214579/polymarket-go/internal/notify"
 	"github.com/15529214579/polymarket-go/internal/order"
 	"github.com/15529214579/polymarket-go/internal/risk"
 	"github.com/15529214579/polymarket-go/internal/strategy"
@@ -21,10 +23,16 @@ func main() {
 	maxMarkets := flag.Int("markets", 20, "top-N LoL markets by vol24h to subscribe")
 	windowSec := flag.Int("window", 60, "sampler window in seconds")
 	slippageBp := flag.Float64("slippage_bp", 0, "paper fill slippage in bp applied against you")
+	largeFillUSD := flag.Float64("large_fill_usd", 3.0, "DM notifier threshold on |realized pnl|")
+	envFile := flag.String("env_file", ".env.local", "dotenv file to load before reading env")
 	flag.Parse()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
+
+	if err := config.LoadDotEnv(*envFile); err != nil {
+		slog.Warn("dotenv_load_warn", "path", *envFile, "err", err.Error())
+	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -46,7 +54,7 @@ func main() {
 			os.Exit(1)
 		}
 	case "detect":
-		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp); err != nil && ctx.Err() == nil {
+		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *largeFillUSD); err != nil && ctx.Err() == nil {
 			slog.Error("detect failed", "err", err)
 			os.Exit(1)
 		}
@@ -254,7 +262,7 @@ func runSample(ctx context.Context, topN, windowSec int) error {
 	return ws.Run(ctx)
 }
 
-func runDetect(ctx context.Context, topN, windowSec int, slippageBp float64) error {
+func runDetect(ctx context.Context, topN, windowSec int, slippageBp, largeFillUSD float64) error {
 	gc := feed.NewGammaClient()
 	all, err := gc.ListActiveMarkets(ctx, 500)
 	if err != nil {
@@ -298,12 +306,19 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp float64) err
 	paper := order.NewPaperClient(slippageBp)
 	riskCfg := risk.DefaultConfig()
 	rm := risk.New(riskCfg, time.Now())
+	notifier := buildNotifier()
+	defer func() {
+		sctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_ = notifier.Close(sctx)
+	}()
 	slog.Info("paper_client.ready", "slippage_bp", slippageBp, "per_pos_usd", posCfg.PerPositionUSD)
 	slog.Info("risk.ready",
 		"bankroll_usd", riskCfg.StartingBankrollUSD,
 		"daily_loss_cap_usd", rm.State().DayLossCapUSD,
 		"max_single_loss_usd", riskCfg.MaxSingleLossUSD,
 		"feed_silence_sec", riskCfg.FeedSilenceSec,
+		"large_fill_usd", largeFillUSD,
 	)
 
 	go func() {
@@ -378,6 +393,25 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp float64) err
 								"day_pnl_usd", rst.DayRealizedPnL,
 								"cap_usd", rst.DayLossCapUSD,
 							)
+							notifier.RiskTrip(notify.RiskTripEvent{
+								Reason:        string(rst.BlockReason),
+								DayPnLUSD:     rst.DayRealizedPnL,
+								DayLossCapUSD: rst.DayLossCapUSD,
+								OpenPositions: stats.Open,
+							})
+						}
+						if closed.PnLUSD <= -largeFillUSD || closed.PnLUSD >= largeFillUSD {
+							notifier.LargeFill(notify.LargeFillEvent{
+								Question: assetToQ[sig.AssetID],
+								AssetID:  sig.AssetID,
+								Side:     "sell",
+								SizeUSD:  posCfg.PerPositionUSD,
+								PnLUSD:   closed.PnLUSD,
+								EntryPx:  sig.EntryMid,
+								ExitPx:   res.AvgPrice,
+								Reason:   string(sig.Reason),
+								HeldSec:  int(sig.HeldFor.Seconds()),
+							})
 						}
 						slog.Info("exit",
 							"asset", short(sig.AssetID),
@@ -497,6 +531,8 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp float64) err
 		tk := time.NewTicker(5 * time.Second)
 		defer tk.Stop()
 		lastSummary := time.Now()
+		prevBlocked := false
+		prevReason := ""
 		for {
 			select {
 			case <-ctx.Done():
@@ -506,11 +542,34 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp float64) err
 					rm.OnFeedHeartbeat(at)
 				}
 				silent, tripped := rm.CheckFeed(now)
+				st := rm.State()
 				if tripped {
 					slog.Error("risk_trip",
 						"reason", string(risk.BlockFeedSilence),
 						"silent_sec", int(silent.Seconds()),
 					)
+					notifier.RiskTrip(notify.RiskTripEvent{
+						Reason:        string(risk.BlockFeedSilence),
+						DayPnLUSD:     st.DayRealizedPnL,
+						DayLossCapUSD: st.DayLossCapUSD,
+						SilentSec:     int(silent.Seconds()),
+						OpenPositions: pm.Stats().Open,
+					})
+				}
+				// Detect resume transition (boss manually resumed, or day rolled
+				// over while the breaker was a pure daily-loss one — in practice
+				// SPEC says we don't auto-clear, but keep this wired for when
+				// we add a /resume command).
+				if prevBlocked && !st.Blocked {
+					notifier.RiskResume(notify.RiskResumeEvent{
+						PrevReason:    prevReason,
+						DayPnLUSD:     st.DayRealizedPnL,
+						DayLossCapUSD: st.DayLossCapUSD,
+					})
+				}
+				prevBlocked = st.Blocked
+				if st.Blocked {
+					prevReason = string(st.BlockReason)
 				}
 				if now.Sub(lastSummary) >= 60*time.Second {
 					lastSummary = now
@@ -577,4 +636,17 @@ func short(id string) string {
 		return id
 	}
 	return id[:6] + ".." + id[len(id)-4:]
+}
+
+// buildNotifier returns a Telegram notifier when TELEGRAM_BOT_TOKEN + _CHAT_ID
+// are present, otherwise a Nop so the trading loop is unconditional.
+func buildNotifier() notify.Notifier {
+	tok := os.Getenv("TELEGRAM_BOT_TOKEN")
+	chat := os.Getenv("TELEGRAM_CHAT_ID")
+	if tok == "" || chat == "" {
+		slog.Info("notify.ready", "mode", "nop", "reason", "telegram_env_missing")
+		return notify.Nop{}
+	}
+	slog.Info("notify.ready", "mode", "telegram", "chat_id", chat)
+	return notify.NewTelegram(notify.TelegramConfig{BotToken: tok, ChatID: chat})
 }
