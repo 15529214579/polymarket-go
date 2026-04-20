@@ -100,11 +100,30 @@ func main() {
 	defaultDB := filepath.Join(os.Getenv("HOME"), ".openclaw", "workspace-dev3", "polymarket-agent", "db", "polymarket_agent.db")
 	dbPath := flag.String("db", defaultDB, "python polymarket-agent sqlite db path")
 	minGap := flag.Float64("min_gap", 5.0, "minimum abs(gap_pp) to include in analysis")
+	mode := flag.String("mode", "summary", "summary | tpsl-sweep")
+	feeBP := flag.Float64("fee_bp", 0, "per-leg fee (bp); round-trip = 2x")
 	flag.Parse()
 
-	if err := run(*dbPath, *minGap); err != nil {
+	if err := dispatch(*mode, *dbPath, *minGap, *feeBP); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
+	}
+}
+
+func dispatch(mode, dbPath string, minGap, feeBP float64) error {
+	switch mode {
+	case "summary":
+		return run(dbPath, minGap)
+	case "tpsl-sweep":
+		uri := fmt.Sprintf("file:%s?mode=ro&immutable=1", dbPath)
+		db, err := sql.Open("sqlite", uri)
+		if err != nil {
+			return fmt.Errorf("open db: %w", err)
+		}
+		defer db.Close()
+		return runTpslSweep(context.Background(), db, feeBP)
+	default:
+		return fmt.Errorf("unknown mode: %s", mode)
 	}
 }
 

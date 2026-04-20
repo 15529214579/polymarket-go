@@ -106,7 +106,13 @@
     - 默认：TP1 +15% 清 50%，TP2 +30% 清余下 100%，SL -10% 清 100%，MaxHold 4h；fee 默认 0（V1 实测），cutover 后按 V2 官方数字调 flag
     - 单测：LadderTracker 状态机（TP1→TP2 链、SL 一击清、timeout、jitter 容忍、未知 asset 安全）+ PartialClose tranche 数学
 - ~~**Phase 7.c 长尾市场扫描**~~ — 04-20 21:42 老板拍板**不做**：政治/长尾周期与 90 USDC 资金体量不匹配。
-- [ ] **Phase 7.d 历史回放**：灌 python trades 的 market_id × entry_price 进 Go backtester，跑 ladder_TP 策略得期望曲线和最大回撤；过关才谈实盘。
+- [x] 2026-04-20 22:1x — **Phase 7.d TP/SL 端点回放**：`cmd/backtest -mode=tpsl-sweep [-fee_bp=N]` 上线。读 python 183 笔 closed trades（YES/NO 归一到 `pnl/capital` 自然回报率），端点近似扫 TP ∈ {5,10,15,20,30,40,50,75,100}% × SL ∈ {0,5,10,15,20,30}%。9 笔能 join `odds_snapshot` 的做 peak/trough 对照（保守：同时触及判 SL）。结论写 `reports/tpsl_sweep.md`：
+    - baseline 无 TP/SL：avg_ret -16.62% · hit 4.4% · sum -30.41 · mdd 46.50
+    - 最佳端点配置：**TP=100% / SL=5%** → sum -0.23（~平手），tp_hit 6 / sl_hit 151 / natural 26
+    - 底部 5 配置全是 SL=0 任意 TP → sum -47~-48 → **SL 是主导杠杆，TP 次要**
+    - 费率敏感：100bp/leg (2% round-trip) 让最佳从 -0.23 → -3.89，仍近平手
+    - 样本限制：端点近似**低估** TP 命中率（mid-hold 触达后回落的没计入）；path-aware 只有 n=9 不足以下结论
+- [ ] **Phase 7.e tick 路径持久化**（真回放前置）：daemon 把 sampler 1Hz tick 写盘，paper open→close 窗内 tick 序列入 SQLite/JSONL。跑 3-7 天后用自家 momentum entry 的真路径重跑 sweep，替代端点近似。没有 7.e 的情况下，7.d 结论只能作方向，不能作实盘参数。
 
 当前所有 >Phase 7 的计划（3.0 wrap / 3 V2 签名 / 实盘）**暂停**，cutover 还是到，但实盘 go-live 视 7.d 结果。
 
