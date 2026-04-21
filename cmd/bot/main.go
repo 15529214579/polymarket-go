@@ -53,6 +53,17 @@ func main() {
 	ladderTP2Frac := flag.Float64("ladder_tp2_frac", 1.00, "fraction of initial units to close on TP2 (1.0 = all remaining)")
 	ladderSLPct := flag.Float64("ladder_sl_pct", 0.05, "ladder stop-loss: exit ≤ entry × (1 - this) closes 100%")
 	ladderMaxHold := flag.Duration("ladder_max_hold", 4*time.Hour, "ladder hard timeout — closes remainder")
+	// Phase 7.g lottery comparison strategy (SPEC §2.5). Parallel to momentum:
+	// scan subscribed assets, open a small paper position when mid is in the
+	// low-price band, hold to settlement, journal with source=lottery so PnL
+	// can be diffed vs momentum. LoL gets a tighter floor because LoL upsets
+	// are rare once the game starts (predictable metagame).
+	lotteryEnabled := flag.Bool("lottery_enabled", true, "Phase 7.g parallel lottery strategy (low-price + hold to settlement)")
+	lotteryMin := flag.Float64("lottery_min_price", 0.05, "lottery global floor; skips ≤ this")
+	lotteryMax := flag.Float64("lottery_max_price", 0.30, "lottery ceiling; skips > this")
+	lotteryLoLMin := flag.Float64("lottery_lol_min", 0.15, "lottery LoL-only floor; skip below (overrides global when higher)")
+	lotterySize := flag.Float64("lottery_size_usd", 1.0, "lottery entry size in USDC")
+	lotteryScan := flag.Duration("lottery_scan_interval", 5*time.Minute, "lottery scanner cadence")
 	flag.Parse()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -90,7 +101,14 @@ func main() {
 			SLPct:   *ladderSLPct,
 			MaxHold: *ladderMaxHold,
 		}
-		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg); err != nil && ctx.Err() == nil {
+		lottCfg := strategy.LotteryConfig{
+			MinPrice:     *lotteryMin,
+			MaxPrice:     *lotteryMax,
+			LoLMinPrice:  *lotteryLoLMin,
+			SizeUSD:      *lotterySize,
+			ScanInterval: *lotteryScan,
+		}
+		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg); err != nil && ctx.Err() == nil {
 			slog.Error("detect failed", "err", err)
 			os.Exit(1)
 		}
@@ -300,7 +318,7 @@ func runSample(ctx context.Context, topN, windowSec int) error {
 	return ws.Run(ctx)
 }
 
-func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig) error {
+func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig) error {
 	if signalMode != "auto" && signalMode != "prompt" {
 		return fmt.Errorf("invalid signal_mode %q (want auto|prompt)", signalMode)
 	}
@@ -343,6 +361,17 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 	assetIDs := make([]string, 0, len(meta))
 	for id := range meta {
 		assetIDs = append(assetIDs, id)
+	}
+	// Per-asset sport family for lottery-mode filtering (SPEC §2.5).
+	assetSport := make(map[string]strategy.SportFamily, len(meta))
+	for _, m := range mkts {
+		family := strategy.ClassifySport(m)
+		for _, tok := range m.ClobTokenIDs() {
+			if tok == "" {
+				continue
+			}
+			assetSport[tok] = family
+		}
 	}
 	slog.Info("detect.start",
 		"markets", len(mkts),
@@ -396,6 +425,15 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 		"large_fill_usd", largeFillUSD,
 	)
 	slog.Info("signal_mode.ready", "mode", signalMode)
+	if lotteryEnabled {
+		slog.Info("lottery.ready",
+			"min_price", lotteryCfg.MinPrice,
+			"max_price", lotteryCfg.MaxPrice,
+			"lol_min_price", lotteryCfg.LoLMinPrice,
+			"size_usd", lotteryCfg.SizeUSD,
+			"scan_interval", lotteryCfg.ScanInterval.String(),
+		)
+	}
 	slog.Info("exit_mode.ready",
 		"mode", exitMode,
 		"want_settlement", wantSettlement,
@@ -1028,6 +1066,79 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 			}
 		}
 	}()
+
+	// Phase 7.g lottery scanner: periodically scan for low-price underdog
+	// assets, open small paper positions, hold to settlement. Journal with
+	// source=lottery so PnL can be compared vs momentum strategy.
+	lotteryOpen := make(map[string]bool) // assetID → already has lottery position (guarded by single-writer goroutine)
+	if lotteryEnabled {
+		go func() {
+			tk := time.NewTicker(lotteryCfg.ScanInterval)
+			defer tk.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-tk.C:
+					if err := rm.AllowOpen(time.Now()); err != nil {
+						continue
+					}
+					candidates := strategy.ScanEligible(sampler, assetSport, lotteryCfg)
+					for _, c := range candidates {
+						if lotteryOpen[c.AssetID] {
+							continue
+						}
+						buyIntent := order.Intent{
+							AssetID: c.AssetID,
+							Market:  c.Market,
+							Side:    order.Buy,
+							SizeUSD: lotteryCfg.SizeUSD,
+							LimitPx: c.Mid,
+							Type:    order.GTC,
+						}
+						res, err := paper.Submit(ctx, buyIntent)
+						if err != nil {
+							slog.Warn("lottery_buy_reject",
+								"asset", short(c.AssetID),
+								"mid", c.Mid,
+								"sport", string(c.Sport),
+								"err", err.Error())
+							continue
+						}
+						entryTick := feed.Tick{
+							AssetID: c.AssetID, Market: c.Market,
+							Time: c.Time, Mid: res.AvgPrice,
+						}
+						pos, err := pm.Open(c.AssetID, c.Market, entryTick)
+						if err != nil {
+							slog.Info("lottery_open_skip",
+								"asset", short(c.AssetID),
+								"q", metaQ(meta, c.AssetID),
+								"reason", err.Error())
+							continue
+						}
+						_ = pm.SetOpenFee(pos.ID, res.FeeUSD)
+						lotteryOpen[c.AssetID] = true
+						src.Mark(pos.ID, "lottery", res.OrderID)
+						stats := pm.Stats()
+						slog.Info("lottery_open",
+							"id", pos.ID,
+							"order_id", res.OrderID,
+							"asset", short(c.AssetID),
+							"q", metaQ(meta, c.AssetID),
+							"mid", c.Mid,
+							"sport", string(c.Sport),
+							"entry_fill", res.AvgPrice,
+							"size_usd", pos.SizeUSD,
+							"units", pos.Units,
+							"open_positions", stats.Open,
+							"total_exposure_usd", stats.TotalExposure,
+						)
+					}
+				}
+			}
+		}()
+	}
 
 	// Feed-silence watchdog + periodic risk snapshot. SPEC §6: >30s WSS
 	// silence trips breaker. We also push a risk summary every 60s so the
