@@ -51,8 +51,8 @@ type PositionConfig struct {
 func DefaultPositionConfig() PositionConfig {
 	return PositionConfig{
 		PerPositionUSD:   5.0,
-		MaxTotalOpenUSD:  45.0, // 50% of 90 USDC starting bankroll (paper assumption)
-		MaxOpenPositions: 6,
+		MaxTotalOpenUSD:  300.0, // paper: generous cap for lottery volume
+		MaxOpenPositions: 60,
 	}
 }
 
