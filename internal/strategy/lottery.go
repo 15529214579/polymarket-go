@@ -15,6 +15,7 @@ type SportFamily string
 
 const (
 	SportLoL        SportFamily = "lol"
+	SportDota2      SportFamily = "dota2"
 	SportBasketball SportFamily = "basketball"
 	SportFootball   SportFamily = "football"
 	SportUnknown    SportFamily = "unknown"
@@ -26,6 +27,8 @@ func ClassifySport(m feed.Market) SportFamily {
 	switch {
 	case feed.IsLoLMarket(m):
 		return SportLoL
+	case feed.IsDota2Market(m):
+		return SportDota2
 	case feed.IsBasketballMarket(m):
 		return SportBasketball
 	case feed.IsFootballMarket(m):
@@ -38,21 +41,23 @@ func ClassifySport(m feed.Market) SportFamily {
 // LotteryConfig defines the lottery strategy band + per-sport floor overrides
 // and scan cadence. See SPEC §2.5.
 type LotteryConfig struct {
-	MinPrice     float64       // global lottery floor (default 0.05)
-	MaxPrice     float64       // global lottery ceiling (default 0.30)
-	LoLMinPrice  float64       // LoL-specific floor; overrides MinPrice if higher (default 0.15)
-	SizeUSD      float64       // per-entry paper size (default 1.0)
-	ScanInterval time.Duration // scanner cadence (default 5m)
+	MinPrice      float64       // global lottery floor (default 0.05)
+	MaxPrice      float64       // global lottery ceiling (default 0.30)
+	LoLMinPrice   float64       // LoL-specific floor; overrides MinPrice if higher (default 0.15)
+	Dota2MinPrice float64       // Dota 2-specific floor; overrides MinPrice if higher (default 0.15)
+	SizeUSD       float64       // per-entry paper size (default 1.0)
+	ScanInterval  time.Duration // scanner cadence (default 5m)
 }
 
 // DefaultLotteryConfig returns the SPEC §2.5 defaults.
 func DefaultLotteryConfig() LotteryConfig {
 	return LotteryConfig{
-		MinPrice:     0.05,
-		MaxPrice:     0.30,
-		LoLMinPrice:  0.15,
-		SizeUSD:      1.0,
-		ScanInterval: 5 * time.Minute,
+		MinPrice:      0.05,
+		MaxPrice:      0.30,
+		LoLMinPrice:   0.15,
+		Dota2MinPrice: 0.15,
+		SizeUSD:       1.0,
+		ScanInterval:  5 * time.Minute,
 	}
 }
 
@@ -75,8 +80,15 @@ type LotterySampler interface {
 // under cfg. LoL tightens to LoLMinPrice when it's higher than the global floor.
 func EffectiveFloor(cfg LotteryConfig, sport SportFamily) float64 {
 	floor := cfg.MinPrice
-	if sport == SportLoL && cfg.LoLMinPrice > floor {
-		floor = cfg.LoLMinPrice
+	switch sport {
+	case SportLoL:
+		if cfg.LoLMinPrice > floor {
+			floor = cfg.LoLMinPrice
+		}
+	case SportDota2:
+		if cfg.Dota2MinPrice > floor {
+			floor = cfg.Dota2MinPrice
+		}
 	}
 	return floor
 }

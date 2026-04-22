@@ -68,24 +68,47 @@ func TestIsFootballMarket(t *testing.T) {
 	}
 }
 
+func TestIsDota2Market(t *testing.T) {
+	cases := []struct {
+		slug string
+		want bool
+	}{
+		{"dota2-gl-heroic-2026-04-22", true},
+		{"dota2-gl-heroic-2026-04-22-game1", true},
+		{"dota2-xtreme-ts8-2026-04-22", true},
+		{"dota2-sar1-mouz-2026-04-22", true},
+		{"dota2-satan-ivo-2026-04-21", true},
+		{"will-a-team-from-china-win-dota-2-the-international-10", false}, // seasonal
+		{"lol-gen-g-vs-t1-2026-04-20", false},
+		{"nba-atl-nyk-2026-04-20", false},
+		{"dota2-gl-heroic-2026-04-22-spread-home-5pt5", false}, // derivative
+	}
+	for _, c := range cases {
+		if got := IsDota2Market(Market{Slug: c.slug}); got != c.want {
+			t.Errorf("%s: got %v want %v", c.slug, got, c.want)
+		}
+	}
+}
+
 func TestFilterSports_UnionAndOrder(t *testing.T) {
 	in := []Market{
 		{Slug: "lol-lec-vit-gx-2026-04-19"},
 		{Slug: "nba-atl-nyk-2026-04-20"},
 		{Slug: "epl-cry-wes-2026-04-20-cry"},
+		{Slug: "dota2-gl-heroic-2026-04-22"},
 		{Slug: "will-the-lakers-win-the-2026-nba-finals"}, // excluded
 		{Slug: "election-2026"},                           // excluded
 		{Slug: "nba-playoffs-who-will-win-series-foo-bar"},
 	}
 	out := FilterSports(in)
-	if len(out) != 4 {
-		t.Fatalf("want 4, got %d", len(out))
+	if len(out) != 5 {
+		t.Fatalf("want 5, got %d", len(out))
 	}
-	// Order preserved.
 	want := []string{
 		"lol-lec-vit-gx-2026-04-19",
 		"nba-atl-nyk-2026-04-20",
 		"epl-cry-wes-2026-04-20-cry",
+		"dota2-gl-heroic-2026-04-22",
 		"nba-playoffs-who-will-win-series-foo-bar",
 	}
 	for i, m := range out {

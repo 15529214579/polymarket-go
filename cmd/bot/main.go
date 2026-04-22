@@ -376,6 +376,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 	slog.Info("detect.start",
 		"markets", len(mkts),
 		"lol", countBy(mkts, feed.IsLoLMarket),
+		"dota2", countBy(mkts, feed.IsDota2Market),
 		"basketball", countBy(mkts, feed.IsBasketballMarket),
 		"football", countBy(mkts, feed.IsFootballMarket),
 		"assets", len(assetIDs),
