@@ -47,7 +47,7 @@ func main() {
 	// inside [min, max]. Default 0.15–0.70 matches python-db winner distribution
 	// (see reports/python_autopsy.md §4–5).
 	minEntry := flag.Float64("min_entry_price", 0.15, "signals with mid < this are filtered out (reports/python_autopsy.md §2.1)")
-	maxEntry := flag.Float64("max_entry_price", 0.50, "signals with mid > this are filtered out (tickpath sweep: 0.50+ band loses money)")
+	maxEntry := flag.Float64("max_entry_price", 0.60, "signals with mid > this are filtered out")
 	// Phase 7.b ladder TP / SL / timeout + fee modeling. Defaults are SPEC §2.4.
 	feeBp := flag.Float64("fee_bp", 0, "per-side fee in basis points of notional; default 0 matches CLOB V1 reality (update after V2 cutover)")
 	ladderTP1Pct := flag.Float64("ladder_tp1_pct", 9.99, "ladder TP1 trigger: 9.99 = effectively disabled (ride to settlement/timeout)")
