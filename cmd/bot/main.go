@@ -46,14 +46,14 @@ func main() {
 	// inside [min, max]. Default 0.15–0.70 matches python-db winner distribution
 	// (see reports/python_autopsy.md §4–5).
 	minEntry := flag.Float64("min_entry_price", 0.15, "signals with mid < this are filtered out (reports/python_autopsy.md §2.1)")
-	maxEntry := flag.Float64("max_entry_price", 0.70, "signals with mid > this are filtered out (reports/python_autopsy.md §2.2)")
+	maxEntry := flag.Float64("max_entry_price", 0.50, "signals with mid > this are filtered out (tickpath sweep: 0.50+ band loses money)")
 	// Phase 7.b ladder TP / SL / timeout + fee modeling. Defaults are SPEC §2.4.
 	feeBp := flag.Float64("fee_bp", 0, "per-side fee in basis points of notional; default 0 matches CLOB V1 reality (update after V2 cutover)")
-	ladderTP1Pct := flag.Float64("ladder_tp1_pct", 0.15, "ladder TP1 trigger: exit ≥ entry × (1 + this)")
+	ladderTP1Pct := flag.Float64("ladder_tp1_pct", 9.99, "ladder TP1 trigger: 9.99 = effectively disabled (ride to settlement/timeout)")
 	ladderTP1Frac := flag.Float64("ladder_tp1_frac", 0.50, "fraction of initial units to close on TP1")
-	ladderTP2Pct := flag.Float64("ladder_tp2_pct", 0.30, "ladder TP2 trigger: exit ≥ entry × (1 + this)")
+	ladderTP2Pct := flag.Float64("ladder_tp2_pct", 9.99, "ladder TP2 trigger: 9.99 = effectively disabled")
 	ladderTP2Frac := flag.Float64("ladder_tp2_frac", 1.00, "fraction of initial units to close on TP2 (1.0 = all remaining)")
-	ladderSLPct := flag.Float64("ladder_sl_pct", 0.05, "ladder stop-loss: exit ≤ entry × (1 - this) closes 100%")
+	ladderSLPct := flag.Float64("ladder_sl_pct", 0.15, "ladder stop-loss: exit ≤ entry × (1 - this) closes 100%")
 	ladderMaxHold := flag.Duration("ladder_max_hold", 4*time.Hour, "ladder hard timeout — closes remainder")
 	// Phase 7.g lottery comparison strategy (SPEC §2.5). Parallel to momentum:
 	// scan subscribed assets, open a small paper position when mid is in the

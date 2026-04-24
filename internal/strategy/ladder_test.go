@@ -8,10 +8,14 @@ import (
 )
 
 func lcfg() LadderConfig {
-	// Shorter MaxHold than default so timeout tests run in ns.
-	c := DefaultLadderConfig()
-	c.MaxHold = time.Minute
-	return c
+	return LadderConfig{
+		TP1Pct:  0.15,
+		TP1Frac: 0.50,
+		TP2Pct:  0.30,
+		TP2Frac: 1.00,
+		SLPct:   0.05,
+		MaxHold: time.Minute,
+	}
 }
 
 func lt(mid float64, at time.Time) feed.Tick {

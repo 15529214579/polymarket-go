@@ -19,16 +19,17 @@ type LadderConfig struct {
 	MaxHold time.Duration // force-close after held duration reaches this
 }
 
-// DefaultLadderConfig matches SPEC §2.4: +15% TP1 (close 50%), +30% TP2
-// (clear remaining), -5% SL, 4h MaxHold. SL tightened from -10% to -5% on
-// 2026-04-20 22:42 SGT after Phase 7.d sweep (SL=5% topped 10/10 configs).
+// DefaultLadderConfig: TP disabled (999% = ride to settlement/timeout),
+// SL 15%, 4h MaxHold. Updated 2026-04-24 21:38 SGT after tickpath sweep
+// (42 paths, 25K ticks): SL 5%→15% cuts false stops from 26→14; TP unlimited
+// outperforms 15/30% by +$30 over sample; entry cap 0.70→0.50 cuts losing band.
 func DefaultLadderConfig() LadderConfig {
 	return LadderConfig{
-		TP1Pct:  0.15,
+		TP1Pct:  9.99,
 		TP1Frac: 0.50,
-		TP2Pct:  0.30,
+		TP2Pct:  9.99,
 		TP2Frac: 1.00,
-		SLPct:   0.05,
+		SLPct:   0.15,
 		MaxHold: 4 * time.Hour,
 	}
 }
