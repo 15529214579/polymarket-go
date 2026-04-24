@@ -82,29 +82,34 @@ func TestSummarize_BasicAggregate(t *testing.T) {
 		{ID: "4", PnLUSD: 0.00, HeldSec: 30, ExitReason: "timeout", SignalSource: "auto"},
 	}
 	s := Summarize(day, trades)
-	if s.Trades != 4 {
+	// Headline stats = auto only (3 trades, manual excluded).
+	if s.Trades != 3 {
 		t.Fatalf("trades=%d", s.Trades)
 	}
-	if s.Wins != 2 || s.Losses != 1 || s.Breakevens != 1 {
+	if s.Wins != 1 || s.Losses != 1 || s.Breakevens != 1 {
 		t.Fatalf("w/l/b = %d/%d/%d", s.Wins, s.Losses, s.Breakevens)
 	}
-	if absDiff(s.RealizedPnLUSD, 1.30) > 1e-9 {
+	if absDiff(s.RealizedPnLUSD, 0.30) > 1e-9 {
 		t.Fatalf("realized=%v", s.RealizedPnLUSD)
 	}
-	if absDiff(s.WinRate, 2.0/3.0) > 1e-9 {
+	if absDiff(s.WinRate, 1.0/2.0) > 1e-9 {
 		t.Fatalf("winrate=%v", s.WinRate)
 	}
-	if s.BiggestWinUSD != 1.00 || s.BiggestLossUSD != -0.20 {
+	if s.BiggestWinUSD != 0.50 || s.BiggestLossUSD != -0.20 {
 		t.Fatalf("biggest win=%v loss=%v", s.BiggestWinUSD, s.BiggestLossUSD)
 	}
-	if s.AvgHeldSec != (120+60+300+30)/4 {
+	if s.AvgHeldSec != (120+60+30)/3 {
 		t.Fatalf("avg held=%d", s.AvgHeldSec)
 	}
 	if s.ExitReasonCount["timeout"] != 1 || s.ExitReasonCount["stop_loss"] != 1 {
 		t.Fatalf("reasons=%+v", s.ExitReasonCount)
 	}
-	if s.AutoCount != 3 || s.ManualCount != 1 {
-		t.Fatalf("auto/manual=%d/%d", s.AutoCount, s.ManualCount)
+	// Per-source stats.
+	if s.Auto.Count != 3 || s.Manual.Count != 1 {
+		t.Fatalf("auto/manual=%d/%d", s.Auto.Count, s.Manual.Count)
+	}
+	if absDiff(s.Manual.PnLUSD, 1.00) > 1e-9 {
+		t.Fatalf("manual pnl=%v", s.Manual.PnLUSD)
 	}
 }
 

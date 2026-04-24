@@ -13,16 +13,33 @@ import (
 // RealizedPnLUSD is net of fees when any record carries NetPnLUSD / fee
 // fields (Phase 7.b ladder); older records with zero fee fields contribute
 // gross PnL (net == gross in that case).
+// SourceStats holds stats for one source (auto or manual).
+type SourceStats struct {
+	Count        int
+	Wins         int
+	Losses       int
+	Breakevens   int
+	WinRate      float64
+	PnLUSD       float64
+	AvgPnLUSD    float64
+	BiggestWin   float64
+	BiggestLoss  float64
+	AvgHeldSec   int
+	ExitReasons  map[string]int
+}
+
 type DailySummary struct {
-	Day             string
+	Day string
+
+	// Auto-only headline stats (manual excluded from these).
 	Trades          int
 	Wins            int
 	Losses          int
 	Breakevens      int
-	WinRate         float64 // 0..1, undefined if Trades==0
-	RealizedPnLUSD  float64 // net of fees
-	GrossPnLUSD     float64 // before fees
-	FeesUSD         float64 // sum of entry + exit fees
+	WinRate         float64
+	RealizedPnLUSD  float64
+	GrossPnLUSD     float64
+	FeesUSD         float64
 	GrossWinUSD     float64
 	GrossLossUSD    float64
 	AvgPnLUSD       float64
@@ -30,63 +47,104 @@ type DailySummary struct {
 	BiggestLossUSD  float64
 	AvgHeldSec      int
 	ExitReasonCount map[string]int
-	ManualCount     int
-	AutoCount       int
-	AutoPnLUSD      float64
-	ManualPnLUSD    float64
+
+	// Separate accounting.
+	Auto   SourceStats
+	Manual SourceStats
 }
 
 // Summarize buckets a slice of trades into a DailySummary. Wins are pnl>0,
 // losses pnl<0, breakevens exactly 0 (slippage 0 paper can produce these).
+func tradeNet(t TradeRecord) float64 {
+	net := t.NetPnLUSD
+	if net == 0 && t.EntryFeeUSD == 0 && t.ExitFeeUSD == 0 {
+		net = t.PnLUSD
+	}
+	return net
+}
+
+func accSource(ss *SourceStats, t TradeRecord, net float64) {
+	ss.Count++
+	ss.PnLUSD += net
+	switch {
+	case net > 0:
+		ss.Wins++
+		if net > ss.BiggestWin {
+			ss.BiggestWin = net
+		}
+	case net < 0:
+		ss.Losses++
+		if net < ss.BiggestLoss {
+			ss.BiggestLoss = net
+		}
+	default:
+		ss.Breakevens++
+	}
+	if t.ExitReason != "" {
+		if ss.ExitReasons == nil {
+			ss.ExitReasons = map[string]int{}
+		}
+		ss.ExitReasons[t.ExitReason]++
+	}
+}
+
+func finalizeSource(ss *SourceStats, heldTotal int) {
+	if ss.Count > 0 {
+		ss.AvgPnLUSD = ss.PnLUSD / float64(ss.Count)
+		ss.AvgHeldSec = heldTotal / ss.Count
+		decided := ss.Wins + ss.Losses
+		if decided > 0 {
+			ss.WinRate = float64(ss.Wins) / float64(decided)
+		}
+	}
+}
+
 func Summarize(day string, trades []TradeRecord) DailySummary {
 	s := DailySummary{Day: day, ExitReasonCount: map[string]int{}}
 	if len(trades) == 0 {
 		return s
 	}
-	var heldTotal int
+	var autoHeld, manualHeld int
 	for _, t := range trades {
-		s.Trades++
-		s.GrossPnLUSD += t.PnLUSD
-		s.FeesUSD += t.EntryFeeUSD + t.ExitFeeUSD
-		// Prefer net PnL when the ladder-era fields are populated; fall back
-		// to gross for legacy records where fee fields are zero.
-		net := t.NetPnLUSD
-		if net == 0 && (t.EntryFeeUSD == 0 && t.ExitFeeUSD == 0) {
-			net = t.PnLUSD
-		}
-		s.RealizedPnLUSD += net
-		switch {
-		case net > 0:
-			s.Wins++
-			s.GrossWinUSD += net
-			if net > s.BiggestWinUSD {
-				s.BiggestWinUSD = net
+		net := tradeNet(t)
+		isManual := t.SignalSource == "manual"
+		if isManual {
+			accSource(&s.Manual, t, net)
+			manualHeld += t.HeldSec
+		} else {
+			accSource(&s.Auto, t, net)
+			autoHeld += t.HeldSec
+			// Headline stats = auto only.
+			s.Trades++
+			s.GrossPnLUSD += t.PnLUSD
+			s.FeesUSD += t.EntryFeeUSD + t.ExitFeeUSD
+			s.RealizedPnLUSD += net
+			switch {
+			case net > 0:
+				s.Wins++
+				s.GrossWinUSD += net
+				if net > s.BiggestWinUSD {
+					s.BiggestWinUSD = net
+				}
+			case net < 0:
+				s.Losses++
+				s.GrossLossUSD += net
+				if net < s.BiggestLossUSD {
+					s.BiggestLossUSD = net
+				}
+			default:
+				s.Breakevens++
 			}
-		case net < 0:
-			s.Losses++
-			s.GrossLossUSD += net
-			if net < s.BiggestLossUSD {
-				s.BiggestLossUSD = net
+			if t.ExitReason != "" {
+				s.ExitReasonCount[t.ExitReason]++
 			}
-		default:
-			s.Breakevens++
-		}
-		heldTotal += t.HeldSec
-		if t.ExitReason != "" {
-			s.ExitReasonCount[t.ExitReason]++
-		}
-		switch t.SignalSource {
-		case "manual":
-			s.ManualCount++
-			s.ManualPnLUSD += net
-		case "auto", "":
-			s.AutoCount++
-			s.AutoPnLUSD += net
 		}
 	}
+	finalizeSource(&s.Auto, autoHeld)
+	finalizeSource(&s.Manual, manualHeld)
 	if s.Trades > 0 {
 		s.AvgPnLUSD = s.RealizedPnLUSD / float64(s.Trades)
-		s.AvgHeldSec = heldTotal / s.Trades
+		s.AvgHeldSec = autoHeld / s.Trades
 		decided := s.Wins + s.Losses
 		if decided > 0 {
 			s.WinRate = float64(s.Wins) / float64(decided)
@@ -136,13 +194,12 @@ func FormatTelegram(s DailySummary) string {
 		}
 		b.WriteString("\n")
 	}
-	if s.AutoCount > 0 && s.ManualCount > 0 {
-		fmt.Fprintf(&b, "\n🤖 自动: %d笔 %+.4f USDC\n", s.AutoCount, s.AutoPnLUSD)
-		fmt.Fprintf(&b, "👤 手动: %d笔 %+.4f USDC\n", s.ManualCount, s.ManualPnLUSD)
-	} else if s.ManualCount > 0 {
-		fmt.Fprintf(&b, "• 来源: 全部手动 %d笔\n", s.ManualCount)
-	} else if s.AutoCount > 0 {
-		fmt.Fprintf(&b, "• 来源: 全部自动 %d笔\n", s.AutoCount)
+	if s.Manual.Count > 0 {
+		fmt.Fprintf(&b, "\n👤 手动单独结算: %d笔 %+.4f USDC", s.Manual.Count, s.Manual.PnLUSD)
+		if s.Manual.Wins > 0 || s.Manual.Losses > 0 {
+			fmt.Fprintf(&b, "  胜%d/负%d", s.Manual.Wins, s.Manual.Losses)
+		}
+		b.WriteString("\n")
 	}
 	return b.String()
 }
