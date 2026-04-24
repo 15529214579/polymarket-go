@@ -43,9 +43,10 @@ fi
 
 # 组装消息
 case "$alert" in
-  build-failing) title="🔴 polymarket-go build 失败" ;;
-  stalled-12h)   title="🟡 polymarket-go 停滞 12h+ 未 commit" ;;
-  *)             title="⚠️ polymarket-go: $alert" ;;
+  build-failing)         title="🔴 polymarket-go build 失败" ;;
+  stalled-12h)           title="🟡 polymarket-go 停滞 12h+ 未 commit" ;;
+  daemon-restart-failed) title="🔴 polymarket-go daemon 重启失败，需要人工干预" ;;
+  *)                     title="⚠️ polymarket-go: $alert" ;;
 esac
 
 last_commit=$(sed -n 's/.*"last_commit": *"\([^"]*\)".*/\1/p' "$STATE" | head -1)

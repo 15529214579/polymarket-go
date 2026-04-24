@@ -17,7 +17,14 @@ is_running() {
   local pid
   pid=$(cat "$PIDFILE" 2>/dev/null || echo "")
   [ -n "$pid" ] || return 1
-  kill -0 "$pid" 2>/dev/null
+  kill -0 "$pid" 2>/dev/null || return 1
+  # Verify PID is actually our bot binary (not a reused PID)
+  local cmd
+  cmd=$(ps -o comm= -p "$pid" 2>/dev/null || echo "")
+  case "$cmd" in
+    */bot|bot) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 start() {
