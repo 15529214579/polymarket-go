@@ -14,11 +14,12 @@ import (
 )
 
 // CallbackHandler is the inbound half of the Phase 3.5 click-to-buy flow. It
-// is called once per valid "buy:<nonce>:<slot>:<sizeUSD>" callback_query.
-// Slot indexes into PendingIntent.Choices (YES/NO etc). The ack string (if
-// any) is surfaced as the Telegram toast on the clicker's screen.
+// is called once per valid "buy:<nonce>:<slot>:<sizeUSD>:<mode>" callback_query.
+// Slot indexes into PendingIntent.Choices (YES/NO etc). Mode is "ladder" or
+// "hold" (hold-to-settlement, no SL/timeout). The ack string (if any) is
+// surfaced as the Telegram toast on the clicker's screen.
 type CallbackHandler interface {
-	OnBuy(ctx context.Context, nonce string, slot int, sizeUSD float64, messageID int64) (ack string, err error)
+	OnBuy(ctx context.Context, nonce string, slot int, sizeUSD float64, mode string, messageID int64) (ack string, err error)
 }
 
 // LongPollConfig bounds a single long-poll consumer. Use a DEDICATED bot token
@@ -180,7 +181,7 @@ func (l *LongPoll) dispatch(ctx context.Context, u tgUpdate) {
 		return
 	}
 
-	nonce, slot, size, ok := parseBuyCallback(cq.Data)
+	nonce, slot, size, mode, ok := parseBuyCallback(cq.Data)
 	if !ok {
 		l.answerCallback(ctx, cq.ID, "bad data", true)
 		return
@@ -190,10 +191,11 @@ func (l *LongPoll) dispatch(ctx context.Context, u tgUpdate) {
 		"nonce", nonce,
 		"slot", slot,
 		"size_usd", size,
+		"mode", mode,
 		"from", cq.From.Username,
 	)
 
-	ack, err := l.handler.OnBuy(ctx, nonce, slot, size, cq.Message.MessageID)
+	ack, err := l.handler.OnBuy(ctx, nonce, slot, size, mode, cq.Message.MessageID)
 	if err != nil {
 		l.answerCallback(ctx, cq.ID, "❌ "+truncate(err.Error(), 180), true)
 		return
@@ -204,23 +206,34 @@ func (l *LongPoll) dispatch(ctx context.Context, u tgUpdate) {
 	l.answerCallback(ctx, cq.ID, ack, false)
 }
 
-// parseBuyCallback validates and splits "buy:<nonce>:<slot>:<sizeUSD>".
-// Nonce must be non-empty; slot must parse to a non-negative int; size must
-// parse to a positive float.
-func parseBuyCallback(s string) (nonce string, slot int, sizeUSD float64, ok bool) {
-	parts := strings.SplitN(s, ":", 4)
-	if len(parts) != 4 || parts[0] != "buy" || parts[1] == "" {
-		return "", 0, 0, false
+// parseBuyCallback validates and splits "buy:<nonce>:<slot>:<sizeUSD>:<mode>".
+// Mode is "l" (ladder) or "h" (hold-to-settlement); 4-part legacy format
+// defaults to "ladder". Returns the expanded mode string ("ladder"/"hold").
+func parseBuyCallback(s string) (nonce string, slot int, sizeUSD float64, mode string, ok bool) {
+	parts := strings.SplitN(s, ":", 5)
+	if len(parts) < 4 || parts[0] != "buy" || parts[1] == "" {
+		return "", 0, 0, "", false
 	}
 	sl, err := strconv.Atoi(parts[2])
 	if err != nil || sl < 0 {
-		return "", 0, 0, false
+		return "", 0, 0, "", false
 	}
 	sz, err := strconv.ParseFloat(parts[3], 64)
 	if err != nil || sz <= 0 {
-		return "", 0, 0, false
+		return "", 0, 0, "", false
 	}
-	return parts[1], sl, sz, true
+	m := "ladder"
+	if len(parts) == 5 {
+		switch parts[4] {
+		case "h":
+			m = "hold"
+		case "l":
+			m = "ladder"
+		default:
+			return "", 0, 0, "", false
+		}
+	}
+	return parts[1], sl, sz, m, true
 }
 
 func (l *LongPoll) answerCallback(ctx context.Context, cqID string, text string, showAlert bool) {

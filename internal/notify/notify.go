@@ -35,6 +35,9 @@ type Notifier interface {
 	// (Phase 3.5 C — "成交凭据留档", complement to the callback toast which is
 	// ephemeral).
 	FillReceipt(ev FillReceiptEvent)
+	// InjuryAlert pushes an NBA injury alert DM. Guarded by -injury_enabled flag;
+	// to remove: delete this method + InjuryAlertEvent + FormatInjuryAlert.
+	InjuryAlert(ev InjuryAlertEvent)
 	Close(ctx context.Context) error
 }
 
@@ -119,6 +122,17 @@ type LargeFillEvent struct {
 	ExitPx   float64
 	Reason   string // reversal_ticks | reversal_drawdown | stop_loss | timeout
 	HeldSec  int
+}
+
+// InjuryAlertEvent carries a star-player injury worth surfacing. Guarded by
+// -injury_enabled flag; to remove: delete this type + FormatInjuryAlert +
+// InjuryAlert method from Notifier.
+type InjuryAlertEvent struct {
+	Team       string
+	StarPlayer string
+	Status     string // "Out" / "Doubtful"
+	Reason     string
+	Impact     string // "franchise_player_out" / "co_star_out" / "rotation_star_out"
 }
 
 // ---- formatting helpers (exported so telegram_test can assert them) ----
@@ -248,6 +262,26 @@ func FormatSignalExpired() string { return "⌛ 已过期 · 未下单" }
 func FormatSignalFilled(ev FillReceiptEvent) string {
 	return fmt.Sprintf("✅ 已下单 · %s %gU @ %.4f\norder %s",
 		ev.Outcome, ev.SizeUSD, ev.FillPx, ev.OrderID)
+}
+
+// FormatInjuryAlert renders a compact DM for a star-player injury report.
+func FormatInjuryAlert(ev InjuryAlertEvent) string {
+	icon := "🏥"
+	if ev.Impact == "franchise_player_out" {
+		icon = "🚨"
+	}
+	status := ev.Status
+	if status == "" {
+		status = "Out"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s %s · %s %s\n", icon, ev.Team, ev.StarPlayer, status)
+	if ev.Reason != "" {
+		fmt.Fprintf(&b, "原因: %s\n", ev.Reason)
+	}
+	fmt.Fprintf(&b, "影响: %s\n", ev.Impact)
+	b.WriteString("对手 underdog 可能存在动量机会")
+	return b.String()
 }
 
 func FormatLargeFill(ev LargeFillEvent) string {

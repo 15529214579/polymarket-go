@@ -154,20 +154,32 @@ func TestTelegram_SignalPromptAttachesInlineKeyboard(t *testing.T) {
 		t.Fatalf("reply_markup missing: %v", m["reply_markup"])
 	}
 	kb, ok := rm["inline_keyboard"].([]any)
-	if !ok || len(kb) != 1 {
-		t.Fatalf("inline_keyboard shape: want 1 signal row, got %v", kb)
+	if !ok || len(kb) != 2 {
+		t.Fatalf("inline_keyboard shape: want 2 rows (ladder + hold), got %v", kb)
 	}
 	row0, _ := kb[0].([]any)
 	if len(row0) != 3 {
-		t.Fatalf("row0 buttons: got %d", len(row0))
+		t.Fatalf("row0 (ladder) buttons: got %d", len(row0))
 	}
 	b0, _ := row0[0].(map[string]any)
-	if b0["text"] != "🟢 1U" || b0["callback_data"] != "buy:abcd1234:0:1" {
+	if b0["text"] != "🟢 1U" || b0["callback_data"] != "buy:abcd1234:0:1:l" {
 		t.Errorf("row0.button0: %+v", b0)
 	}
 	b2, _ := row0[2].(map[string]any)
-	if b2["text"] != "🟢 10U" || b2["callback_data"] != "buy:abcd1234:0:10" {
+	if b2["text"] != "🟢 10U" || b2["callback_data"] != "buy:abcd1234:0:10:l" {
 		t.Errorf("row0.button2: %+v", b2)
+	}
+	row1, _ := kb[1].([]any)
+	if len(row1) != 3 {
+		t.Fatalf("row1 (hold) buttons: got %d", len(row1))
+	}
+	h0, _ := row1[0].(map[string]any)
+	if h0["text"] != "🔒 1U" || h0["callback_data"] != "buy:abcd1234:0:1:h" {
+		t.Errorf("row1.button0: %+v", h0)
+	}
+	h2, _ := row1[2].(map[string]any)
+	if h2["text"] != "🔒 10U" || h2["callback_data"] != "buy:abcd1234:0:10:h" {
+		t.Errorf("row1.button2: %+v", h2)
 	}
 }
 

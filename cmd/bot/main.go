@@ -20,6 +20,7 @@ import (
 	"github.com/15529214579/polymarket-go/internal/arb"
 	"github.com/15529214579/polymarket-go/internal/config"
 	"github.com/15529214579/polymarket-go/internal/feed"
+	"github.com/15529214579/polymarket-go/internal/injury"
 	"github.com/15529214579/polymarket-go/internal/journal"
 	"github.com/15529214579/polymarket-go/internal/notify"
 	"github.com/15529214579/polymarket-go/internal/odds"
@@ -70,6 +71,9 @@ func main() {
 	arbInterval := flag.Duration("arb_interval", 12*time.Hour, "arb scan interval (budget: 500 req/month free tier)")
 	arbMinGapPP := flag.Float64("arb_min_gap_pp", 5.0, "arb minimum net EV in pp to flag")
 	arbDBPath := flag.String("arb_db", "db/odds.db", "SQLite path for odds snapshots")
+	injuryEnabled := flag.Bool("injury_enabled", false, "enable NBA injury report scanner (ESPN API)")
+	injuryInterval := flag.Duration("injury_interval", 30*time.Minute, "injury scan interval")
+	injuryStarOnly := flag.Bool("injury_star_only", true, "only alert on star players (top ~3-4 per team)")
 	flag.Parse()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -114,7 +118,12 @@ func main() {
 			SizeUSD:      *lotterySize,
 			ScanInterval: *lotteryScan,
 		}
-		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, *arbEnabled, *arbInterval, *arbMinGapPP, *arbDBPath); err != nil && ctx.Err() == nil {
+		injCfg := injury.Config{
+			Enabled:      *injuryEnabled,
+			ScanInterval: *injuryInterval,
+			StarOnly:     *injuryStarOnly,
+		}
+		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, *arbEnabled, *arbInterval, *arbMinGapPP, *arbDBPath, injCfg); err != nil && ctx.Err() == nil {
 			slog.Error("detect failed", "err", err)
 			os.Exit(1)
 		}
@@ -329,7 +338,7 @@ func runSample(ctx context.Context, topN, windowSec int) error {
 	return ws.Run(ctx)
 }
 
-func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, arbEnabled bool, arbInterval time.Duration, arbMinGapPP float64, arbDBPath string) error {
+func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, arbEnabled bool, arbInterval time.Duration, arbMinGapPP float64, arbDBPath string, injCfg injury.Config) error {
 	if signalMode != "auto" && signalMode != "prompt" {
 		return fmt.Errorf("invalid signal_mode %q (want auto|prompt)", signalMode)
 	}
@@ -1222,6 +1231,48 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 		}
 	}
 
+	// NBA injury scanner: periodic ESPN API poll for star-player injuries.
+	// Guarded by -injury_enabled flag (default false). To remove: delete this
+	// block + internal/injury/ package + InjuryAlert from notify.
+	if injCfg.Enabled {
+		injScanner := injury.NewScanner(injCfg)
+		slog.Info("injury_scanner.ready",
+			"interval", injCfg.ScanInterval.String(),
+			"star_only", injCfg.StarOnly,
+		)
+		go func() {
+			tk := time.NewTicker(injCfg.ScanInterval)
+			defer tk.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-tk.C:
+					alerts, err := injScanner.Scan(ctx)
+					if err != nil {
+						slog.Warn("injury_scan_fail", "err", err.Error())
+						continue
+					}
+					for _, a := range alerts {
+						slog.Info("injury_alert",
+							"team", a.Team,
+							"player", a.StarPlayer,
+							"status", string(a.Status),
+							"impact", a.Impact,
+						)
+						notifier.InjuryAlert(notify.InjuryAlertEvent{
+							Team:       a.Team,
+							StarPlayer: a.StarPlayer,
+							Status:     string(a.Status),
+							Reason:     a.Reason,
+							Impact:     a.Impact,
+						})
+					}
+				}
+			}
+		}()
+	}
+
 	// Feed-silence watchdog + periodic risk snapshot. SPEC §6: >30s WSS
 	// silence trips breaker. We also push a risk summary every 60s so the
 	// heartbeat log has a recent snapshot.
@@ -1807,11 +1858,8 @@ type buyHandler struct {
 	exitMode     string
 }
 
-func (h *buyHandler) OnBuy(ctx context.Context, nonce string, slot int, sizeUSD float64, messageID int64) (string, error) {
+func (h *buyHandler) OnBuy(ctx context.Context, nonce string, slot int, sizeUSD float64, mode string, messageID int64) (string, error) {
 	now := time.Now()
-	// One prompt = one order. Claim consumes the nonce so a second click on
-	// the same DM collapses to "已过期". Multiple orders per market come from
-	// multiple prompts (a new signal = a new DM with fresh buttons).
 	p, ok := h.pending.Claim(nonce, now)
 	if !ok {
 		if h.notifier != nil && messageID != 0 {
@@ -1827,8 +1875,6 @@ func (h *buyHandler) OnBuy(ctx context.Context, nonce string, slot int, sizeUSD 
 		st := h.rm.State()
 		return "", fmt.Errorf("风控阻止: %s (day_pnl=%.2f)", st.BlockReason, st.DayRealizedPnL)
 	}
-	// No dedupe: paper stacks per asset/market. pm still enforces
-	// MaxOpenPositions + MaxTotalOpenUSD caps below.
 	intent := order.Intent{
 		AssetID: choice.AssetID,
 		Market:  p.Market,
@@ -1850,16 +1896,22 @@ func (h *buyHandler) OnBuy(ctx context.Context, nonce string, slot int, sizeUSD 
 		return "", fmt.Errorf("开仓失败: %s", err.Error())
 	}
 	_ = h.pm.SetOpenFee(pos.ID, res.FeeUSD)
-	switch h.exitMode {
-	case "auto":
-		if h.exit != nil {
-			h.exit.Open(choice.AssetID, p.Market, entryTick)
-		}
-	case "ladder":
-		if h.ladder != nil {
-			h.ladder.Open(pos.ID, p.Market, choice.AssetID, entryTick, pos.Units)
+
+	// Mode branching: "hold" = hold-to-settlement (no SL, no timeout);
+	// "ladder" = normal ladder with SL + 4h timeout.
+	if mode != "hold" {
+		switch h.exitMode {
+		case "auto":
+			if h.exit != nil {
+				h.exit.Open(choice.AssetID, p.Market, entryTick)
+			}
+		case "ladder":
+			if h.ladder != nil {
+				h.ladder.Open(pos.ID, p.Market, choice.AssetID, entryTick, pos.Units)
+			}
 		}
 	}
+
 	if h.recorder != nil {
 		if rerr := h.recorder.Start(pos.ID, choice.AssetID); rerr != nil {
 			slog.Warn("tickrec_start_fail", "pos", pos.ID, "err", rerr.Error())
@@ -1869,6 +1921,10 @@ func (h *buyHandler) OnBuy(ctx context.Context, nonce string, slot int, sizeUSD 
 		h.src.Mark(pos.ID, "manual", res.OrderID)
 	}
 	stats := h.pm.Stats()
+	modeTag := "ladder"
+	if mode == "hold" {
+		modeTag = "hold"
+	}
 	slog.Info("manual_open",
 		"id", pos.ID,
 		"order_id", res.OrderID,
@@ -1877,6 +1933,7 @@ func (h *buyHandler) OnBuy(ctx context.Context, nonce string, slot int, sizeUSD 
 		"outcome", choice.Outcome,
 		"slot", slot,
 		"size_usd", sizeUSD,
+		"mode", modeTag,
 		"signal_mid", choice.Mid,
 		"entry_fill", res.AvgPrice,
 		"units", pos.Units,
@@ -1884,8 +1941,6 @@ func (h *buyHandler) OnBuy(ctx context.Context, nonce string, slot int, sizeUSD 
 		"total_exposure_usd", stats.TotalExposure,
 	)
 
-	// Collapse the prompt into "✅ 已下单 …" (strips keyboard) and archive a
-	// durable receipt DM.
 	receipt := notify.FillReceiptEvent{
 		Question: metaQ(h.meta, choice.AssetID),
 		Match:    metaMatch(h.meta, choice.AssetID),
@@ -1903,8 +1958,12 @@ func (h *buyHandler) OnBuy(ctx context.Context, nonce string, slot int, sizeUSD 
 		h.notifier.FillReceipt(receipt)
 	}
 
-	return fmt.Sprintf("✅ %s %gU @ %.4f · order %s",
-		choice.Outcome, sizeUSD, res.AvgPrice, short(res.OrderID)), nil
+	icon := "✅"
+	if mode == "hold" {
+		icon = "🔒"
+	}
+	return fmt.Sprintf("%s %s %gU @ %.4f · order %s",
+		icon, choice.Outcome, sizeUSD, res.AvgPrice, short(res.OrderID)), nil
 }
 
 // buildNotifier returns a Telegram notifier when TELEGRAM_BOT_TOKEN + _CHAT_ID

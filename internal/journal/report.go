@@ -32,6 +32,8 @@ type DailySummary struct {
 	ExitReasonCount map[string]int
 	ManualCount     int
 	AutoCount       int
+	AutoPnLUSD      float64
+	ManualPnLUSD    float64
 }
 
 // Summarize buckets a slice of trades into a DailySummary. Wins are pnl>0,
@@ -76,8 +78,10 @@ func Summarize(day string, trades []TradeRecord) DailySummary {
 		switch t.SignalSource {
 		case "manual":
 			s.ManualCount++
+			s.ManualPnLUSD += net
 		case "auto", "":
 			s.AutoCount++
+			s.AutoPnLUSD += net
 		}
 	}
 	if s.Trades > 0 {
@@ -92,7 +96,8 @@ func Summarize(day string, trades []TradeRecord) DailySummary {
 }
 
 // FormatTelegram renders a Markdown-light summary suitable for sendMessage's
-// default parse mode (plain text — no escaping needed).
+// default parse mode (plain text — no escaping needed). When both auto and
+// manual trades exist, a per-source breakdown is appended.
 func FormatTelegram(s DailySummary) string {
 	var b strings.Builder
 	pnlSign := ""
@@ -116,11 +121,7 @@ func FormatTelegram(s DailySummary) string {
 			s.BiggestWinUSD, s.BiggestLossUSD)
 	}
 	fmt.Fprintf(&b, "• 平均持仓 %s\n", humanizeSec(s.AvgHeldSec))
-	if s.ManualCount > 0 || s.AutoCount > 0 {
-		fmt.Fprintf(&b, "• 来源: auto %d / manual %d\n", s.AutoCount, s.ManualCount)
-	}
 	if len(s.ExitReasonCount) > 0 {
-		// Stable ordering for snapshot tests + readability.
 		keys := make([]string, 0, len(s.ExitReasonCount))
 		for k := range s.ExitReasonCount {
 			keys = append(keys, k)
@@ -134,6 +135,14 @@ func FormatTelegram(s DailySummary) string {
 			fmt.Fprintf(&b, "%s×%d", k, s.ExitReasonCount[k])
 		}
 		b.WriteString("\n")
+	}
+	if s.AutoCount > 0 && s.ManualCount > 0 {
+		fmt.Fprintf(&b, "\n🤖 自动: %d笔 %+.4f USDC\n", s.AutoCount, s.AutoPnLUSD)
+		fmt.Fprintf(&b, "👤 手动: %d笔 %+.4f USDC\n", s.ManualCount, s.ManualPnLUSD)
+	} else if s.ManualCount > 0 {
+		fmt.Fprintf(&b, "• 来源: 全部手动 %d笔\n", s.ManualCount)
+	} else if s.AutoCount > 0 {
+		fmt.Fprintf(&b, "• 来源: 全部自动 %d笔\n", s.AutoCount)
 	}
 	return b.String()
 }

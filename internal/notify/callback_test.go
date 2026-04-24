@@ -18,6 +18,7 @@ type stubHandler struct {
 		nonce     string
 		slot      int
 		size      float64
+		mode      string
 		messageID int64
 	}
 	ack string
@@ -25,12 +26,13 @@ type stubHandler struct {
 	mu  sync.Mutex
 }
 
-func (s *stubHandler) OnBuy(ctx context.Context, nonce string, slot int, size float64, messageID int64) (string, error) {
+func (s *stubHandler) OnBuy(ctx context.Context, nonce string, slot int, size float64, mode string, messageID int64) (string, error) {
 	s.calls.Add(1)
 	s.mu.Lock()
 	s.last.nonce = nonce
 	s.last.slot = slot
 	s.last.size = size
+	s.last.mode = mode
 	s.last.messageID = messageID
 	s.mu.Unlock()
 	return s.ack, s.err
@@ -42,27 +44,33 @@ func TestParseBuyCallback(t *testing.T) {
 		nonce string
 		slot  int
 		size  float64
+		mode  string
 		ok    bool
 	}{
-		{"buy:abc123:0:5", "abc123", 0, 5, true},
-		{"buy:abc123:1:0.5", "abc123", 1, 0.5, true},
-		{"buy:abc123:0:10", "abc123", 0, 10, true},
-		{"buy:abc123:2:1", "abc123", 2, 1, true},
-		{"sell:abc:0:5", "", 0, 0, false},
-		{"buy::0:5", "", 0, 0, false},
-		{"buy:abc:0:-1", "", 0, 0, false},
-		{"buy:abc:0:bad", "", 0, 0, false},
-		{"buy:abc:-1:5", "", 0, 0, false},
-		{"buy:abc:bad:5", "", 0, 0, false},
-		{"garbage", "", 0, 0, false},
-		{"buy:abc", "", 0, 0, false},
-		{"buy:abc:5", "", 0, 0, false}, // old 3-part format no longer accepted
+		{"buy:abc123:0:5:l", "abc123", 0, 5, "ladder", true},
+		{"buy:abc123:1:0.5:h", "abc123", 1, 0.5, "hold", true},
+		{"buy:abc123:0:10:l", "abc123", 0, 10, "ladder", true},
+		{"buy:abc123:2:1:h", "abc123", 2, 1, "hold", true},
+		// 4-part legacy format defaults to ladder
+		{"buy:abc123:0:5", "abc123", 0, 5, "ladder", true},
+		{"buy:abc123:1:0.5", "abc123", 1, 0.5, "ladder", true},
+		// invalid mode
+		{"buy:abc:0:5:x", "", 0, 0, "", false},
+		{"sell:abc:0:5:l", "", 0, 0, "", false},
+		{"buy::0:5:l", "", 0, 0, "", false},
+		{"buy:abc:0:-1:l", "", 0, 0, "", false},
+		{"buy:abc:0:bad:l", "", 0, 0, "", false},
+		{"buy:abc:-1:5:l", "", 0, 0, "", false},
+		{"buy:abc:bad:5:l", "", 0, 0, "", false},
+		{"garbage", "", 0, 0, "", false},
+		{"buy:abc", "", 0, 0, "", false},
+		{"buy:abc:5", "", 0, 0, "", false},
 	}
 	for _, c := range cases {
-		n, sl, sz, ok := parseBuyCallback(c.in)
-		if n != c.nonce || sl != c.slot || sz != c.size || ok != c.ok {
-			t.Errorf("parseBuyCallback(%q) = (%q,%d,%v,%v), want (%q,%d,%v,%v)",
-				c.in, n, sl, sz, ok, c.nonce, c.slot, c.size, c.ok)
+		n, sl, sz, m, ok := parseBuyCallback(c.in)
+		if n != c.nonce || sl != c.slot || sz != c.size || m != c.mode || ok != c.ok {
+			t.Errorf("parseBuyCallback(%q) = (%q,%d,%v,%q,%v), want (%q,%d,%v,%q,%v)",
+				c.in, n, sl, sz, m, ok, c.nonce, c.slot, c.size, c.mode, c.ok)
 		}
 	}
 }
@@ -161,7 +169,7 @@ func makeCallback(updateID, chatID int64, data string) tgUpdate {
 
 func TestLongPoll_DispatchesValidBuy(t *testing.T) {
 	ft := &fakeTelegram{batches: [][]tgUpdate{
-		{makeCallback(1, 42, "buy:nonce1:1:5")},
+		{makeCallback(1, 42, "buy:nonce1:1:5:l")},
 	}}
 	srv := httptest.NewServer(ft.handler())
 	defer srv.Close()
@@ -215,10 +223,10 @@ func TestLongPoll_RejectsForeignChat(t *testing.T) {
 
 func TestLongPoll_RejectsMalformedData(t *testing.T) {
 	ft := &fakeTelegram{batches: [][]tgUpdate{
-		{makeCallback(1, 42, "buy::0:5")},     // empty nonce
-		{makeCallback(2, 42, "buy:abc:0:-5")}, // negative size
-		{makeCallback(3, 42, "hack:abc:0:5")}, // wrong action
-		{makeCallback(4, 42, "buy:abc:-1:5")}, // negative slot
+		{makeCallback(1, 42, "buy::0:5:l")},     // empty nonce
+		{makeCallback(2, 42, "buy:abc:0:-5:l")}, // negative size
+		{makeCallback(3, 42, "hack:abc:0:5:l")}, // wrong action
+		{makeCallback(4, 42, "buy:abc:-1:5:l")}, // negative slot
 	}}
 	srv := httptest.NewServer(ft.handler())
 	defer srv.Close()

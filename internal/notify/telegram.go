@@ -81,11 +81,13 @@ func (t *Telegram) LargeFill(ev LargeFillEvent) {
 	t.enqueue(outgoing{text: FormatLargeFill(ev), tag: "large_fill"})
 }
 
-// SignalPrompt enqueues a DM with a single inline-keyboard row for the signal
-// side only (boss picks amount, not direction). Buttons are "Buy 1U / 5U / 10U";
-// callback_data is "buy:<nonce>:<slot>:<sizeUSD>" where slot indexes into
-// PendingIntent.Choices. The inbound callback handler resolves nonce via the
-// PendingStore and executes Choices[slot].
+// SignalPrompt enqueues a DM with two inline-keyboard rows for the signal side:
+//   - Row 1: 🟢 1U / 5U / 10U → ladder mode (SL + 4h timeout)
+//   - Row 2: 🔒 1U / 5U / 10U → hold to settlement (no SL, no timeout)
+//
+// callback_data is "buy:<nonce>:<slot>:<sizeUSD>:<mode>" where mode is "l"
+// (ladder) or "h" (hold). The inbound callback handler resolves nonce via
+// the PendingStore and routes to the appropriate exit strategy.
 func (t *Telegram) SignalPrompt(ev SignalPromptEvent) {
 	sizes := ev.SizesUSD
 	if len(sizes) == 0 {
@@ -93,17 +95,21 @@ func (t *Telegram) SignalPrompt(ev SignalPromptEvent) {
 	}
 	sig, ok := signalChoice(ev.Choices)
 	if !ok {
-		// Defensive: caller forgot to populate Choices.
 		sig = SignalChoice{Slot: 0, Outcome: "?", IsSignal: true}
 	}
-	row := make([]map[string]string, 0, len(sizes))
+	ladderRow := make([]map[string]string, 0, len(sizes))
+	holdRow := make([]map[string]string, 0, len(sizes))
 	for _, s := range sizes {
-		row = append(row, map[string]string{
+		ladderRow = append(ladderRow, map[string]string{
 			"text":          buttonLabel(sig.Outcome, s, true),
-			"callback_data": fmt.Sprintf("buy:%s:%d:%g", ev.Nonce, sig.Slot, s),
+			"callback_data": fmt.Sprintf("buy:%s:%d:%g:l", ev.Nonce, sig.Slot, s),
+		})
+		holdRow = append(holdRow, map[string]string{
+			"text":          holdButtonLabel(s),
+			"callback_data": fmt.Sprintf("buy:%s:%d:%g:h", ev.Nonce, sig.Slot, s),
 		})
 	}
-	kb := map[string]any{"inline_keyboard": [][]map[string]string{row}}
+	kb := map[string]any{"inline_keyboard": [][]map[string]string{ladderRow, holdRow}}
 	tok := t.cfg.PromptBotToken
 	if tok == "" {
 		tok = t.cfg.BotToken
@@ -153,10 +159,13 @@ func (t *Telegram) FillReceipt(ev FillReceiptEvent) {
 	t.enqueue(outgoing{text: FormatFillReceipt(ev), tag: "fill_receipt"})
 }
 
-// buttonLabel builds a short inline-button caption. Yes/No markets keep the
-// explicit word (short anyway); team-vs-team markets drop the team name from
-// the button — the team is already in the DM header, so the button only needs
-// polarity + amount to avoid truncation on mobile.
+// InjuryAlert enqueues a star-player injury DM. Guarded by -injury_enabled flag
+// at the call site; to remove: delete this method + InjuryAlertEvent + FormatInjuryAlert.
+func (t *Telegram) InjuryAlert(ev InjuryAlertEvent) {
+	t.enqueue(outgoing{text: FormatInjuryAlert(ev), tag: "injury_alert"})
+}
+
+// buttonLabel builds a short inline-button caption for ladder-mode buttons.
 func buttonLabel(outcome string, sizeUSD float64, isSignal bool) string {
 	switch strings.ToLower(strings.TrimSpace(outcome)) {
 	case "yes":
@@ -168,6 +177,11 @@ func buttonLabel(outcome string, sizeUSD float64, isSignal bool) string {
 		return fmt.Sprintf("🟢 %gU", sizeUSD)
 	}
 	return fmt.Sprintf("🔴 %gU", sizeUSD)
+}
+
+// holdButtonLabel builds a caption for the hold-to-settlement row.
+func holdButtonLabel(sizeUSD float64) string {
+	return fmt.Sprintf("🔒 %gU", sizeUSD)
 }
 
 type outgoing struct {
