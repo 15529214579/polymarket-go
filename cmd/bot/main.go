@@ -17,10 +17,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/15529214579/polymarket-go/internal/arb"
 	"github.com/15529214579/polymarket-go/internal/config"
 	"github.com/15529214579/polymarket-go/internal/feed"
 	"github.com/15529214579/polymarket-go/internal/journal"
 	"github.com/15529214579/polymarket-go/internal/notify"
+	"github.com/15529214579/polymarket-go/internal/odds"
 	"github.com/15529214579/polymarket-go/internal/order"
 	"github.com/15529214579/polymarket-go/internal/risk"
 	"github.com/15529214579/polymarket-go/internal/strategy"
@@ -28,7 +30,7 @@ import (
 )
 
 func main() {
-	mode := flag.String("mode", "run", "run | discover | feed | sample | detect | prompt-test | daily-report")
+	mode := flag.String("mode", "run", "run | discover | feed | sample | detect | prompt-test | daily-report | arb-scan")
 	maxMarkets := flag.Int("markets", 20, "top-N sports markets (LoL + NBA daily/playoffs + EPL daily) by vol24h to subscribe")
 	windowSec := flag.Int("window", 60, "sampler window in seconds")
 	slippageBp := flag.Float64("slippage_bp", 0, "paper fill slippage in bp applied against you")
@@ -64,6 +66,10 @@ func main() {
 	lotteryLoLMin := flag.Float64("lottery_lol_min", 0.15, "lottery LoL-only floor; skip below (overrides global when higher)")
 	lotterySize := flag.Float64("lottery_size_usd", 1.0, "lottery entry size in USDC")
 	lotteryScan := flag.Duration("lottery_scan_interval", 5*time.Minute, "lottery scanner cadence")
+	arbEnabled := flag.Bool("arb_enabled", true, "enable arb scanner (odds vs Polymarket gap detection)")
+	arbInterval := flag.Duration("arb_interval", 12*time.Hour, "arb scan interval (budget: 500 req/month free tier)")
+	arbMinGapPP := flag.Float64("arb_min_gap_pp", 5.0, "arb minimum net EV in pp to flag")
+	arbDBPath := flag.String("arb_db", "db/odds.db", "SQLite path for odds snapshots")
 	flag.Parse()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -108,13 +114,18 @@ func main() {
 			SizeUSD:      *lotterySize,
 			ScanInterval: *lotteryScan,
 		}
-		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg); err != nil && ctx.Err() == nil {
+		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, *arbEnabled, *arbInterval, *arbMinGapPP, *arbDBPath); err != nil && ctx.Err() == nil {
 			slog.Error("detect failed", "err", err)
 			os.Exit(1)
 		}
 	case "daily-report":
 		if err := runDailyReport(ctx, *journalDir, *reportDay, *reportPush); err != nil {
 			slog.Error("daily-report failed", "err", err)
+			os.Exit(1)
+		}
+	case "arb-scan":
+		if err := runArbScan(ctx, *arbDBPath, *arbMinGapPP); err != nil {
+			slog.Error("arb-scan failed", "err", err)
 			os.Exit(1)
 		}
 	case "prompt-test":
@@ -318,7 +329,7 @@ func runSample(ctx context.Context, topN, windowSec int) error {
 	return ws.Run(ctx)
 }
 
-func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig) error {
+func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, arbEnabled bool, arbInterval time.Duration, arbMinGapPP float64, arbDBPath string) error {
 	if signalMode != "auto" && signalMode != "prompt" {
 		return fmt.Errorf("invalid signal_mode %q (want auto|prompt)", signalMode)
 	}
@@ -1141,6 +1152,76 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 		}()
 	}
 
+	// Arb scanner: periodic cross-venue price comparison (Polymarket vs bookmaker odds).
+	// Runs on arbInterval cadence, stores snapshots to SQLite, logs opportunities.
+	if arbEnabled {
+		arbStore, arbErr := arb.NewStore(arbDBPath)
+		if arbErr != nil {
+			slog.Warn("arb_store_init_fail", "err", arbErr.Error(), "path", arbDBPath)
+		} else {
+			oddsClient := odds.NewClient("", "")
+			scanCfg := arb.DefaultScanConfig()
+			scanCfg.MinGapPP = arbMinGapPP
+			scanner := arb.NewScanner(oddsClient, arbStore, scanCfg)
+			go func() {
+				defer arbStore.Close()
+				// Run one scan immediately on startup.
+				slog.Info("arb_scanner.ready", "interval", arbInterval.String(), "min_gap_pp", arbMinGapPP, "db", arbDBPath)
+				opps, err := scanner.Scan(ctx)
+				if err != nil {
+					slog.Warn("arb_scan_fail", "err", err.Error())
+				} else {
+					usage := oddsClient.Usage()
+					slog.Info("arb_scan_done", "opportunities", len(opps),
+						"api_remaining", usage.RequestsRemaining, "api_used", usage.RequestsUsed,
+						"db_rows", arbStore.Count())
+					for _, o := range opps {
+						slog.Info("arb_opportunity",
+							"sport", o.Sport,
+							"event", o.EventName,
+							"dir", o.Direction,
+							"gap_pp", o.GapPP,
+							"net_ev_pp", o.NetEvPP,
+							"poly", o.PolymarketPrice,
+							"bk_prob", o.BookmakerProb,
+							"market", o.MarketTitle,
+						)
+					}
+				}
+				tk := time.NewTicker(arbInterval)
+				defer tk.Stop()
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case <-tk.C:
+						opps, err := scanner.Scan(ctx)
+						if err != nil {
+							slog.Warn("arb_scan_fail", "err", err.Error())
+							continue
+						}
+						usage := oddsClient.Usage()
+						slog.Info("arb_scan_done", "opportunities", len(opps),
+							"api_remaining", usage.RequestsRemaining, "api_used", usage.RequestsUsed,
+							"db_rows", arbStore.Count())
+						for _, o := range opps {
+							slog.Info("arb_opportunity",
+								"sport", o.Sport,
+								"event", o.EventName,
+								"dir", o.Direction,
+								"gap_pp", o.GapPP,
+								"net_ev_pp", o.NetEvPP,
+								"poly", o.PolymarketPrice,
+								"bk_prob", o.BookmakerProb,
+								"market", o.MarketTitle,
+							)
+						}
+					}
+				}
+			}()
+		}
+	}
+
 	// Feed-silence watchdog + periodic risk snapshot. SPEC §6: >30s WSS
 	// silence trips breaker. We also push a risk summary every 60s so the
 	// heartbeat log has a recent snapshot.
@@ -1884,6 +1965,37 @@ func (s *sourceTracker) Take(posID string) (string, string) {
 	}
 	delete(s.m, posID)
 	return e.source, e.openOrderID
+}
+
+// runArbScan runs a single arb scan cycle (one-shot CLI mode).
+func runArbScan(ctx context.Context, dbPath string, minGapPP float64) error {
+	store, err := arb.NewStore(dbPath)
+	if err != nil {
+		return fmt.Errorf("arb store: %w", err)
+	}
+	defer store.Close()
+
+	oddsClient := odds.NewClient("", "")
+	cfg := arb.DefaultScanConfig()
+	cfg.MinGapPP = minGapPP
+	scanner := arb.NewScanner(oddsClient, store, cfg)
+
+	opps, err := scanner.Scan(ctx)
+	if err != nil {
+		return err
+	}
+
+	usage := oddsClient.Usage()
+	fmt.Printf("\narb-scan: %d opportunities (min_gap=%.0fpp)\n", len(opps), minGapPP)
+	fmt.Printf("API usage: %d used, %d remaining\n", usage.RequestsUsed, usage.RequestsRemaining)
+	fmt.Printf("DB rows: %d\n\n", store.Count())
+
+	for _, o := range opps {
+		fmt.Printf("  %s | %s | %s\n", o.Sport, o.EventName, o.Direction)
+		fmt.Printf("    poly=%.3f bk=%.3f gap=%+.1fpp net_ev=%+.1fpp | %s\n",
+			o.PolymarketPrice, o.BookmakerProb, o.GapPP, o.NetEvPP, o.MarketTitle)
+	}
+	return nil
 }
 
 // Peek is like Take but leaves the entry in place — used for non-final

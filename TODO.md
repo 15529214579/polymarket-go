@@ -114,6 +114,17 @@
     - 样本限制：端点近似**低估** TP 命中率（mid-hold 触达后回落的没计入）；path-aware 只有 n=9 不足以下结论
 - [ ] **Phase 7.e tick 路径持久化**（真回放前置）：daemon 把 sampler 1Hz tick 写盘，paper open→close 窗内 tick 序列入 SQLite/JSONL。跑 3-7 天后用自家 momentum entry 的真路径重跑 sweep，替代端点近似。没有 7.e 的情况下，7.d 结论只能作方向，不能作实盘参数。
 
+### Phase 8 — Odds/Arb 跨场所价差扫描（对齐 Python odds_fetcher + arb_scanner）
+> 04-24 老板指令："把那部分代码拷贝到 go 项目自己跑，做缓存啥的对齐 python 项目的频率和策略"
+- [x] 2026-04-24 14:0x — `internal/odds/` 上线：The Odds API 客户端（h2h + outright），JSON 文件缓存 1h TTL（db/.odds_cache/），juice removal（decimal→fair prob），API usage tracking from response headers
+- [x] 2026-04-24 14:0x — `internal/odds/consensus.go`：共识过滤器（min 3 bookmakers，outlier >5pp from median 剔除），输出 `consensus(N)` synthetic row
+- [x] 2026-04-24 14:0x — `internal/arb/matcher.go`：Polymarket↔bookmaker 事件匹配（team name exact/nickname fallback、seasonal filter、cross-match guard: league strict + date ≤72h + Jaccard ≥0.6、non-sports blacklist、sport keyword validation）
+- [x] 2026-04-24 14:0x — `internal/arb/scanner.go`：完整 scan pipeline（batch-fetch PM sports markets: wide+96h narrow、tiered bet sizing、priority boost for short-cycle sports、dedup by tokenID）
+- [x] 2026-04-24 14:0x — `internal/arb/store.go`：SQLite odds_snapshot 表（schema 对齐 python），Insert + Recent + Count
+- [x] 2026-04-24 14:0x — 接入 daemon：`-mode=arb-scan` 单次 CLI 模式 + detect 模式 background goroutine（`-arb_enabled -arb_interval=12h -arb_min_gap_pp=5 -arb_db=db/odds.db`）
+- [x] 2026-04-24 14:0x — ODDS_API_KEY 入 .env.local（同 python 项目 key）
+- [x] 2026-04-24 14:10 — 端到端烟测：947 PM sports markets × 11530 raw odds → 404 consensus → **77 matched**（NBA Finals/NHL Stanley Cup/FIFA World Cup/EPL）→ 48 DB rows stored。当前无 >5pp gap（outright futures 市场价格高度一致，预期）。
+
 当前所有 >Phase 7 的计划（3.0 wrap / 3 V2 签名 / 实盘）**暂停**，cutover 还是到，但实盘 go-live 视 7.d 结果。
 
 ## ✅ 已完成
