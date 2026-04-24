@@ -37,7 +37,7 @@ func main() {
 	slippageBp := flag.Float64("slippage_bp", 0, "paper fill slippage in bp applied against you")
 	largeFillUSD := flag.Float64("large_fill_usd", 3.0, "DM notifier threshold on |realized pnl|")
 	envFile := flag.String("env_file", ".env.local", "dotenv file to load before reading env")
-	signalMode := flag.String("signal_mode", "auto", "auto (paper-submit on signal) | prompt (DM + Buy 1/5/10 inline buttons, boss picks size)")
+	signalMode := flag.String("signal_mode", "auto", "auto (paper-submit + DM with buttons for manual add) | prompt (DM only, boss picks size)")
 	exitMode := flag.String("exit_mode", "hold", "hold (settlement only) | auto (SPEC §2 reversal/drawdown/stop/timeout) | ladder (Phase 7.b TP1/TP2/SL/timeout)")
 	journalDir := flag.String("journal_dir", "db/journal", "trade-journal directory (one JSONL per SGT day)")
 	tickPathDir := flag.String("tickpath_dir", "db/tickpath", "Phase 7.e tick-path persistence dir (one JSONL per posID; empty disables)")
@@ -1083,6 +1083,70 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					"units", pos.Units,
 					"open_positions", stats.Open,
 					"total_exposure_usd", stats.TotalExposure,
+				)
+
+				// Auto mode also sends a signal DM with buttons so the boss
+				// can see what happened and optionally add a manual position.
+				me := meta[sig.AssetID]
+				sigChoices := []notify.SignalChoice{{
+					Slot: 0, Outcome: outcomeOrDefault(me, "Yes"),
+					Mid: sig.Mid, IsSignal: true,
+				}}
+				dmChoices := []notify.Choice{{
+					AssetID: sig.AssetID, Outcome: sigChoices[0].Outcome,
+					Mid: sig.Mid, IsSignal: true,
+				}}
+				if me != nil && me.Sibling != "" {
+					sibMid := 1.0 - sig.Mid
+					if w, ok := sampler.Window(me.Sibling); ok && w.Samples > 0 {
+						sibMid = w.EndMid
+					}
+					sibOut := me.SiblingOutcome
+					if sibOut == "" {
+						sibOut = "No"
+					}
+					dmChoices = append(dmChoices, notify.Choice{
+						AssetID: me.Sibling, Outcome: sibOut, Mid: sibMid,
+					})
+					sigChoices = append(sigChoices, notify.SignalChoice{
+						Slot: 1, Outcome: sibOut, Mid: sibMid,
+					})
+				}
+				p := pending.Put(notify.PendingIntent{
+					Market:   sig.Market,
+					Question: metaQ(meta, sig.AssetID),
+					Choices:  dmChoices,
+				}, time.Now())
+				var match, ctxLine, endIn string
+				if me != nil {
+					match = me.Match
+					ctxLine = me.Context
+					endIn = notify.HumanizeEndIn(time.Now(), me.EndTime)
+				}
+				nonceSnap := p.Nonce
+				notifier.SignalPrompt(notify.SignalPromptEvent{
+					Nonce:     p.Nonce,
+					Match:     match,
+					Context:   ctxLine,
+					EndIn:     endIn,
+					Choices:   sigChoices,
+					DeltaPP:   sig.DeltaPP,
+					TailUps:   sig.TailUps,
+					TailLen:   sig.TailLen,
+					BuyRatio:  sig.BuyRatio,
+					ExpiresIn: 2 * time.Hour,
+					OnSent: func(msgID int64, err error) {
+						if err != nil || msgID == 0 {
+							return
+						}
+						pending.SetMessageID(nonceSnap, msgID)
+					},
+				})
+				slog.Info("auto_signal_dm_sent",
+					"asset", short(sig.AssetID),
+					"nonce", p.Nonce,
+					"auto_order", res.OrderID,
+					"mid", sig.Mid,
 				)
 			}
 		}
