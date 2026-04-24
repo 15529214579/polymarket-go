@@ -56,7 +56,7 @@ func DefaultConfig() Config {
 		MinBuyRatio:      0.60,
 		MinSamplesWarm:   30,
 		CooldownPerAsset: 5 * time.Minute,
-		CooldownAfterSL:  30 * time.Minute,
+		CooldownAfterSL:  15 * time.Minute,
 	}
 }
 

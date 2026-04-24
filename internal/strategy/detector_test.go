@@ -10,7 +10,7 @@ import (
 func TestNotifySL_ExtendsCooldown(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.CooldownPerAsset = 5 * time.Minute
-	cfg.CooldownAfterSL = 30 * time.Minute
+	cfg.CooldownAfterSL = 15 * time.Minute
 	sampler := feed.NewSampler(60)
 	det := NewDetector(cfg, sampler)
 
@@ -34,11 +34,11 @@ func TestNotifySL_ExtendsCooldown(t *testing.T) {
 		t.Errorf("expected lastFire to be in the future after NotifySL, got elapsed=%v", elapsed)
 	}
 
-	// The effective cooldown: lastFire + CooldownPerAsset should be ~30 min from now
+	// The effective cooldown: lastFire + CooldownPerAsset should be ~15 min from now
 	expiresAt := det.lastFire[asset].Add(cfg.CooldownPerAsset)
 	remaining := time.Until(expiresAt)
-	if remaining < 29*time.Minute || remaining > 31*time.Minute {
-		t.Errorf("expected ~30 min cooldown remaining, got %v", remaining)
+	if remaining < 14*time.Minute || remaining > 16*time.Minute {
+		t.Errorf("expected ~15 min cooldown remaining, got %v", remaining)
 	}
 }
 
