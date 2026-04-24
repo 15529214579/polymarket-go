@@ -37,13 +37,14 @@ func (s Signal) String() string {
 }
 
 type Config struct {
-	WindowSec        int
-	MinDeltaPP       float64
-	TailLen          int
-	MinTailUpticks   int
-	MinBuyRatio      float64
-	MinSamplesWarm   int           // don't fire until window has this many samples
-	CooldownPerAsset time.Duration // dedup per asset after a fire
+	WindowSec            int
+	MinDeltaPP           float64
+	TailLen              int
+	MinTailUpticks       int
+	MinBuyRatio          float64
+	MinSamplesWarm       int           // don't fire until window has this many samples
+	CooldownPerAsset     time.Duration // dedup per asset after a fire
+	CooldownAfterSL      time.Duration // extended cooldown after a stop-loss exit
 }
 
 func DefaultConfig() Config {
@@ -55,6 +56,7 @@ func DefaultConfig() Config {
 		MinBuyRatio:      0.60,
 		MinSamplesWarm:   30,
 		CooldownPerAsset: 5 * time.Minute,
+		CooldownAfterSL:  30 * time.Minute,
 	}
 }
 
@@ -76,6 +78,15 @@ func NewDetector(cfg Config, sampler *feed.Sampler) *Detector {
 }
 
 func (d *Detector) Signals() <-chan Signal { return d.out }
+
+// NotifySL extends the cooldown for an asset after a stop-loss exit.
+func (d *Detector) NotifySL(assetID string) {
+	if d.cfg.CooldownAfterSL > 0 {
+		d.lastFire[assetID] = time.Now().Add(d.cfg.CooldownAfterSL - d.cfg.CooldownPerAsset)
+	}
+}
+
+func (d *Detector) CooldownAfterSL() time.Duration { return d.cfg.CooldownAfterSL }
 
 func (d *Detector) Run(ctx context.Context) error {
 	ticks := d.sampler.Ticks()

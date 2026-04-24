@@ -878,6 +878,12 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 							"open_positions", stats.Open,
 							"realized_pnl", stats.RealizedPnLUSD,
 						)
+						if ex.Reason == strategy.ExitLadderSL {
+							det.NotifySL(ex.AssetID)
+							slog.Info("sl_cooldown_extended",
+								"asset", short(ex.AssetID),
+								"cooldown", det.CooldownAfterSL().String())
+						}
 					}
 				}
 			}
