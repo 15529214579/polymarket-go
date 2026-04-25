@@ -77,7 +77,8 @@ func main() {
 	injuryStarOnly := flag.Bool("injury_star_only", true, "only alert on star players (top ~3-4 per team)")
 	whaleEnabled := flag.Bool("whale_enabled", false, "enable smart-money whale trade tracker")
 	whaleWallet := flag.String("whale_wallet", "", "target wallet address to track (hex 0x…)")
-	whaleMinUSD := flag.Float64("whale_min_usd", 1000, "minimum notional USD to trigger alert")
+	whaleProfile := flag.String("whale_profile", "", "whale's Polymarket profile URL (e.g. https://polymarket.com/@handle)")
+	whaleMinUSD := flag.Float64("whale_min_usd", 500, "minimum notional USD to trigger alert")
 	whaleInterval := flag.Duration("whale_interval", 30*time.Second, "whale trade poll interval")
 	flag.Parse()
 
@@ -131,6 +132,7 @@ func main() {
 		whaleCfg := whale.Config{
 			Enabled:      *whaleEnabled,
 			Wallet:       *whaleWallet,
+			ProfileURL:   *whaleProfile,
 			MinSizeUSD:   *whaleMinUSD,
 			PollInterval: *whaleInterval,
 		}
@@ -439,7 +441,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 		_ = notifier.Close(sctx)
 	}()
 	pending := notify.NewPendingStore(2 * time.Hour)
-	closePending := notify.NewCloseStore(10 * time.Minute)
+	closePending := notify.NewCloseStore(2 * time.Hour)
 	// Admin trigger dir: external callers (e.g. `-mode=prompt-test`) drop a JSON
 	// blob into db/admin/send-prompt.trigger; the daemon watcher below picks it
 	// up, emits a synthetic signal prompt, and stores the nonce in its OWN
@@ -1452,6 +1454,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					Outcome:     ev.Outcome,
 					TradeID:     ev.TradeID,
 					LinkURL:     ev.LinkURL,
+					ProfileURL:  whaleCfg.ProfileURL,
 					Timestamp:   ev.Timestamp,
 					TotalShares: ev.TotalShares,
 					AvgPrice:    ev.AvgPrice,
@@ -1538,6 +1541,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						Outcome:     ev.Outcome,
 						TradeID:     ev.TradeID,
 						LinkURL:     ev.LinkURL,
+						ProfileURL:  whaleCfg.ProfileURL,
 						Timestamp:   ev.Timestamp,
 						TotalShares: ev.TotalShares,
 						AvgPrice:    ev.AvgPrice,
@@ -1565,6 +1569,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					WhaleNotl:        ev.Notional,
 					WhalePrice:       ev.Price,
 					LinkURL:          ev.LinkURL,
+					ProfileURL:       whaleCfg.ProfileURL,
 					Positions:        matchingPos,
 					WhaleTotalShares: ev.TotalShares,
 					WhaleAvgPrice:    ev.AvgPrice,
@@ -1596,6 +1601,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				Outcome:     ev.Outcome,
 				TradeID:     ev.TradeID,
 				LinkURL:     ev.LinkURL,
+				ProfileURL:  whaleCfg.ProfileURL,
 				Timestamp:   ev.Timestamp,
 				TotalShares: ev.TotalShares,
 				AvgPrice:    ev.AvgPrice,
