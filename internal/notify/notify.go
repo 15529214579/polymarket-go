@@ -160,6 +160,10 @@ type WhaleAlertEvent struct {
 	TradeID   string
 	LinkURL   string
 	Timestamp time.Time
+	// Position context: whale's total holding for this asset (0 if unknown).
+	TotalShares float64
+	AvgPrice    float64
+	PctSold     float64 // percentage of position sold (SELL only, 0-100)
 }
 
 // ClosePromptEvent is the payload for a whale-sell close prompt. The boss
@@ -176,6 +180,10 @@ type ClosePromptEvent struct {
 	// Positions lists our open positions matching this asset.
 	Positions []ClosePosition
 	OnSent    func(messageID int64, err error)
+	// Whale's total position context (0 if unknown).
+	WhaleTotalShares float64
+	WhaleAvgPrice    float64
+	WhalePctSold     float64 // percentage of total position being sold (0-100)
 }
 
 // ClosePosition is one open position shown in the close prompt.
@@ -463,8 +471,20 @@ func FormatClosePrompt(ev ClosePromptEvent) string {
 	}
 	fmt.Fprintf(&b, "%s · %s\n", mkt, ev.Outcome)
 	fmt.Fprintf(&b, "鲸鱼: SELL %.0f shares @ %.4f = $%.0f\n", ev.WhaleSize, ev.WhalePrice, ev.WhaleNotl)
+	if ev.WhaleTotalShares > 0 {
+		fmt.Fprintf(&b, "鲸鱼持仓: %.0f shares (均价 $%.4f)", ev.WhaleTotalShares, ev.WhaleAvgPrice)
+		if ev.WhalePctSold > 0 {
+			fmt.Fprintf(&b, " · 卖出 %.0f%%", ev.WhalePctSold)
+			if ev.WhalePctSold >= 95 {
+				b.WriteString(" 清仓")
+			} else {
+				b.WriteString(" 部分止盈")
+			}
+		}
+		b.WriteByte('\n')
+	}
 	for _, p := range ev.Positions {
-		fmt.Fprintf(&b, "持仓: %.2fU · entry %.4f · units %.2f\n", p.SizeUSD, p.EntryMid, p.Units)
+		fmt.Fprintf(&b, "我方持仓: %.2fU · entry %.4f · units %.2f\n", p.SizeUSD, p.EntryMid, p.Units)
 	}
 	if ev.LinkURL != "" {
 		b.WriteString(ev.LinkURL)
@@ -490,6 +510,18 @@ func FormatWhaleAlert(ev WhaleAlertEvent) string {
 	fmt.Fprintf(&b, "%s 聪明钱大单\n", icon)
 	fmt.Fprintf(&b, "%s · %s\n", mkt, ev.Outcome)
 	fmt.Fprintf(&b, "%s %.0f shares @ %.4f = $%.0f\n", ev.Side, ev.SizeUnits, ev.Price, ev.Notional)
+	if ev.TotalShares > 0 {
+		fmt.Fprintf(&b, "持仓: %.0f shares (均价 $%.4f)", ev.TotalShares, ev.AvgPrice)
+		if strings.ToUpper(ev.Side) == "SELL" && ev.PctSold > 0 {
+			fmt.Fprintf(&b, " · 本次卖出 %.0f%%", ev.PctSold)
+			if ev.PctSold >= 95 {
+				b.WriteString(" 清仓")
+			} else {
+				b.WriteString(" 部分止盈")
+			}
+		}
+		b.WriteByte('\n')
+	}
 	fmt.Fprintf(&b, "钱包: %s\n", addr)
 	if ev.LinkURL != "" {
 		b.WriteString(ev.LinkURL)

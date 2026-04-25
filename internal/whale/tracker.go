@@ -71,6 +71,10 @@ type AlertEvent struct {
 	LinkURL     string
 	AssetID     string // CLOB token ID
 	ConditionID string // market condition ID
+	// Position context (populated when position lookup succeeds).
+	TotalShares float64
+	AvgPrice    float64
+	PctSold     float64 // SELL only: percentage of total position sold (0-100)
 }
 
 // AlertFunc is called for each trade that exceeds MinSizeUSD. The caller
@@ -213,7 +217,7 @@ func (t *Tracker) poll(ctx context.Context) error {
 
 		ts := time.Unix(tr.Timestamp, 0)
 
-		t.alert(AlertEvent{
+		ev := AlertEvent{
 			Wallet:      t.cfg.Wallet,
 			Side:        strings.ToUpper(tr.Side),
 			SizeUnits:   tr.Size,
@@ -227,7 +231,24 @@ func (t *Tracker) poll(ctx context.Context) error {
 			LinkURL:     linkURL,
 			AssetID:     tr.Asset,
 			ConditionID: tr.ConditionID,
-		})
+		}
+
+		if positions, err := t.FetchPositions(ctx, t.cfg.Wallet, tr.Asset); err == nil {
+			for _, p := range positions {
+				if p.Asset == tr.Asset {
+					ev.TotalShares = p.Size
+					ev.AvgPrice = p.AvgPrice
+					if strings.ToUpper(tr.Side) == "SELL" && p.Size+tr.Size > 0 {
+						ev.PctSold = (tr.Size / (p.Size + tr.Size)) * 100
+					}
+					break
+				}
+			}
+		} else {
+			t.logger.Warn("whale_position_fetch_fail", "err", err.Error())
+		}
+
+		t.alert(ev)
 
 		t.logger.Info("whale_alert_fired",
 			"tx", truncate(tr.TransactionHash, 16),
@@ -281,6 +302,54 @@ func (t *Tracker) fetchTrades(ctx context.Context) ([]trade, error) {
 		return nil, fmt.Errorf("data-api decode: %w (raw: %s)", err, truncate(string(body), 200))
 	}
 	return trades, nil
+}
+
+// Position represents a wallet's holding for a single outcome token,
+// returned by the data-api /positions endpoint.
+type Position struct {
+	Size        float64 `json:"size"`
+	AvgPrice    float64 `json:"avgPrice"`
+	TotalBought float64 `json:"totalBought"`
+	RealizedPnL float64 `json:"realizedPnl"`
+	CurPrice    float64 `json:"curPrice"`
+	Title       string  `json:"title"`
+	Outcome     string  `json:"outcome"`
+	Asset       string  `json:"asset"`
+	ConditionID string  `json:"conditionId"`
+}
+
+// FetchPositions returns all positions for the given wallet, optionally
+// filtered to a single asset (pass "" to get all).
+func (t *Tracker) FetchPositions(ctx context.Context, wallet, assetID string) ([]Position, error) {
+	q := url.Values{}
+	q.Set("user", wallet)
+	q.Set("sizeThreshold", "0.1")
+	q.Set("limit", "100")
+	if assetID != "" {
+		q.Set("asset", assetID)
+	}
+	reqURL := dataAPI + "/positions?" + q.Encode()
+	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := t.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("data-api GET /positions: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("data-api %d: %s", resp.StatusCode, truncate(string(body), 200))
+	}
+	var positions []Position
+	if err := json.Unmarshal(body, &positions); err != nil {
+		return nil, fmt.Errorf("data-api decode positions: %w (raw: %s)", err, truncate(string(body), 200))
+	}
+	return positions, nil
 }
 
 func truncate(s string, n int) string {

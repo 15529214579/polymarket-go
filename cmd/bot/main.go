@@ -1443,16 +1443,19 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 
 			if signalMode != "whale" {
 				notifier.WhaleAlert(notify.WhaleAlertEvent{
-					Wallet:    ev.Wallet,
-					Side:      ev.Side,
-					SizeUnits: ev.SizeUnits,
-					Price:     ev.Price,
-					Notional:  ev.Notional,
-					Market:    ev.Question,
-					Outcome:   ev.Outcome,
-					TradeID:   ev.TradeID,
-					LinkURL:   ev.LinkURL,
-					Timestamp: ev.Timestamp,
+					Wallet:      ev.Wallet,
+					Side:        ev.Side,
+					SizeUnits:   ev.SizeUnits,
+					Price:       ev.Price,
+					Notional:    ev.Notional,
+					Market:      ev.Question,
+					Outcome:     ev.Outcome,
+					TradeID:     ev.TradeID,
+					LinkURL:     ev.LinkURL,
+					Timestamp:   ev.Timestamp,
+					TotalShares: ev.TotalShares,
+					AvgPrice:    ev.AvgPrice,
+					PctSold:     ev.PctSold,
 				})
 				return
 			}
@@ -1478,6 +1481,9 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				}, time.Now())
 
 				ctxLine := fmt.Sprintf("🐋 跟单 · $%.0f · %.0f shares", ev.Notional, ev.SizeUnits)
+				if ev.TotalShares > 0 {
+					ctxLine += fmt.Sprintf("\n持仓: %.0f shares (均价 $%.4f)", ev.TotalShares, ev.AvgPrice)
+				}
 				if ev.LinkURL != "" {
 					ctxLine += "\n" + ev.LinkURL
 				}
@@ -1522,18 +1528,20 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				}
 
 				if len(matchingPos) == 0 {
-					// No position to close — just notify about the whale sell.
 					notifier.WhaleAlert(notify.WhaleAlertEvent{
-						Wallet:    ev.Wallet,
-						Side:      ev.Side,
-						SizeUnits: ev.SizeUnits,
-						Price:     ev.Price,
-						Notional:  ev.Notional,
-						Market:    ev.Question,
-						Outcome:   ev.Outcome,
-						TradeID:   ev.TradeID,
-						LinkURL:   ev.LinkURL,
-						Timestamp: ev.Timestamp,
+						Wallet:      ev.Wallet,
+						Side:        ev.Side,
+						SizeUnits:   ev.SizeUnits,
+						Price:       ev.Price,
+						Notional:    ev.Notional,
+						Market:      ev.Question,
+						Outcome:     ev.Outcome,
+						TradeID:     ev.TradeID,
+						LinkURL:     ev.LinkURL,
+						Timestamp:   ev.Timestamp,
+						TotalShares: ev.TotalShares,
+						AvgPrice:    ev.AvgPrice,
+						PctSold:     ev.PctSold,
 					})
 					return
 				}
@@ -1549,15 +1557,18 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 
 				nonceSnap := ci.Nonce
 				notifier.ClosePrompt(notify.ClosePromptEvent{
-					Nonce:      ci.Nonce,
-					Market:     ev.Question,
-					Outcome:    ev.Outcome,
-					AssetID:    ev.AssetID,
-					WhaleSize:  ev.SizeUnits,
-					WhaleNotl:  ev.Notional,
-					WhalePrice: ev.Price,
-					LinkURL:    ev.LinkURL,
-					Positions:  matchingPos,
+					Nonce:            ci.Nonce,
+					Market:           ev.Question,
+					Outcome:          ev.Outcome,
+					AssetID:          ev.AssetID,
+					WhaleSize:        ev.SizeUnits,
+					WhaleNotl:        ev.Notional,
+					WhalePrice:       ev.Price,
+					LinkURL:          ev.LinkURL,
+					Positions:        matchingPos,
+					WhaleTotalShares: ev.TotalShares,
+					WhaleAvgPrice:    ev.AvgPrice,
+					WhalePctSold:     ev.PctSold,
 					OnSent: func(msgID int64, err error) {
 						if err != nil || msgID == 0 {
 							return
@@ -1576,16 +1587,19 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 
 			// Unrecognized side (e.g. MINT/REDEEM) — just notify.
 			notifier.WhaleAlert(notify.WhaleAlertEvent{
-				Wallet:    ev.Wallet,
-				Side:      ev.Side,
-				SizeUnits: ev.SizeUnits,
-				Price:     ev.Price,
-				Notional:  ev.Notional,
-				Market:    ev.Question,
-				Outcome:   ev.Outcome,
-				TradeID:   ev.TradeID,
-				LinkURL:   ev.LinkURL,
-				Timestamp: ev.Timestamp,
+				Wallet:      ev.Wallet,
+				Side:        ev.Side,
+				SizeUnits:   ev.SizeUnits,
+				Price:       ev.Price,
+				Notional:    ev.Notional,
+				Market:      ev.Question,
+				Outcome:     ev.Outcome,
+				TradeID:     ev.TradeID,
+				LinkURL:     ev.LinkURL,
+				Timestamp:   ev.Timestamp,
+				TotalShares: ev.TotalShares,
+				AvgPrice:    ev.AvgPrice,
+				PctSold:     ev.PctSold,
 			})
 		})
 		go func() {
