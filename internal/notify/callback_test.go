@@ -38,6 +38,10 @@ func (s *stubHandler) OnBuy(ctx context.Context, nonce string, slot int, size fl
 	return s.ack, s.err
 }
 
+func (s *stubHandler) OnClose(ctx context.Context, nonce string, messageID int64) (string, error) {
+	return "✅ 已平仓", nil
+}
+
 func TestParseBuyCallback(t *testing.T) {
 	cases := []struct {
 		in    string

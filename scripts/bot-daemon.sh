@@ -36,12 +36,11 @@ start() {
   ( cd "$ROOT" && go build -o bin/bot ./cmd/bot ) || { echo "build failed"; exit 1; }
   cd "$ROOT" || exit 1
   shift_args=("${@:2}")
-  # Default mode (2026-04-21 00:12 SGT, R3 auto-open 放开): auto-open 恢复用于
-  # paper 样本积累，和 R3 的其余护栏叠加 — SL 5% (Phase 7.e)，价带 0.15-0.70
-  # (Phase 7.a)，ladder TP1 +15% / TP2 +30% / 4h timeout (Phase 7.b)。
-  # fee_bp=0 匹配 CLOB V1 实测，2026-04-28 V2 cutover 后再调。实盘签名仍
-  # 走 Phase 3（未完成），当前 paper-only。
-  args=(-mode=detect -signal_mode=auto -exit_mode=ladder -markets=20 -window=60 -fee_bp=0 -injury_enabled -whale_enabled -whale_wallet=0xdb27bf2ac5d428a9c63dbc914611036855a6c56e)
+  # Default mode (2026-04-25 SGT): whale-follow mode — momentum auto-open
+  # and DM buttons disabled; whale BUY → SignalPrompt with buy buttons,
+  # whale SELL → auto-close matching positions. Lottery scanner still runs
+  # independently. fee_bp=0 matches CLOB V1; update after V2 cutover.
+  args=(-mode=detect -signal_mode=whale -exit_mode=ladder -markets=20 -window=60 -fee_bp=0 -injury_enabled -whale_enabled -whale_wallet=0xdb27bf2ac5d428a9c63dbc914611036855a6c56e)
   if [ "${#shift_args[@]}" -gt 0 ]; then
     args=("${shift_args[@]}")
   fi

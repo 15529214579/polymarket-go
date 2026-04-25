@@ -20,6 +20,7 @@ import (
 // surfaced as the Telegram toast on the clicker's screen.
 type CallbackHandler interface {
 	OnBuy(ctx context.Context, nonce string, slot int, sizeUSD float64, mode string, messageID int64) (ack string, err error)
+	OnClose(ctx context.Context, nonce string, messageID int64) (ack string, err error)
 }
 
 // LongPollConfig bounds a single long-poll consumer. Use a DEDICATED bot token
@@ -181,6 +182,26 @@ func (l *LongPoll) dispatch(ctx context.Context, u tgUpdate) {
 		return
 	}
 
+	// Route close/skip callbacks.
+	if closeNonce, ok := parseCloseCallback(cq.Data); ok {
+		l.logger.Info("callback_close_click", "nonce", closeNonce, "from", cq.From.Username)
+		ack, err := l.handler.OnClose(ctx, closeNonce, cq.Message.MessageID)
+		if err != nil {
+			l.answerCallback(ctx, cq.ID, "❌ "+truncate(err.Error(), 180), true)
+			return
+		}
+		if ack == "" {
+			ack = "✅ 已平仓"
+		}
+		l.answerCallback(ctx, cq.ID, ack, false)
+		return
+	}
+	if skipNonce, ok := parseSkipCallback(cq.Data); ok {
+		l.logger.Info("callback_skip_click", "nonce", skipNonce, "from", cq.From.Username)
+		l.answerCallback(ctx, cq.ID, "👌 已忽略", false)
+		return
+	}
+
 	nonce, slot, size, mode, ok := parseBuyCallback(cq.Data)
 	if !ok {
 		l.answerCallback(ctx, cq.ID, "bad data", true)
@@ -234,6 +255,24 @@ func parseBuyCallback(s string) (nonce string, slot int, sizeUSD float64, mode s
 		}
 	}
 	return parts[1], sl, sz, m, true
+}
+
+// parseCloseCallback validates "close:<nonce>". Returns (nonce, true) on match.
+func parseCloseCallback(s string) (string, bool) {
+	parts := strings.SplitN(s, ":", 2)
+	if len(parts) != 2 || parts[0] != "close" || parts[1] == "" {
+		return "", false
+	}
+	return parts[1], true
+}
+
+// parseSkipCallback validates "skip:<nonce>". Returns (nonce, true) on match.
+func parseSkipCallback(s string) (string, bool) {
+	parts := strings.SplitN(s, ":", 2)
+	if len(parts) != 2 || parts[0] != "skip" || parts[1] == "" {
+		return "", false
+	}
+	return parts[1], true
 }
 
 func (l *LongPoll) answerCallback(ctx context.Context, cqID string, text string, showAlert bool) {

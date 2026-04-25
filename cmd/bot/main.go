@@ -38,7 +38,7 @@ func main() {
 	slippageBp := flag.Float64("slippage_bp", 0, "paper fill slippage in bp applied against you")
 	largeFillUSD := flag.Float64("large_fill_usd", 3.0, "DM notifier threshold on |realized pnl|")
 	envFile := flag.String("env_file", ".env.local", "dotenv file to load before reading env")
-	signalMode := flag.String("signal_mode", "auto", "auto (paper-submit + DM with buttons for manual add) | prompt (DM only, boss picks size)")
+	signalMode := flag.String("signal_mode", "auto", "auto (paper-submit + DM) | prompt (DM only) | whale (follow whale buys, auto-close on sells)")
 	exitMode := flag.String("exit_mode", "hold", "hold (settlement only) | auto (SPEC §2 reversal/drawdown/stop/timeout) | ladder (Phase 7.b TP1/TP2/SL/timeout)")
 	journalDir := flag.String("journal_dir", "db/journal", "trade-journal directory (one JSONL per SGT day)")
 	tickPathDir := flag.String("tickpath_dir", "db/tickpath", "Phase 7.e tick-path persistence dir (one JSONL per posID; empty disables)")
@@ -350,8 +350,8 @@ func runSample(ctx context.Context, topN, windowSec int) error {
 }
 
 func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, arbEnabled bool, arbInterval time.Duration, arbMinGapPP float64, arbDBPath string, injCfg injury.Config, whaleCfg whale.Config) error {
-	if signalMode != "auto" && signalMode != "prompt" {
-		return fmt.Errorf("invalid signal_mode %q (want auto|prompt)", signalMode)
+	if signalMode != "auto" && signalMode != "prompt" && signalMode != "whale" {
+		return fmt.Errorf("invalid signal_mode %q (want auto|prompt|whale)", signalMode)
 	}
 	if exitMode != "hold" && exitMode != "auto" && exitMode != "ladder" {
 		return fmt.Errorf("invalid exit_mode %q (want hold|auto|ladder)", exitMode)
@@ -439,6 +439,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 		_ = notifier.Close(sctx)
 	}()
 	pending := notify.NewPendingStore(2 * time.Hour)
+	closePending := notify.NewCloseStore(10 * time.Minute)
 	// Admin trigger dir: external callers (e.g. `-mode=prompt-test`) drop a JSON
 	// blob into db/admin/send-prompt.trigger; the daemon watcher below picks it
 	// up, emits a synthetic signal prompt, and stores the nonce in its OWN
@@ -498,10 +499,12 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				paper:        paper,
 				rm:           rm,
 				pending:      pending,
+				closePending: closePending,
 				notifier:     notifier,
 				meta:         meta,
 				src:          src,
 				recorder:     recorder,
+				jrn:          jrn,
 				largeFillUSD: largeFillUSD,
 				exitMode:     exitMode,
 			}
@@ -549,6 +552,25 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					"edited_expired_dm", edited,
 					"remaining", pending.Size(),
 				)
+			}
+		}
+	}()
+
+	// Close-prompt reaper — same pattern as the buy-prompt reaper above.
+	go func() {
+		tk := time.NewTicker(15 * time.Second)
+		defer tk.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case now := <-tk.C:
+				evicted := closePending.Reap(now)
+				for _, ci := range evicted {
+					if ci.MessageID != 0 {
+						notifier.EditCloseDone("⌛ 已过期 · 未操作", ci.MessageID)
+					}
+				}
 			}
 		}
 	}()
@@ -955,6 +977,11 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					"buy_ratio", sig.BuyRatio,
 					"reason", sig.Reason,
 				)
+				// Whale mode: momentum signals are logged but not acted on.
+				// All trading is driven by whale buy/sell events instead.
+				if signalMode == "whale" {
+					continue
+				}
 				// Risk gate first — daily-loss breaker / feed-silence / manual pause.
 				if err := rm.AllowOpen(time.Now()); err != nil {
 					st := rm.State()
@@ -1408,8 +1435,146 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 
 	// Smart-money whale tracker: polls target wallet's CLOB trades and
 	// pushes DM for large orders. Feature-flagged via -whale_enabled.
+	// In whale signal_mode: BUY → SignalPrompt with buttons (boss clicks to follow);
+	// SELL → auto-close matching positions.
 	if whaleCfg.Enabled {
 		wt := whale.NewTracker(whaleCfg, func(ev whale.AlertEvent) {
+			side := strings.ToUpper(ev.Side)
+
+			if signalMode != "whale" {
+				notifier.WhaleAlert(notify.WhaleAlertEvent{
+					Wallet:    ev.Wallet,
+					Side:      ev.Side,
+					SizeUnits: ev.SizeUnits,
+					Price:     ev.Price,
+					Notional:  ev.Notional,
+					Market:    ev.Question,
+					Outcome:   ev.Outcome,
+					TradeID:   ev.TradeID,
+					LinkURL:   ev.LinkURL,
+					Timestamp: ev.Timestamp,
+				})
+				return
+			}
+
+			// ---- whale-follow mode ----
+
+			if side == "BUY" {
+				// Send SignalPrompt with buy buttons so the boss can follow.
+				choices := []notify.Choice{{
+					AssetID:  ev.AssetID,
+					Outcome:  ev.Outcome,
+					Mid:      ev.Price,
+					IsSignal: true,
+				}}
+				sigChoices := []notify.SignalChoice{{
+					Slot: 0, Outcome: ev.Outcome, Mid: ev.Price, IsSignal: true,
+				}}
+
+				p := pending.Put(notify.PendingIntent{
+					Market:   ev.ConditionID,
+					Question: ev.Question,
+					Choices:  choices,
+				}, time.Now())
+
+				ctxLine := fmt.Sprintf("🐋 跟单 · $%.0f · %.0f shares", ev.Notional, ev.SizeUnits)
+				if ev.LinkURL != "" {
+					ctxLine += "\n" + ev.LinkURL
+				}
+
+				nonceSnap := p.Nonce
+				notifier.SignalPrompt(notify.SignalPromptEvent{
+					Nonce:     p.Nonce,
+					Match:     ev.Question,
+					Context:   ctxLine,
+					Choices:   sigChoices,
+					ExpiresIn: 10 * time.Minute,
+					OnSent: func(msgID int64, err error) {
+						if err != nil || msgID == 0 {
+							return
+						}
+						pending.SetMessageID(nonceSnap, msgID)
+					},
+				})
+				slog.Info("whale_follow_prompt_sent",
+					"asset", ev.AssetID,
+					"outcome", ev.Outcome,
+					"price", ev.Price,
+					"notional", ev.Notional,
+					"nonce", p.Nonce,
+				)
+				return
+			}
+
+			if side == "SELL" {
+				// Collect matching open positions for this asset.
+				var matchingPos []notify.ClosePosition
+				for _, pos := range pm.Snapshot() {
+					if pos.AssetID != ev.AssetID {
+						continue
+					}
+					matchingPos = append(matchingPos, notify.ClosePosition{
+						PosID:    pos.ID,
+						SizeUSD:  pos.SizeUSD,
+						Units:    pos.Units,
+						EntryMid: pos.EntryMid,
+					})
+				}
+
+				if len(matchingPos) == 0 {
+					// No position to close — just notify about the whale sell.
+					notifier.WhaleAlert(notify.WhaleAlertEvent{
+						Wallet:    ev.Wallet,
+						Side:      ev.Side,
+						SizeUnits: ev.SizeUnits,
+						Price:     ev.Price,
+						Notional:  ev.Notional,
+						Market:    ev.Question,
+						Outcome:   ev.Outcome,
+						TradeID:   ev.TradeID,
+						LinkURL:   ev.LinkURL,
+						Timestamp: ev.Timestamp,
+					})
+					return
+				}
+
+				// We hold matching positions — push a close prompt with buttons.
+				ci := closePending.Put(notify.CloseIntent{
+					AssetID:    ev.AssetID,
+					Market:     ev.ConditionID,
+					Question:   ev.Question,
+					Outcome:    ev.Outcome,
+					WhalePrice: ev.Price,
+				}, time.Now())
+
+				nonceSnap := ci.Nonce
+				notifier.ClosePrompt(notify.ClosePromptEvent{
+					Nonce:      ci.Nonce,
+					Market:     ev.Question,
+					Outcome:    ev.Outcome,
+					AssetID:    ev.AssetID,
+					WhaleSize:  ev.SizeUnits,
+					WhaleNotl:  ev.Notional,
+					WhalePrice: ev.Price,
+					LinkURL:    ev.LinkURL,
+					Positions:  matchingPos,
+					OnSent: func(msgID int64, err error) {
+						if err != nil || msgID == 0 {
+							return
+						}
+						closePending.SetMessageID(nonceSnap, msgID)
+					},
+				})
+				slog.Info("whale_close_prompt_sent",
+					"asset", ev.AssetID,
+					"outcome", ev.Outcome,
+					"positions", len(matchingPos),
+					"nonce", ci.Nonce,
+				)
+				return
+			}
+
+			// Unrecognized side (e.g. MINT/REDEEM) — just notify.
 			notifier.WhaleAlert(notify.WhaleAlertEvent{
 				Wallet:    ev.Wallet,
 				Side:      ev.Side,
@@ -2011,10 +2176,12 @@ type buyHandler struct {
 	paper        order.Client
 	rm           *risk.Manager
 	pending      *notify.PendingStore
+	closePending *notify.CloseStore
 	notifier     notify.Notifier
 	meta         map[string]*assetMeta
 	src          *sourceTracker
 	recorder     *tickrec.Recorder
+	jrn          *journal.Journal
 	largeFillUSD float64
 	exitMode     string
 }
@@ -2125,6 +2292,139 @@ func (h *buyHandler) OnBuy(ctx context.Context, nonce string, slot int, sizeUSD 
 	}
 	return fmt.Sprintf("%s %s %gU @ %.4f · order %s",
 		icon, choice.Outcome, sizeUSD, res.AvgPrice, short(res.OrderID)), nil
+}
+
+func (h *buyHandler) OnClose(ctx context.Context, nonce string, messageID int64) (string, error) {
+	now := time.Now()
+	ci, ok := h.closePending.Claim(nonce, now)
+	if !ok {
+		if h.notifier != nil && messageID != 0 {
+			h.notifier.EditCloseDone("⌛ 已过期或已点过", messageID)
+		}
+		return "", fmt.Errorf("已过期或已点过")
+	}
+
+	var totalNetPnL float64
+	var closedCount int
+	for _, pos := range h.pm.Snapshot() {
+		if pos.AssetID != ci.AssetID {
+			continue
+		}
+		sellIntent := order.Intent{
+			AssetID: pos.AssetID,
+			Market:  pos.Market,
+			Side:    order.Sell,
+			SizeUSD: pos.SizeUSD,
+			LimitPx: ci.WhalePrice,
+			Type:    order.GTC,
+		}
+		res, serr := h.paper.Submit(ctx, sellIntent)
+		if serr != nil {
+			slog.Warn("whale_close_sell_reject", "pos", pos.ID, "err", serr.Error())
+			continue
+		}
+		sig := strategy.ExitSignal{
+			AssetID:  pos.AssetID,
+			Market:   pos.Market,
+			Time:     now,
+			EntryMid: pos.EntryMid,
+			PeakMid:  pos.EntryMid,
+			ExitMid:  res.AvgPrice,
+			HeldFor:  now.Sub(pos.EntryTime),
+			ChangePP: (res.AvgPrice - pos.EntryMid) * 100,
+			Reason:   strategy.ExitReason("whale_sell"),
+		}
+		closed, cerr := h.pm.Close(pos.ID, sig)
+		if cerr != nil {
+			slog.Warn("whale_close_miss", "pos", pos.ID, "err", cerr.Error())
+			continue
+		}
+		h.ladder.Forget(pos.ID)
+		if h.recorder != nil {
+			_ = h.recorder.Stop(closed.ID)
+		}
+		entryFeeShare := pos.OpenFeeUSD
+		if pos.InitUnits > 0 {
+			entryFeeShare = pos.OpenFeeUSD * (pos.Units / pos.InitUnits)
+		}
+		exitFee := res.FeeUSD
+		netPnL := closed.PnLUSD - entryFeeShare - exitFee
+		totalNetPnL += netPnL
+		closedCount++
+		stats := h.pm.Stats()
+		if tripped := h.rm.OnClose(netPnL, now); tripped {
+			rst := h.rm.State()
+			h.notifier.RiskTrip(notify.RiskTripEvent{
+				Reason:        string(rst.BlockReason),
+				DayPnLUSD:     rst.DayRealizedPnL,
+				DayLossCapUSD: rst.DayLossCapUSD,
+				DrawdownUSD:   rst.DrawdownUSD,
+				DrawdownCap:   rst.DrawdownCapUSD,
+				OpenPositions: stats.Open,
+			})
+		}
+		if netPnL <= -h.largeFillUSD || netPnL >= h.largeFillUSD {
+			h.notifier.LargeFill(notify.LargeFillEvent{
+				Question: ci.Question,
+				AssetID:  pos.AssetID,
+				Side:     "sell",
+				SizeUSD:  pos.SizeUSD,
+				PnLUSD:   netPnL,
+				EntryPx:  pos.EntryMid,
+				ExitPx:   res.AvgPrice,
+				Reason:   "whale_sell",
+				HeldSec:  int(sig.HeldFor.Seconds()),
+			})
+		}
+		source, openOID := h.src.Take(closed.ID)
+		if h.jrn != nil {
+			_ = h.jrn.Append(journal.TradeRecord{
+				ID: closed.ID, AssetID: closed.AssetID, Market: closed.Market,
+				Question:     ci.Question,
+				Outcome:      ci.Outcome,
+				Side:         "buy",
+				SizeUSD:      closed.SizeUSD,
+				Units:        closed.Units,
+				EntryMid:     closed.EntryMid,
+				EntryTime:    closed.EntryTime,
+				ExitMid:      closed.ExitMid,
+				ExitTime:     closed.ExitTime,
+				ExitReason:   "whale_sell",
+				HeldSec:      int(sig.HeldFor.Seconds()),
+				PnLUSD:       closed.PnLUSD,
+				EntryFeeUSD:  entryFeeShare,
+				ExitFeeUSD:   exitFee,
+				NetPnLUSD:    netPnL,
+				OpenOrderID:  openOID,
+				CloseOrderID: res.OrderID,
+				Mode:         "paper",
+				SignalSource: source,
+			})
+		}
+		slog.Info("whale_follow_close",
+			"pos", pos.ID,
+			"asset", short(pos.AssetID),
+			"q", ci.Question,
+			"outcome", ci.Outcome,
+			"entry", pos.EntryMid,
+			"exit_fill", res.AvgPrice,
+			"net_pnl_usd", netPnL,
+			"held_sec", int(sig.HeldFor.Seconds()),
+			"open_positions", h.pm.Stats().Open,
+		)
+	}
+
+	if closedCount == 0 {
+		if messageID != 0 {
+			h.notifier.EditCloseDone("⚠️ 无匹配持仓可平", messageID)
+		}
+		return "⚠️ 无匹配持仓", nil
+	}
+	result := fmt.Sprintf("✅ 已平仓 %d 笔 · pnl %+.2f USDC", closedCount, totalNetPnL)
+	if messageID != 0 {
+		h.notifier.EditCloseDone(result, messageID)
+	}
+	return result, nil
 }
 
 // buildNotifier returns a Telegram notifier when TELEGRAM_BOT_TOKEN + _CHAT_ID

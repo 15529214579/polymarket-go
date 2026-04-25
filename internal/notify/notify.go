@@ -20,9 +20,9 @@ type Notifier interface {
 	RiskTrip(ev RiskTripEvent)
 	RiskResume(ev RiskResumeEvent)
 	LargeFill(ev LargeFillEvent)
-	// SignalPrompt pushes a signal DM with one inline-keyboard row per outcome
-	// (Phase 3.5 UX). Each row is Buy 1U / 5U / 10U; callback_data is
-	// "buy:<nonce>:<slot>:<sizeUSD>" where slot indexes into PendingIntent.Choices.
+	// SignalPrompt pushes a signal DM with inline-keyboard rows (10U–100U gradient);
+	// callback_data is "buy:<nonce>:<slot>:<sizeUSD>:<mode>" where slot indexes
+	// into PendingIntent.Choices and mode is "l" (ladder) or "h" (hold).
 	SignalPrompt(ev SignalPromptEvent)
 	// EditSignalExpired rewrites the original prompt to "⌛ 已过期 · 未下单" and
 	// strips the inline keyboard, called when the TTL-reaper evicts an unclicked
@@ -42,6 +42,12 @@ type Notifier interface {
 	// -whale_enabled flag; to remove: delete this method + WhaleAlertEvent +
 	// FormatWhaleAlert.
 	WhaleAlert(ev WhaleAlertEvent)
+	// ClosePrompt pushes a DM with inline close/ignore buttons when a whale
+	// sells an asset we hold. The boss clicks to confirm the close.
+	ClosePrompt(ev ClosePromptEvent)
+	// EditCloseDone rewrites the close prompt to show the result and strips
+	// the inline keyboard.
+	EditCloseDone(text string, messageID int64)
 	Close(ctx context.Context) error
 }
 
@@ -85,7 +91,7 @@ type SignalPromptEvent struct {
 	TailLen  int
 	BuyRatio float64
 
-	SizesUSD  []float64     // default {1, 5, 10}
+	SizesUSD  []float64     // default {10, 20, ..., 100}
 	ExpiresIn time.Duration // visual-only hint in the DM body
 
 	// OnSent, if set, is called asynchronously by the Telegram backend after
@@ -154,6 +160,30 @@ type WhaleAlertEvent struct {
 	TradeID   string
 	LinkURL   string
 	Timestamp time.Time
+}
+
+// ClosePromptEvent is the payload for a whale-sell close prompt. The boss
+// sees matching open positions and decides whether to close or ignore.
+type ClosePromptEvent struct {
+	Nonce     string
+	Market    string // question/title
+	Outcome   string
+	AssetID   string
+	WhaleSize float64 // whale's sell size in shares
+	WhaleNotl float64 // whale's sell notional USD
+	WhalePrice float64
+	LinkURL   string
+	// Positions lists our open positions matching this asset.
+	Positions []ClosePosition
+	OnSent    func(messageID int64, err error)
+}
+
+// ClosePosition is one open position shown in the close prompt.
+type ClosePosition struct {
+	PosID    string
+	SizeUSD  float64
+	Units    float64
+	EntryMid float64
 }
 
 // ---- formatting helpers (exported so telegram_test can assert them) ----
@@ -232,7 +262,9 @@ func FormatSignalPrompt(ev SignalPromptEvent) string {
 	if ev.EndIn != "" {
 		parts = append(parts, ev.EndIn)
 	}
-	parts = append(parts, fmt.Sprintf("Δ%+.2fpp", ev.DeltaPP))
+	if ev.DeltaPP != 0 {
+		parts = append(parts, fmt.Sprintf("Δ%+.2fpp", ev.DeltaPP))
+	}
 	if ev.TailLen > 0 || ev.BuyRatio > 0 {
 		parts = append(parts, fmt.Sprintf("buy %.0f%%", ev.BuyRatio*100))
 	}
@@ -254,9 +286,9 @@ func signalChoice(cs []SignalChoice) (SignalChoice, bool) {
 	return SignalChoice{}, false
 }
 
-// DefaultSizesUSD is the Buy 1/5/10 inline-button row used when
+// DefaultSizesUSD is the Buy 10-100U inline-button gradient used when
 // SignalPromptEvent.SizesUSD is empty.
-var DefaultSizesUSD = []float64{1, 5, 10}
+var DefaultSizesUSD = []float64{10, 20, 30, 40, 50, 60, 70, 80, 90, 100}
 
 // FormatFillReceipt renders the durable DM body for a successful manual open.
 // Kept minimal — the boss already saw the prompt + toast; this is the archive
@@ -419,6 +451,25 @@ func outcomeAt(cs []SignalChoice, i int) string {
 		return "?"
 	}
 	return cs[i].Outcome
+}
+
+// FormatClosePrompt renders the DM body for a whale-sell close decision.
+func FormatClosePrompt(ev ClosePromptEvent) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "🔻 鲸鱼卖出 · 是否平仓?\n")
+	mkt := ev.Market
+	if len(mkt) > 80 {
+		mkt = mkt[:77] + "..."
+	}
+	fmt.Fprintf(&b, "%s · %s\n", mkt, ev.Outcome)
+	fmt.Fprintf(&b, "鲸鱼: SELL %.0f shares @ %.4f = $%.0f\n", ev.WhaleSize, ev.WhalePrice, ev.WhaleNotl)
+	for _, p := range ev.Positions {
+		fmt.Fprintf(&b, "持仓: %.2fU · entry %.4f · units %.2f\n", p.SizeUSD, p.EntryMid, p.Units)
+	}
+	if ev.LinkURL != "" {
+		b.WriteString(ev.LinkURL)
+	}
+	return b.String()
 }
 
 // FormatWhaleAlert renders a compact DM for a smart-money large trade.

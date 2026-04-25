@@ -58,17 +58,19 @@ func (t *trade) notionalUSD() float64 {
 // AlertEvent is the payload passed to the AlertFunc callback for each
 // qualifying trade. The caller (main.go) converts this to notify.WhaleAlertEvent.
 type AlertEvent struct {
-	Wallet    string
-	Side      string
-	SizeUnits float64
-	Price     float64
-	Notional  float64
-	Question  string
-	Slug      string
-	Outcome   string
-	TradeID   string
-	Timestamp time.Time
-	LinkURL   string
+	Wallet      string
+	Side        string
+	SizeUnits   float64
+	Price       float64
+	Notional    float64
+	Question    string
+	Slug        string
+	Outcome     string
+	TradeID     string
+	Timestamp   time.Time
+	LinkURL     string
+	AssetID     string // CLOB token ID
+	ConditionID string // market condition ID
 }
 
 // AlertFunc is called for each trade that exceeds MinSizeUSD. The caller
@@ -212,17 +214,19 @@ func (t *Tracker) poll(ctx context.Context) error {
 		ts := time.Unix(tr.Timestamp, 0)
 
 		t.alert(AlertEvent{
-			Wallet:    t.cfg.Wallet,
-			Side:      strings.ToUpper(tr.Side),
-			SizeUnits: tr.Size,
-			Price:     tr.Price,
-			Notional:  notional,
-			Question:  tr.Title,
-			Slug:      slug,
-			Outcome:   tr.Outcome,
-			TradeID:   tr.TransactionHash,
-			Timestamp: ts,
-			LinkURL:   linkURL,
+			Wallet:      t.cfg.Wallet,
+			Side:        strings.ToUpper(tr.Side),
+			SizeUnits:   tr.Size,
+			Price:       tr.Price,
+			Notional:    notional,
+			Question:    tr.Title,
+			Slug:        slug,
+			Outcome:     tr.Outcome,
+			TradeID:     tr.TransactionHash,
+			Timestamp:   ts,
+			LinkURL:     linkURL,
+			AssetID:     tr.Asset,
+			ConditionID: tr.ConditionID,
 		})
 
 		t.logger.Info("whale_alert_fired",

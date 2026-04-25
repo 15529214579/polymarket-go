@@ -139,6 +139,85 @@ func (s *PendingStore) Size() int {
 	return len(s.m)
 }
 
+// CloseIntent stores context for a whale-sell close prompt so the callback
+// handler can look it up by nonce and execute the close.
+type CloseIntent struct {
+	Nonce     string
+	AssetID   string
+	Market    string
+	Question  string
+	Outcome   string
+	WhalePrice float64
+	MessageID int64
+	CreatedAt time.Time
+	ExpiresAt time.Time
+}
+
+// CloseStore is a thread-safe TTL map for close prompts, keyed by nonce.
+type CloseStore struct {
+	ttl time.Duration
+	mu  sync.Mutex
+	m   map[string]CloseIntent
+}
+
+func NewCloseStore(ttl time.Duration) *CloseStore {
+	if ttl <= 0 {
+		ttl = 10 * time.Minute
+	}
+	return &CloseStore{ttl: ttl, m: make(map[string]CloseIntent)}
+}
+
+func (s *CloseStore) Put(in CloseIntent, now time.Time) CloseIntent {
+	if in.Nonce == "" {
+		in.Nonce = newNonce()
+	}
+	in.CreatedAt = now
+	in.ExpiresAt = now.Add(s.ttl)
+	s.mu.Lock()
+	s.m[in.Nonce] = in
+	s.mu.Unlock()
+	return in
+}
+
+func (s *CloseStore) Claim(nonce string, now time.Time) (CloseIntent, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.m[nonce]
+	if !ok {
+		return CloseIntent{}, false
+	}
+	delete(s.m, nonce)
+	if now.After(p.ExpiresAt) {
+		return CloseIntent{}, false
+	}
+	return p, true
+}
+
+func (s *CloseStore) SetMessageID(nonce string, id int64) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.m[nonce]
+	if !ok {
+		return false
+	}
+	p.MessageID = id
+	s.m[nonce] = p
+	return true
+}
+
+func (s *CloseStore) Reap(now time.Time) []CloseIntent {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var evicted []CloseIntent
+	for k, v := range s.m {
+		if now.After(v.ExpiresAt) {
+			delete(s.m, k)
+			evicted = append(evicted, v)
+		}
+	}
+	return evicted
+}
+
 // newNonce returns 8 bytes of hex (16 chars). Telegram caps callback_data at
 // 64 bytes; we fit well under that with "buy:<nonce>:<slot>:<size>" ≈ 28 chars.
 func newNonce() string {

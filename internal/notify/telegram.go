@@ -81,9 +81,9 @@ func (t *Telegram) LargeFill(ev LargeFillEvent) {
 	t.enqueue(outgoing{text: FormatLargeFill(ev), tag: "large_fill"})
 }
 
-// SignalPrompt enqueues a DM with two inline-keyboard rows for the signal side:
-//   - Row 1: 🟢 1U / 5U / 10U → ladder mode (SL + 4h timeout)
-//   - Row 2: 🔒 1U / 5U / 10U → hold to settlement (no SL, no timeout)
+// SignalPrompt enqueues a DM with inline-keyboard rows for the signal side:
+//   - 🟢 rows: 10U–100U ladder mode (SL + 4h timeout), 5 buttons per row
+//   - 🔒 rows: 10U–100U hold to settlement (no SL, no timeout), 5 per row
 //
 // callback_data is "buy:<nonce>:<slot>:<sizeUSD>:<mode>" where mode is "l"
 // (ladder) or "h" (hold). The inbound callback handler resolves nonce via
@@ -97,19 +97,40 @@ func (t *Telegram) SignalPrompt(ev SignalPromptEvent) {
 	if !ok {
 		sig = SignalChoice{Slot: 0, Outcome: "?", IsSignal: true}
 	}
-	ladderRow := make([]map[string]string, 0, len(sizes))
-	holdRow := make([]map[string]string, 0, len(sizes))
+
+	const rowCap = 5
+	var rows [][]map[string]string
+	// Ladder rows
+	var cur []map[string]string
 	for _, s := range sizes {
-		ladderRow = append(ladderRow, map[string]string{
+		cur = append(cur, map[string]string{
 			"text":          buttonLabel(sig.Outcome, s, true),
 			"callback_data": fmt.Sprintf("buy:%s:%d:%g:l", ev.Nonce, sig.Slot, s),
 		})
-		holdRow = append(holdRow, map[string]string{
+		if len(cur) == rowCap {
+			rows = append(rows, cur)
+			cur = nil
+		}
+	}
+	if len(cur) > 0 {
+		rows = append(rows, cur)
+	}
+	// Hold rows
+	cur = nil
+	for _, s := range sizes {
+		cur = append(cur, map[string]string{
 			"text":          holdButtonLabel(s),
 			"callback_data": fmt.Sprintf("buy:%s:%d:%g:h", ev.Nonce, sig.Slot, s),
 		})
+		if len(cur) == rowCap {
+			rows = append(rows, cur)
+			cur = nil
+		}
 	}
-	kb := map[string]any{"inline_keyboard": [][]map[string]string{ladderRow, holdRow}}
+	if len(cur) > 0 {
+		rows = append(rows, cur)
+	}
+	kb := map[string]any{"inline_keyboard": rows}
 	tok := t.cfg.PromptBotToken
 	if tok == "" {
 		tok = t.cfg.BotToken
@@ -165,9 +186,46 @@ func (t *Telegram) InjuryAlert(ev InjuryAlertEvent) {
 	t.enqueue(outgoing{text: FormatInjuryAlert(ev), tag: "injury_alert"})
 }
 
-// WhaleAlert enqueues a smart-money whale trade DM. Guarded by -whale_enabled flag.
+// ClosePrompt enqueues a DM with a close button when a whale sells an asset
+// we hold. The boss clicks "✅ 平仓" to confirm or ignores.
+func (t *Telegram) ClosePrompt(ev ClosePromptEvent) {
+	closeRow := []map[string]string{
+		{"text": "✅ 平仓", "callback_data": fmt.Sprintf("close:%s", ev.Nonce)},
+		{"text": "❌ 忽略", "callback_data": fmt.Sprintf("skip:%s", ev.Nonce)},
+	}
+	kb := map[string]any{"inline_keyboard": [][]map[string]string{closeRow}}
+	tok := t.cfg.PromptBotToken
+	if tok == "" {
+		tok = t.cfg.BotToken
+	}
+	t.enqueue(outgoing{
+		text: FormatClosePrompt(ev), tag: "close_prompt",
+		replyMarkup: kb, sendToken: tok, onSent: ev.OnSent,
+	})
+}
+
+// EditCloseDone rewrites a close prompt to show the result and strips buttons.
+func (t *Telegram) EditCloseDone(text string, messageID int64) {
+	if messageID == 0 {
+		return
+	}
+	tok := t.cfg.PromptBotToken
+	if tok == "" {
+		tok = t.cfg.BotToken
+	}
+	t.enqueue(outgoing{
+		tag: "edit_close_done", text: text,
+		editMessageID: messageID, stripKeyboard: true, sendToken: tok,
+	})
+}
+
+// WhaleAlert enqueues a smart-money whale trade DM via the sidecar/order bot.
 func (t *Telegram) WhaleAlert(ev WhaleAlertEvent) {
-	t.enqueue(outgoing{text: FormatWhaleAlert(ev), tag: "whale_alert"})
+	tok := t.cfg.PromptBotToken
+	if tok == "" {
+		tok = t.cfg.BotToken
+	}
+	t.enqueue(outgoing{text: FormatWhaleAlert(ev), tag: "whale_alert", sendToken: tok})
 }
 
 // buttonLabel builds a short inline-button caption for ladder-mode buttons.
