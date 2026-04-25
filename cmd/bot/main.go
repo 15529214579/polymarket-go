@@ -992,11 +992,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					"buy_ratio", sig.BuyRatio,
 					"reason", sig.Reason,
 				)
-				// Whale mode: momentum signals are logged but not acted on.
-				// All trading is driven by whale buy/sell events instead.
-				if signalMode == "whale" {
-					continue
-				}
+				// Whale + momentum run as union — both signal sources active.
 				// Risk gate first — daily-loss breaker / feed-silence / manual pause.
 				if err := rm.AllowOpen(time.Now()); err != nil {
 					st := rm.State()
