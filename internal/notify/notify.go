@@ -91,6 +91,7 @@ type SignalPromptEvent struct {
 	TailLen  int
 	BuyRatio float64
 
+	Slug      string        // market slug for newshare link
 	SizesUSD  []float64     // default {10, 20, ..., 100}
 	ExpiresIn time.Duration // visual-only hint in the DM body
 
@@ -281,6 +282,9 @@ func FormatSignalPrompt(ev SignalPromptEvent) string {
 		parts = append(parts, fmt.Sprintf("buy %.0f%%", ev.BuyRatio*100))
 	}
 	b.WriteString(strings.Join(parts, " · "))
+	if ev.Slug != "" {
+		fmt.Fprintf(&b, "\nhttps://newshare.bwb.online/zh/polymarket/event?slug=%s&_nobar=true&_needChain=matic", ev.Slug)
+	}
 	return b.String()
 }
 

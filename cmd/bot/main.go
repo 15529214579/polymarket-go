@@ -1089,6 +1089,10 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						endIn = notify.HumanizeEndIn(time.Now(), me.EndTime)
 					}
 					nonceSnap := p.Nonce
+					slugVal := ""
+					if me != nil {
+						slugVal = me.Slug
+					}
 					notifier.SignalPrompt(notify.SignalPromptEvent{
 						Nonce:     p.Nonce,
 						Match:     match,
@@ -1099,6 +1103,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						TailUps:   sig.TailUps,
 						TailLen:   sig.TailLen,
 						BuyRatio:  sig.BuyRatio,
+						Slug:      slugVal,
 						ExpiresIn: 10 * time.Minute,
 						OnSent: func(msgID int64, err error) {
 							if err != nil || msgID == 0 {
@@ -1213,6 +1218,10 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					endIn = notify.HumanizeEndIn(time.Now(), me.EndTime)
 				}
 				nonceSnap := p.Nonce
+				autoSlug := ""
+				if me != nil {
+					autoSlug = me.Slug
+				}
 				notifier.SignalPrompt(notify.SignalPromptEvent{
 					Nonce:     p.Nonce,
 					Match:     match,
@@ -1223,6 +1232,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					TailUps:   sig.TailUps,
 					TailLen:   sig.TailLen,
 					BuyRatio:  sig.BuyRatio,
+					Slug:      autoSlug,
 					ExpiresIn: 2 * time.Hour,
 					OnSent: func(msgID int64, err error) {
 						if err != nil || msgID == 0 {
@@ -1622,6 +1632,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					Nonce:     p.Nonce,
 					Match:     ev.Question,
 					Context:   ctxLine,
+					Slug:      ev.Slug,
 					Choices:   sigChoices,
 					ExpiresIn: 10 * time.Minute,
 					OnSent: func(msgID int64, err error) {
@@ -2095,6 +2106,7 @@ type assetMeta struct {
 	Sibling        string // sibling asset_id (the other outcome) — empty if market is non-binary
 	SiblingOutcome string
 	EndTime        time.Time // parsed from market.EndDate; zero if unparseable
+	Slug           string    // market slug for newshare link
 }
 
 // buildAssetMeta walks a market list and produces an asset_id-keyed view that
@@ -2124,6 +2136,7 @@ func buildAssetMeta(ms []feed.Market) map[string]*assetMeta {
 				Match:       match,
 				Context:     ctx,
 				EndTime:     endTime,
+				Slug:        m.Slug,
 			}
 			if i < len(outcomes) {
 				me.Outcome = outcomes[i]
@@ -2258,6 +2271,7 @@ func sendAdminPrompt(raw []byte, mkts []feed.Market, meta map[string]*assetMeta,
 		Match:     me.Match,
 		Context:   ctxLine,
 		EndIn:     notify.HumanizeEndIn(time.Now(), me.EndTime),
+		Slug:      me.Slug,
 		Choices:   sigChoices,
 		ExpiresIn: 10 * time.Minute,
 		OnSent: func(msgID int64, err error) {
