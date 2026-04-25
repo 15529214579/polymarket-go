@@ -205,11 +205,38 @@ func (s *Scanner) Scan(ctx context.Context) ([]odds.ArbOpportunity, error) {
 		return nil, nil
 	}
 
+	return s.matchAndScore(consensus, polyMarkets)
+}
+
+// ScanWithOdds runs the arb pipeline using externally-provided odds data.
+// Used by high-frequency data sources (OddsPapi) that fetch odds independently.
+// For single-bookmaker sources (e.g. Pinnacle only), consensus filtering is skipped
+// and the odds are used directly.
+func (s *Scanner) ScanWithOdds(ctx context.Context, externalOdds []odds.BookmakerOdds, source string) ([]odds.ArbOpportunity, error) {
+	polyMarkets, err := s.fetchPolySportsMarkets(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("fetch poly markets: %w", err)
+	}
+	if len(polyMarkets) == 0 {
+		slog.Info("arb_scan_no_poly_markets", "source", source)
+		return nil, nil
+	}
+	if len(externalOdds) == 0 {
+		slog.Info("arb_scan_no_external_odds", "source", source)
+		return nil, nil
+	}
+
+	slog.Info("arb_external_odds", "source", source, "items", len(externalOdds))
+	return s.matchAndScore(externalOdds, polyMarkets)
+}
+
+// matchAndScore runs the matching + gap computation + dedup pipeline.
+func (s *Scanner) matchAndScore(oddsItems []odds.BookmakerOdds, polyMarkets []polyMarket) ([]odds.ArbOpportunity, error) {
 	// Match and compute gaps.
 	var opportunities []odds.ArbOpportunity
 	totalMatched := 0
 
-	for _, item := range consensus {
+	for _, item := range oddsItems {
 		market := s.matchToPolymarket(item, polyMarkets)
 		if market == nil {
 			continue
@@ -296,7 +323,7 @@ func (s *Scanner) Scan(ctx context.Context) ([]odds.ArbOpportunity, error) {
 	}
 
 	slog.Info("arb_scan_summary",
-		"consensus", len(consensus),
+		"odds_items", len(oddsItems),
 		"matched", totalMatched,
 		"opportunities", len(opportunities),
 		"min_gap_pp", s.cfg.MinGapPP,

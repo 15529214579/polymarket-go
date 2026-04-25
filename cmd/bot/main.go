@@ -72,6 +72,11 @@ func main() {
 	arbInterval := flag.Duration("arb_interval", 12*time.Hour, "arb scan interval (budget: 500 req/month free tier)")
 	arbMinGapPP := flag.Float64("arb_min_gap_pp", 5.0, "arb minimum net EV in pp to flag")
 	arbDBPath := flag.String("arb_db", "db/odds.db", "SQLite path for odds snapshots")
+	// OddsPapi high-frequency sharp-line scanner (Pinnacle + 350 books).
+	oddsPapiEnabled := flag.Bool("oddspapi_enabled", false, "enable OddsPapi high-freq football scanner (Pinnacle sharp line)")
+	oddsPapiInterval := flag.Duration("oddspapi_interval", 3*time.Hour, "OddsPapi scan interval (budget: 250 req/month free tier)")
+	oddsPapiBookmaker := flag.String("oddspapi_bookmaker", "pinnacle", "OddsPapi bookmaker to fetch (pinnacle, bet365, etc)")
+	oddsPapiSports := flag.String("oddspapi_sports", "soccer_epl,soccer_spain_la_liga,soccer_uefa_champs_league", "comma-separated sport keys for OddsPapi")
 	injuryEnabled := flag.Bool("injury_enabled", false, "enable NBA injury report scanner (ESPN API)")
 	injuryInterval := flag.Duration("injury_interval", 30*time.Minute, "injury scan interval")
 	injuryStarOnly := flag.Bool("injury_star_only", true, "only alert on star players (top ~3-4 per team)")
@@ -136,7 +141,15 @@ func main() {
 			MinSizeUSD:   *whaleMinUSD,
 			PollInterval: *whaleInterval,
 		}
-		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, *arbEnabled, *arbInterval, *arbMinGapPP, *arbDBPath, injCfg, whaleCfg); err != nil && ctx.Err() == nil {
+		oddsPapiCfg := odds.OddsPapiConfig{
+			Enabled:   *oddsPapiEnabled,
+			Interval:  *oddsPapiInterval,
+			Bookmaker: *oddsPapiBookmaker,
+		}
+		if *oddsPapiSports != "" {
+			oddsPapiCfg.SportKeys = strings.Split(*oddsPapiSports, ",")
+		}
+		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, *arbEnabled, *arbInterval, *arbMinGapPP, *arbDBPath, injCfg, whaleCfg, oddsPapiCfg); err != nil && ctx.Err() == nil {
 			slog.Error("detect failed", "err", err)
 			os.Exit(1)
 		}
@@ -351,7 +364,7 @@ func runSample(ctx context.Context, topN, windowSec int) error {
 	return ws.Run(ctx)
 }
 
-func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, arbEnabled bool, arbInterval time.Duration, arbMinGapPP float64, arbDBPath string, injCfg injury.Config, whaleCfg whale.Config) error {
+func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, arbEnabled bool, arbInterval time.Duration, arbMinGapPP float64, arbDBPath string, injCfg injury.Config, whaleCfg whale.Config, oddsPapiCfg odds.OddsPapiConfig) error {
 	if signalMode != "auto" && signalMode != "prompt" && signalMode != "whale" {
 		return fmt.Errorf("invalid signal_mode %q (want auto|prompt|whale)", signalMode)
 	}
@@ -1391,6 +1404,107 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					}
 				}
 			}()
+		}
+	}
+
+	// OddsPapi high-frequency sharp-line scanner (Pinnacle / bet365).
+	// Runs independently from the Odds API scanner at higher frequency,
+	// targeting football (EPL, UCL, La Liga) with sharp bookmaker lines.
+	if oddsPapiCfg.Enabled {
+		papiClient := odds.NewOddsPapiClient("", oddsPapiCfg.Bookmaker, "")
+		if !papiClient.HasKey() {
+			slog.Warn("oddspapi_disabled_no_key", "env", "ODDSPAPI_API_KEY")
+		} else {
+			arbStoreP, arbErrP := arb.NewStore(arbDBPath)
+			if arbErrP != nil {
+				slog.Warn("oddspapi_store_init_fail", "err", arbErrP.Error())
+			} else {
+				scanCfgP := arb.DefaultScanConfig()
+				scanCfgP.MinGapPP = arbMinGapPP
+				scanCfgP.MinBookCount = 1 // single bookmaker, no consensus needed
+				scannerP := arb.NewScanner(nil, arbStoreP, scanCfgP)
+				go func() {
+					defer arbStoreP.Close()
+					slog.Info("oddspapi_scanner.ready",
+						"interval", oddsPapiCfg.Interval.String(),
+						"bookmaker", oddsPapiCfg.Bookmaker,
+						"sports", oddsPapiCfg.SportKeys,
+					)
+					// Immediate scan on startup.
+					papiOdds, err := papiClient.FetchFootballOdds(ctx, oddsPapiCfg.SportKeys)
+					if err != nil {
+						slog.Warn("oddspapi_scan_fail", "err", err.Error())
+					} else if len(papiOdds) > 0 {
+						opps, err := scannerP.ScanWithOdds(ctx, papiOdds, "oddspapi/"+oddsPapiCfg.Bookmaker)
+						if err != nil {
+							slog.Warn("oddspapi_match_fail", "err", err.Error())
+						} else {
+							usage := papiClient.Usage()
+							slog.Info("oddspapi_scan_done",
+								"opportunities", len(opps),
+								"odds_items", len(papiOdds),
+								"api_remaining", usage.RequestsRemaining,
+								"api_used", usage.RequestsUsed,
+							)
+							for _, o := range opps {
+								slog.Info("oddspapi_opportunity",
+									"sport", o.Sport,
+									"event", o.EventName,
+									"dir", o.Direction,
+									"gap_pp", o.GapPP,
+									"net_ev_pp", o.NetEvPP,
+									"poly", o.PolymarketPrice,
+									"bk_prob", o.BookmakerProb,
+									"bk", o.Bookmaker,
+									"market", o.MarketTitle,
+								)
+							}
+						}
+					}
+					tk := time.NewTicker(oddsPapiCfg.Interval)
+					defer tk.Stop()
+					for {
+						select {
+						case <-ctx.Done():
+							return
+						case <-tk.C:
+							papiOdds, err := papiClient.FetchFootballOdds(ctx, oddsPapiCfg.SportKeys)
+							if err != nil {
+								slog.Warn("oddspapi_scan_fail", "err", err.Error())
+								continue
+							}
+							if len(papiOdds) == 0 {
+								continue
+							}
+							opps, err := scannerP.ScanWithOdds(ctx, papiOdds, "oddspapi/"+oddsPapiCfg.Bookmaker)
+							if err != nil {
+								slog.Warn("oddspapi_match_fail", "err", err.Error())
+								continue
+							}
+							usage := papiClient.Usage()
+							slog.Info("oddspapi_scan_done",
+								"opportunities", len(opps),
+								"odds_items", len(papiOdds),
+								"api_remaining", usage.RequestsRemaining,
+								"api_used", usage.RequestsUsed,
+							)
+							for _, o := range opps {
+								slog.Info("oddspapi_opportunity",
+									"sport", o.Sport,
+									"event", o.EventName,
+									"dir", o.Direction,
+									"gap_pp", o.GapPP,
+									"net_ev_pp", o.NetEvPP,
+									"poly", o.PolymarketPrice,
+									"bk_prob", o.BookmakerProb,
+									"bk", o.Bookmaker,
+									"market", o.MarketTitle,
+								)
+							}
+						}
+					}
+				}()
+			}
 		}
 	}
 

@@ -110,6 +110,8 @@ var polyLeagueMap = []leagueRule{
 	{regexp.MustCompile(`(?i)\bserie a\b`), "soccer_italy_serie_a"},
 	{regexp.MustCompile(`(?i)\bbundesliga\b`), "soccer_germany_bundesliga"},
 	{regexp.MustCompile(`(?i)\bligue 1\b`), "soccer_france_ligue_1"},
+	{regexp.MustCompile(`(?i)\bchampions league\b|\bucl\b`), "soccer_uefa_champs_league"},
+	{regexp.MustCompile(`(?i)\beuropa league\b|\buel\b`), "soccer_uefa_europa_league"},
 	{regexp.MustCompile(`(?i)\bk league\b|\bkleague\b`), "soccer_korea_kleague1"},
 	{regexp.MustCompile(`(?i)\bj league\b|\bjleague\b|\bj1 league\b`), "soccer_japan_j_league"},
 	{regexp.MustCompile(`(?i)\bmls\b|\bmajor league soccer\b`), "soccer_usa_mls"},
@@ -243,16 +245,30 @@ func IsPolySportsMarket(question string) bool {
 
 // sportToPolyKeywords maps bookmaker sport keys to required Polymarket title keywords.
 var sportToPolyKeywords = map[string][]string{
-	"basketball_nba_championship_winner": {"nba", "nba finals"},
+	// H2H match-level (used by both Odds API and OddsPapi)
+	"soccer_epl":                {"premier league", "epl"},
+	"soccer_spain_la_liga":      {"la liga", "laliga"},
+	"soccer_uefa_champs_league": {"champions league", "ucl"},
+	"soccer_germany_bundesliga": {"bundesliga"},
+	"soccer_italy_serie_a":      {"serie a"},
+	"soccer_france_ligue_1":     {"ligue 1"},
+	"basketball_nba":            {"nba"},
+	"americanfootball_nfl":      {"nfl"},
+
+	// Outright/futures
+	"basketball_nba_championship_winner":    {"nba", "nba finals"},
 	"americanfootball_nfl_super_bowl_winner": {"nfl", "super bowl"},
 	"icehockey_nhl_championship_winner":     {"nhl", "stanley cup"},
 	"soccer_fifa_world_cup_winner":          {"world cup", "fifa"},
 	"baseball_mlb_world_series_winner":      {"mlb", "world series"},
 	"golf_masters_tournament_winner":        {"masters"},
 	"golf_pga_championship_winner":          {"pga"},
-	"esports_lol":                           {"lol", "league of legends", "lck", "lpl", "lec", "worlds"},
-	"esports_csgo":                          {"csgo", "cs2", "counter-strike", "esl", "blast"},
-	"esports_valorant":                      {"valorant", "vct"},
+
+	// Esports
+	"esports_lol":      {"lol", "league of legends", "lck", "lpl", "lec", "worlds"},
+	"esports_csgo":     {"csgo", "cs2", "counter-strike", "esl", "blast"},
+	"esports_valorant": {"valorant", "vct"},
+	"esports_dota2":    {"dota", "dota 2", "pgl", "esl"},
 }
 
 // highPriorityKeywords for short-cycle sports.
