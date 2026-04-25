@@ -23,6 +23,7 @@ const dataAPI = "https://data-api.polymarket.com"
 type Config struct {
 	Enabled      bool
 	Wallet       string
+	ProfileURL   string
 	MinSizeUSD   float64
 	PollInterval time.Duration
 }

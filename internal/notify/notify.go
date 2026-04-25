@@ -157,9 +157,10 @@ type WhaleAlertEvent struct {
 	Notional  float64
 	Market    string
 	Outcome   string
-	TradeID   string
-	LinkURL   string
-	Timestamp time.Time
+	TradeID    string
+	LinkURL    string
+	ProfileURL string // whale's Polymarket profile page (e.g. https://polymarket.com/@handle)
+	Timestamp  time.Time
 	// Position context: whale's total holding for this asset (0 if unknown).
 	TotalShares float64
 	AvgPrice    float64
@@ -176,7 +177,8 @@ type ClosePromptEvent struct {
 	WhaleSize float64 // whale's sell size in shares
 	WhaleNotl float64 // whale's sell notional USD
 	WhalePrice float64
-	LinkURL   string
+	LinkURL    string
+	ProfileURL string // whale's Polymarket profile page
 	// Positions lists our open positions matching this asset.
 	Positions []ClosePosition
 	OnSent    func(messageID int64, err error)
@@ -488,6 +490,10 @@ func FormatClosePrompt(ev ClosePromptEvent) string {
 	}
 	if ev.LinkURL != "" {
 		b.WriteString(ev.LinkURL)
+		b.WriteByte('\n')
+	}
+	if ev.ProfileURL != "" {
+		fmt.Fprintf(&b, "主页: %s", ev.ProfileURL)
 	}
 	return b.String()
 }
@@ -525,6 +531,10 @@ func FormatWhaleAlert(ev WhaleAlertEvent) string {
 	fmt.Fprintf(&b, "钱包: %s\n", addr)
 	if ev.LinkURL != "" {
 		b.WriteString(ev.LinkURL)
+		b.WriteByte('\n')
+	}
+	if ev.ProfileURL != "" {
+		fmt.Fprintf(&b, "主页: %s", ev.ProfileURL)
 	}
 	return b.String()
 }
