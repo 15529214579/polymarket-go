@@ -1,4 +1,4 @@
-// Package whale polls a target wallet's Polymarket trades via the public
+// Package whale polls target wallets' Polymarket trades via the public
 // data API and pushes Telegram alerts for large orders (>threshold USDC).
 // Feature-flagged via -whale_enabled; to remove: delete this package +
 // WhaleAlert from Notifier.
@@ -20,12 +20,23 @@ import (
 
 const dataAPI = "https://data-api.polymarket.com"
 
+// WalletEntry describes one tracked whale.
+type WalletEntry struct {
+	Address    string
+	Label      string
+	MinSizeUSD float64
+	ProfileURL string
+}
+
 type Config struct {
 	Enabled      bool
-	Wallet       string
-	ProfileURL   string
-	MinSizeUSD   float64
+	Wallets      []WalletEntry
 	PollInterval time.Duration
+
+	// Legacy single-wallet fields (used when Wallets is empty).
+	Wallet     string
+	ProfileURL string
+	MinSizeUSD float64
 }
 
 func DefaultConfig() Config {
@@ -33,6 +44,23 @@ func DefaultConfig() Config {
 		MinSizeUSD:   1000,
 		PollInterval: 30 * time.Second,
 	}
+}
+
+// ResolvedWallets returns the effective wallet list, falling back to the
+// legacy single-wallet fields if Wallets is empty.
+func (c Config) ResolvedWallets() []WalletEntry {
+	if len(c.Wallets) > 0 {
+		return c.Wallets
+	}
+	if c.Wallet == "" {
+		return nil
+	}
+	return []WalletEntry{{
+		Address:    c.Wallet,
+		Label:      shortAddr(c.Wallet),
+		MinSizeUSD: c.MinSizeUSD,
+		ProfileURL: c.ProfileURL,
+	}}
 }
 
 type trade struct {
@@ -60,6 +88,8 @@ func (t *trade) notionalUSD() float64 {
 // qualifying trade. The caller (main.go) converts this to notify.WhaleAlertEvent.
 type AlertEvent struct {
 	Wallet      string
+	Label       string // human-readable whale label (e.g. "drpufferfish")
+	ProfileURL  string
 	Side        string
 	SizeUnits   float64
 	Price       float64
@@ -83,39 +113,58 @@ type AlertEvent struct {
 // import between whale → notify.
 type AlertFunc func(ev AlertEvent)
 
+// walletState holds per-wallet dedup state.
+type walletState struct {
+	mu       sync.Mutex
+	lastTS   int64
+	lastSeen map[string]struct{}
+}
+
 type Tracker struct {
 	cfg    Config
 	http   *http.Client
 	alert  AlertFunc
 	logger *slog.Logger
 
-	mu        sync.Mutex
-	lastTS    int64
-	lastSeen  map[string]struct{} // txHash set for dedup within same timestamp
+	states map[string]*walletState // keyed by wallet address
 }
 
 func NewTracker(cfg Config, alert AlertFunc) *Tracker {
+	states := make(map[string]*walletState)
+	for _, w := range cfg.ResolvedWallets() {
+		states[strings.ToLower(w.Address)] = &walletState{
+			lastSeen: make(map[string]struct{}),
+		}
+	}
 	return &Tracker{
-		cfg:      cfg,
-		http:     &http.Client{Timeout: 15 * time.Second},
-		alert:    alert,
-		logger:   slog.Default(),
-		lastSeen: make(map[string]struct{}),
+		cfg:    cfg,
+		http:   &http.Client{Timeout: 15 * time.Second},
+		alert:  alert,
+		logger: slog.Default(),
+		states: states,
 	}
 }
 
 func (t *Tracker) Run(ctx context.Context) error {
-	if !t.cfg.Enabled || t.cfg.Wallet == "" {
+	wallets := t.cfg.ResolvedWallets()
+	if !t.cfg.Enabled || len(wallets) == 0 {
 		return nil
 	}
-	t.logger.Info("whale_tracker.ready",
-		"wallet", t.cfg.Wallet,
-		"min_size_usd", t.cfg.MinSizeUSD,
-		"poll_interval", t.cfg.PollInterval.String(),
-	)
 
-	if err := t.seed(ctx); err != nil {
-		t.logger.Warn("whale_seed_fail", "err", err.Error())
+	for _, w := range wallets {
+		t.logger.Info("whale_tracker.ready",
+			"wallet", w.Address,
+			"label", w.Label,
+			"min_size_usd", w.MinSizeUSD,
+			"poll_interval", t.cfg.PollInterval.String(),
+		)
+	}
+
+	// Seed all wallets.
+	for _, w := range wallets {
+		if err := t.seed(ctx, w); err != nil {
+			t.logger.Warn("whale_seed_fail", "wallet", w.Label, "err", err.Error())
+		}
 	}
 
 	tk := time.NewTicker(t.cfg.PollInterval)
@@ -125,15 +174,17 @@ func (t *Tracker) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-tk.C:
-			if err := t.poll(ctx); err != nil {
-				t.logger.Warn("whale_poll_fail", "err", err.Error())
+			for _, w := range wallets {
+				if err := t.poll(ctx, w); err != nil {
+					t.logger.Warn("whale_poll_fail", "wallet", w.Label, "err", err.Error())
+				}
 			}
 		}
 	}
 }
 
-func (t *Tracker) seed(ctx context.Context) error {
-	trades, err := t.fetchTrades(ctx)
+func (t *Tracker) seed(ctx context.Context, w WalletEntry) error {
+	trades, err := t.fetchTrades(ctx, w.Address)
 	if err != nil {
 		return err
 	}
@@ -150,16 +201,17 @@ func (t *Tracker) seed(ctx context.Context) error {
 			seen[tr.TransactionHash] = struct{}{}
 		}
 	}
-	t.mu.Lock()
-	t.lastTS = maxTS
-	t.lastSeen = seen
-	t.mu.Unlock()
-	t.logger.Info("whale_seed_done", "trades_seen", len(trades), "last_ts", maxTS)
+	st := t.states[strings.ToLower(w.Address)]
+	st.mu.Lock()
+	st.lastTS = maxTS
+	st.lastSeen = seen
+	st.mu.Unlock()
+	t.logger.Info("whale_seed_done", "wallet", w.Label, "trades_seen", len(trades), "last_ts", maxTS)
 	return nil
 }
 
-func (t *Tracker) poll(ctx context.Context) error {
-	trades, err := t.fetchTrades(ctx)
+func (t *Tracker) poll(ctx context.Context, w WalletEntry) error {
+	trades, err := t.fetchTrades(ctx, w.Address)
 	if err != nil {
 		return err
 	}
@@ -171,10 +223,11 @@ func (t *Tracker) poll(ctx context.Context) error {
 		return trades[i].Timestamp < trades[j].Timestamp
 	})
 
-	t.mu.Lock()
-	lastTS := t.lastTS
-	lastSeen := t.lastSeen
-	t.mu.Unlock()
+	st := t.states[strings.ToLower(w.Address)]
+	st.mu.Lock()
+	lastTS := st.lastTS
+	lastSeen := st.lastSeen
+	st.mu.Unlock()
 
 	var newTS int64
 	newSeen := make(map[string]struct{})
@@ -203,7 +256,7 @@ func (t *Tracker) poll(ctx context.Context) error {
 		}
 
 		notional := tr.notionalUSD()
-		if notional < t.cfg.MinSizeUSD {
+		if notional < w.MinSizeUSD {
 			continue
 		}
 
@@ -219,7 +272,9 @@ func (t *Tracker) poll(ctx context.Context) error {
 		ts := time.Unix(tr.Timestamp, 0)
 
 		ev := AlertEvent{
-			Wallet:      t.cfg.Wallet,
+			Wallet:      w.Address,
+			Label:       w.Label,
+			ProfileURL:  w.ProfileURL,
 			Side:        strings.ToUpper(tr.Side),
 			SizeUnits:   tr.Size,
 			Price:       tr.Price,
@@ -234,7 +289,7 @@ func (t *Tracker) poll(ctx context.Context) error {
 			ConditionID: tr.ConditionID,
 		}
 
-		if positions, err := t.FetchPositions(ctx, t.cfg.Wallet, tr.Asset); err == nil {
+		if positions, err := t.FetchPositions(ctx, w.Address, tr.Asset); err == nil {
 			for _, p := range positions {
 				if p.Asset == tr.Asset {
 					ev.TotalShares = p.Size
@@ -246,12 +301,13 @@ func (t *Tracker) poll(ctx context.Context) error {
 				}
 			}
 		} else {
-			t.logger.Warn("whale_position_fetch_fail", "err", err.Error())
+			t.logger.Warn("whale_position_fetch_fail", "wallet", w.Label, "err", err.Error())
 		}
 
 		t.alert(ev)
 
 		t.logger.Info("whale_alert_fired",
+			"wallet", w.Label,
 			"tx", truncate(tr.TransactionHash, 16),
 			"side", tr.Side,
 			"notional_usd", notional,
@@ -261,23 +317,23 @@ func (t *Tracker) poll(ctx context.Context) error {
 	}
 
 	if newTS > 0 {
-		t.mu.Lock()
-		if newTS > t.lastTS {
-			t.lastTS = newTS
-			t.lastSeen = newSeen
-		} else if newTS == t.lastTS {
+		st.mu.Lock()
+		if newTS > st.lastTS {
+			st.lastTS = newTS
+			st.lastSeen = newSeen
+		} else if newTS == st.lastTS {
 			for k, v := range newSeen {
-				t.lastSeen[k] = v
+				st.lastSeen[k] = v
 			}
 		}
-		t.mu.Unlock()
+		st.mu.Unlock()
 	}
 	return nil
 }
 
-func (t *Tracker) fetchTrades(ctx context.Context) ([]trade, error) {
+func (t *Tracker) fetchTrades(ctx context.Context, wallet string) ([]trade, error) {
 	q := url.Values{}
-	q.Set("user", t.cfg.Wallet)
+	q.Set("user", wallet)
 	q.Set("limit", "50")
 
 	reqURL := dataAPI + "/activity?" + q.Encode()
@@ -353,9 +409,49 @@ func (t *Tracker) FetchPositions(ctx context.Context, wallet, assetID string) ([
 	return positions, nil
 }
 
+func shortAddr(addr string) string {
+	if len(addr) > 10 {
+		return addr[:6] + "…" + addr[len(addr)-4:]
+	}
+	return addr
+}
+
 func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s
 	}
 	return s[:n] + "..."
+}
+
+// ParseWallets parses a comma-separated wallet spec string.
+// Format: "addr|label|minUSD|profileURL,addr|label|minUSD|profileURL,..."
+func ParseWallets(s string) ([]WalletEntry, error) {
+	if s == "" {
+		return nil, nil
+	}
+	var wallets []WalletEntry
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		fields := strings.SplitN(part, "|", 4)
+		if len(fields) < 3 {
+			return nil, fmt.Errorf("invalid wallet spec %q (want addr|label|minUSD[|profileURL])", part)
+		}
+		var minUSD float64
+		if _, err := fmt.Sscanf(fields[2], "%f", &minUSD); err != nil {
+			return nil, fmt.Errorf("invalid minUSD %q in wallet spec %q", fields[2], part)
+		}
+		we := WalletEntry{
+			Address:    fields[0],
+			Label:      fields[1],
+			MinSizeUSD: minUSD,
+		}
+		if len(fields) >= 4 {
+			we.ProfileURL = fields[3]
+		}
+		wallets = append(wallets, we)
+	}
+	return wallets, nil
 }

@@ -81,9 +81,10 @@ func main() {
 	injuryInterval := flag.Duration("injury_interval", 30*time.Minute, "injury scan interval")
 	injuryStarOnly := flag.Bool("injury_star_only", true, "only alert on star players (top ~3-4 per team)")
 	whaleEnabled := flag.Bool("whale_enabled", false, "enable smart-money whale trade tracker")
-	whaleWallet := flag.String("whale_wallet", "", "target wallet address to track (hex 0x…)")
-	whaleProfile := flag.String("whale_profile", "", "whale's Polymarket profile URL (e.g. https://polymarket.com/@handle)")
-	whaleMinUSD := flag.Float64("whale_min_usd", 500, "minimum notional USD to trigger alert")
+	whaleWallets := flag.String("whale_wallets", "", "tracked wallets: addr|label|minUSD|profileURL,... (comma-separated)")
+	whaleWallet := flag.String("whale_wallet", "", "(legacy) single target wallet address (hex 0x…)")
+	whaleProfile := flag.String("whale_profile", "", "(legacy) whale's Polymarket profile URL")
+	whaleMinUSD := flag.Float64("whale_min_usd", 1000, "(legacy) minimum notional USD to trigger alert")
 	whaleInterval := flag.Duration("whale_interval", 30*time.Second, "whale trade poll interval")
 	flag.Parse()
 
@@ -134,8 +135,18 @@ func main() {
 			ScanInterval: *injuryInterval,
 			StarOnly:     *injuryStarOnly,
 		}
+		var whaleWalletEntries []whale.WalletEntry
+		if *whaleWallets != "" {
+			var err error
+			whaleWalletEntries, err = whale.ParseWallets(*whaleWallets)
+			if err != nil {
+				slog.Error("invalid -whale_wallets", "err", err)
+				os.Exit(1)
+			}
+		}
 		whaleCfg := whale.Config{
 			Enabled:      *whaleEnabled,
+			Wallets:      whaleWalletEntries,
 			Wallet:       *whaleWallet,
 			ProfileURL:   *whaleProfile,
 			MinSizeUSD:   *whaleMinUSD,
@@ -1556,6 +1567,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 			if signalMode != "whale" {
 				notifier.WhaleAlert(notify.WhaleAlertEvent{
 					Wallet:      ev.Wallet,
+					Label:       ev.Label,
 					Side:        ev.Side,
 					SizeUnits:   ev.SizeUnits,
 					Price:       ev.Price,
@@ -1564,7 +1576,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					Outcome:     ev.Outcome,
 					TradeID:     ev.TradeID,
 					LinkURL:     ev.LinkURL,
-					ProfileURL:  whaleCfg.ProfileURL,
+					ProfileURL:  ev.ProfileURL,
 					Timestamp:   ev.Timestamp,
 					TotalShares: ev.TotalShares,
 					AvgPrice:    ev.AvgPrice,
@@ -1593,7 +1605,11 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					Choices:  choices,
 				}, time.Now())
 
-				ctxLine := fmt.Sprintf("🐋 跟单 · $%.0f · %.0f shares", ev.Notional, ev.SizeUnits)
+				whaleTag := ev.Label
+				if whaleTag == "" {
+					whaleTag = "鲸鱼"
+				}
+				ctxLine := fmt.Sprintf("🐋 %s 跟单 · $%.0f · %.0f shares", whaleTag, ev.Notional, ev.SizeUnits)
 				if ev.TotalShares > 0 {
 					ctxLine += fmt.Sprintf("\n持仓: %.0f shares (均价 $%.4f)", ev.TotalShares, ev.AvgPrice)
 				}
@@ -1643,6 +1659,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				if len(matchingPos) == 0 {
 					notifier.WhaleAlert(notify.WhaleAlertEvent{
 						Wallet:      ev.Wallet,
+						Label:       ev.Label,
 						Side:        ev.Side,
 						SizeUnits:   ev.SizeUnits,
 						Price:       ev.Price,
@@ -1651,7 +1668,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						Outcome:     ev.Outcome,
 						TradeID:     ev.TradeID,
 						LinkURL:     ev.LinkURL,
-						ProfileURL:  whaleCfg.ProfileURL,
+						ProfileURL:  ev.ProfileURL,
 						Timestamp:   ev.Timestamp,
 						TotalShares: ev.TotalShares,
 						AvgPrice:    ev.AvgPrice,
@@ -1675,11 +1692,12 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					Market:           ev.Question,
 					Outcome:          ev.Outcome,
 					AssetID:          ev.AssetID,
+					WhaleLabel:       ev.Label,
 					WhaleSize:        ev.SizeUnits,
 					WhaleNotl:        ev.Notional,
 					WhalePrice:       ev.Price,
 					LinkURL:          ev.LinkURL,
-					ProfileURL:       whaleCfg.ProfileURL,
+					ProfileURL:       ev.ProfileURL,
 					Positions:        matchingPos,
 					WhaleTotalShares: ev.TotalShares,
 					WhaleAvgPrice:    ev.AvgPrice,
@@ -1703,6 +1721,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 			// Unrecognized side (e.g. MINT/REDEEM) — just notify.
 			notifier.WhaleAlert(notify.WhaleAlertEvent{
 				Wallet:      ev.Wallet,
+				Label:       ev.Label,
 				Side:        ev.Side,
 				SizeUnits:   ev.SizeUnits,
 				Price:       ev.Price,
@@ -1711,7 +1730,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				Outcome:     ev.Outcome,
 				TradeID:     ev.TradeID,
 				LinkURL:     ev.LinkURL,
-				ProfileURL:  whaleCfg.ProfileURL,
+				ProfileURL:  ev.ProfileURL,
 				Timestamp:   ev.Timestamp,
 				TotalShares: ev.TotalShares,
 				AvgPrice:    ev.AvgPrice,

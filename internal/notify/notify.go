@@ -151,6 +151,7 @@ type InjuryAlertEvent struct {
 // Guarded by -whale_enabled flag.
 type WhaleAlertEvent struct {
 	Wallet    string
+	Label     string // human-readable whale name (e.g. "drpufferfish", "countryside")
 	Side      string // BUY / SELL
 	SizeUnits float64
 	Price     float64
@@ -174,8 +175,9 @@ type ClosePromptEvent struct {
 	Market    string // question/title
 	Outcome   string
 	AssetID   string
-	WhaleSize float64 // whale's sell size in shares
-	WhaleNotl float64 // whale's sell notional USD
+	WhaleLabel string // human-readable whale name
+	WhaleSize  float64 // whale's sell size in shares
+	WhaleNotl  float64 // whale's sell notional USD
 	WhalePrice float64
 	LinkURL    string
 	ProfileURL string // whale's Polymarket profile page
@@ -466,7 +468,11 @@ func outcomeAt(cs []SignalChoice, i int) string {
 // FormatClosePrompt renders the DM body for a whale-sell close decision.
 func FormatClosePrompt(ev ClosePromptEvent) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "🔻 鲸鱼卖出 · 是否平仓?\n")
+	label := ev.WhaleLabel
+	if label == "" {
+		label = "鲸鱼"
+	}
+	fmt.Fprintf(&b, "🔻 %s 卖出 · 是否平仓?\n", label)
 	mkt := ev.Market
 	if len(mkt) > 80 {
 		mkt = mkt[:77] + "..."
@@ -513,7 +519,11 @@ func FormatWhaleAlert(ev WhaleAlertEvent) string {
 		mkt = mkt[:77] + "..."
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s 聪明钱大单\n", icon)
+	label := ev.Label
+	if label == "" {
+		label = addr
+	}
+	fmt.Fprintf(&b, "%s %s 大单\n", icon, label)
 	fmt.Fprintf(&b, "%s · %s\n", mkt, ev.Outcome)
 	fmt.Fprintf(&b, "%s %.0f shares @ %.4f = $%.0f\n", ev.Side, ev.SizeUnits, ev.Price, ev.Notional)
 	if ev.TotalShares > 0 {
