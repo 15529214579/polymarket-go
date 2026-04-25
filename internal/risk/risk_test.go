@@ -214,3 +214,94 @@ func TestDailyCap_Calculation(t *testing.T) {
 		t.Fatalf("expected cap 13.5, got %v", got)
 	}
 }
+
+func testCfgWithDrawdown() Config {
+	c := testCfg()
+	c.MaxDrawdownPct = 0.15 // cap = 90 × 0.15 = 13.5
+	return c
+}
+
+func TestDrawdown_TripsOnCumulativeLoss(t *testing.T) {
+	loc, _ := time.LoadLocation("Asia/Singapore")
+	cfg := testCfgWithDrawdown()
+	cfg.Loc = loc
+
+	// Day 1: lose 10 — daily -10 < cap 13.5, drawdown 10 < 13.5 → ok
+	d1 := time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC)
+	m := New(cfg, d1)
+	if tripped := m.OnClose(-10, d1); tripped {
+		t.Fatal("should not trip at -10 cumulative")
+	}
+
+	// Day 2: lose 4 more — daily resets to -4 (under cap), but cumulative
+	// is -14, drawdown = 14 > 13.5 → drawdown trips (not daily).
+	d2 := d1.Add(24 * time.Hour)
+	if tripped := m.OnClose(-4, d2); !tripped {
+		t.Fatal("should trip at -14 cumulative drawdown")
+	}
+	if got := m.State().BlockReason; got != BlockDrawdown {
+		t.Fatalf("expected BlockDrawdown, got %q", got)
+	}
+}
+
+func TestDrawdown_PeakTracksUpward(t *testing.T) {
+	now := time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC)
+	m := New(testCfgWithDrawdown(), now)
+
+	// Win +20 → equity=110, peak moves to 110
+	m.OnClose(+20, now)
+	st := m.State()
+	if st.PeakEquity != 110 {
+		t.Fatalf("expected peak 110, got %v", st.PeakEquity)
+	}
+
+	// Now need to drop >13.5 from peak (110) to trip → equity < 96.5
+	// Lose -14: equity=96, dd=14 > 13.5 → trip
+	if tripped := m.OnClose(-14, now); !tripped {
+		t.Fatal("should trip when dd from peak exceeds cap")
+	}
+	if got := m.State().BlockReason; got != BlockDrawdown {
+		t.Fatalf("expected BlockDrawdown, got %q", got)
+	}
+}
+
+func TestDrawdown_DoesNotResetOnDayRollover(t *testing.T) {
+	loc, _ := time.LoadLocation("Asia/Singapore")
+	cfg := testCfgWithDrawdown()
+	cfg.Loc = loc
+
+	d1 := time.Date(2026, 4, 20, 15, 30, 0, 0, time.UTC) // 23:30 SGT
+	m := New(cfg, d1)
+	m.OnClose(-10, d1) // cumulative -10
+
+	// Day rolls over
+	d2 := time.Date(2026, 4, 20, 16, 30, 0, 0, time.UTC) // 00:30 SGT next day
+	// Daily PnL resets, but cumulative stays
+	m.OnClose(-4, d2) // cumulative -14, daily -4
+	st := m.State()
+	if st.DayRealizedPnL != -4 {
+		t.Fatalf("daily should be -4 after rollover, got %v", st.DayRealizedPnL)
+	}
+	if st.CumulativePnL != -14 {
+		t.Fatalf("cumulative should be -14 across days, got %v", st.CumulativePnL)
+	}
+	if !st.Blocked || st.BlockReason != BlockDrawdown {
+		t.Fatalf("should be blocked on drawdown, got blocked=%v reason=%q", st.Blocked, st.BlockReason)
+	}
+}
+
+func TestDrawdown_DailyBreakerTakePrecedence(t *testing.T) {
+	now := time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC)
+	cfg := testCfgWithDrawdown()
+	m := New(cfg, now)
+
+	// Daily cap = 13.5, drawdown cap = 13.5
+	// Hit daily cap first with a single big loss
+	if tripped := m.OnClose(-14, now); !tripped {
+		t.Fatal("should trip")
+	}
+	// Daily breaker checked first, so it wins
+	if got := m.State().BlockReason; got != BlockDailyLoss {
+		t.Fatalf("expected BlockDailyLoss (checked first), got %q", got)
+	}
+}

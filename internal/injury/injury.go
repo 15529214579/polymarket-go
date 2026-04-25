@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -108,6 +109,9 @@ type Scanner struct {
 	cfg    Config
 	client *http.Client
 	seen   map[string]time.Time // "team:player" → last alert time
+
+	mu    sync.RWMutex
+	cache map[string][]InjuryEntry // team → current star injuries (refreshed each Scan)
 }
 
 func NewScanner(cfg Config) *Scanner {
@@ -115,7 +119,21 @@ func NewScanner(cfg Config) *Scanner {
 		cfg:    cfg,
 		client: &http.Client{Timeout: 15 * time.Second},
 		seen:   make(map[string]time.Time),
+		cache:  make(map[string][]InjuryEntry),
 	}
+}
+
+// InjuredStars returns OUT/Doubtful star players for the given team.
+// Safe to call from any goroutine; returns nil if no injuries or team unknown.
+func (s *Scanner) InjuredStars(team string) []InjuryEntry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.cache[team]
+}
+
+// HasInjuredStar reports whether the team has at least one star OUT or Doubtful.
+func (s *Scanner) HasInjuredStar(team string) bool {
+	return len(s.InjuredStars(team)) > 0
 }
 
 func (s *Scanner) Enabled() bool { return s.cfg.Enabled }
@@ -139,6 +157,19 @@ func (s *Scanner) Scan(ctx context.Context) ([]InjuryAlert, error) {
 	for _, e := range entries {
 		byTeam[e.Team] = append(byTeam[e.Team], e)
 	}
+
+	// Rebuild the shared injury cache (read by momentum/lottery filters).
+	starOut := make(map[string][]InjuryEntry)
+	for team, teamEntries := range byTeam {
+		for _, e := range teamEntries {
+			if (e.Status == StatusOut || e.Status == StatusDoubtful) && isStar(team, e.Player) {
+				starOut[team] = append(starOut[team], e)
+			}
+		}
+	}
+	s.mu.Lock()
+	s.cache = starOut
+	s.mu.Unlock()
 
 	for team, teamEntries := range byTeam {
 		for _, e := range teamEntries {

@@ -132,6 +132,31 @@ func TestScanEligible_EmptyInputs(t *testing.T) {
 	}
 }
 
+func TestIsVolatile(t *testing.T) {
+	cases := []struct {
+		name string
+		ws   feed.WindowStats
+		want bool
+	}{
+		{"calm pre-match", feed.WindowStats{Samples: 60, DeltaPP: 0.5, Upticks: 3, Downticks: 2}, false},
+		{"high delta in-play", feed.WindowStats{Samples: 60, DeltaPP: 6.0, Upticks: 8, Downticks: 5}, true},
+		{"negative delta in-play", feed.WindowStats{Samples: 60, DeltaPP: -5.5, Upticks: 4, Downticks: 6}, true},
+		{"choppy back-and-forth", feed.WindowStats{Samples: 60, DeltaPP: 1.0, Upticks: 12, Downticks: 10}, true},
+		{"borderline uptick+downtick=19", feed.WindowStats{Samples: 60, DeltaPP: 2.0, Upticks: 10, Downticks: 9}, false},
+		{"too few samples", feed.WindowStats{Samples: 5, DeltaPP: 8.0, Upticks: 3, Downticks: 2}, false},
+		{"exact threshold delta=5", feed.WindowStats{Samples: 60, DeltaPP: 5.0, Upticks: 5, Downticks: 3}, true},
+		{"exact threshold churn=20", feed.WindowStats{Samples: 60, DeltaPP: 1.0, Upticks: 10, Downticks: 10}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			vr := IsVolatile(tc.ws)
+			if vr.Volatile != tc.want {
+				t.Fatalf("IsVolatile(%+v).Volatile = %v, want %v", tc.ws, vr.Volatile, tc.want)
+			}
+		})
+	}
+}
+
 func TestClassifySport_FromMarket(t *testing.T) {
 	lol := feed.Market{Question: "LoL: T1 vs Hanwha"}
 	nba := feed.Market{Slug: "nba-atl-nyk-2026-04-21"}

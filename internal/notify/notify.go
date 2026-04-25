@@ -38,14 +38,20 @@ type Notifier interface {
 	// InjuryAlert pushes an NBA injury alert DM. Guarded by -injury_enabled flag;
 	// to remove: delete this method + InjuryAlertEvent + FormatInjuryAlert.
 	InjuryAlert(ev InjuryAlertEvent)
+	// WhaleAlert pushes a smart-money whale trade notification. Guarded by
+	// -whale_enabled flag; to remove: delete this method + WhaleAlertEvent +
+	// FormatWhaleAlert.
+	WhaleAlert(ev WhaleAlertEvent)
 	Close(ctx context.Context) error
 }
 
 // RiskTripEvent carries the state snapshot at the moment the breaker flipped.
 type RiskTripEvent struct {
-	Reason        string  // daily_loss | feed_silence | manual_pause
+	Reason        string  // daily_loss | drawdown | feed_silence | manual_pause
 	DayPnLUSD     float64 // negative for losses
 	DayLossCapUSD float64 // positive number — the cap magnitude
+	DrawdownUSD   float64 // current drawdown from peak (0 if N/A)
+	DrawdownCap   float64 // max allowed drawdown (0 if N/A)
 	SilentSec     int     // feed silence duration (0 if N/A)
 	OpenPositions int
 }
@@ -135,6 +141,21 @@ type InjuryAlertEvent struct {
 	Impact     string // "franchise_player_out" / "co_star_out" / "rotation_star_out"
 }
 
+// WhaleAlertEvent carries a large trade from a tracked smart-money wallet.
+// Guarded by -whale_enabled flag.
+type WhaleAlertEvent struct {
+	Wallet    string
+	Side      string // BUY / SELL
+	SizeUnits float64
+	Price     float64
+	Notional  float64
+	Market    string
+	Outcome   string
+	TradeID   string
+	LinkURL   string
+	Timestamp time.Time
+}
+
 // ---- formatting helpers (exported so telegram_test can assert them) ----
 
 // FormatRiskTrip renders a single-line title + body block. The body intentionally
@@ -144,6 +165,8 @@ func FormatRiskTrip(ev RiskTripEvent) string {
 	switch ev.Reason {
 	case "daily_loss":
 		title = "🔴 风控熔断：日亏损上限"
+	case "drawdown":
+		title = "🔴 风控熔断：组合回撤上限"
 	case "feed_silence":
 		title = "🟠 风控熔断：WSS 喂价静默"
 	case "manual_pause":
@@ -154,6 +177,9 @@ func FormatRiskTrip(ev RiskTripEvent) string {
 	var b strings.Builder
 	fmt.Fprintln(&b, title)
 	fmt.Fprintf(&b, "day pnl:  %+.2f USDC (cap %.2f)\n", ev.DayPnLUSD, ev.DayLossCapUSD)
+	if ev.DrawdownUSD > 0 {
+		fmt.Fprintf(&b, "drawdown: %.2f / %.2f USDC\n", ev.DrawdownUSD, ev.DrawdownCap)
+	}
 	if ev.SilentSec > 0 {
 		fmt.Fprintf(&b, "feed silent: %ds\n", ev.SilentSec)
 	}
@@ -393,4 +419,29 @@ func outcomeAt(cs []SignalChoice, i int) string {
 		return "?"
 	}
 	return cs[i].Outcome
+}
+
+// FormatWhaleAlert renders a compact DM for a smart-money large trade.
+func FormatWhaleAlert(ev WhaleAlertEvent) string {
+	icon := "🐋"
+	if strings.ToUpper(ev.Side) == "SELL" {
+		icon = "🔻"
+	}
+	addr := ev.Wallet
+	if len(addr) > 10 {
+		addr = addr[:6] + "…" + addr[len(addr)-4:]
+	}
+	mkt := ev.Market
+	if len(mkt) > 80 {
+		mkt = mkt[:77] + "..."
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s 聪明钱大单\n", icon)
+	fmt.Fprintf(&b, "%s · %s\n", mkt, ev.Outcome)
+	fmt.Fprintf(&b, "%s %.0f shares @ %.4f = $%.0f\n", ev.Side, ev.SizeUnits, ev.Price, ev.Notional)
+	fmt.Fprintf(&b, "钱包: %s\n", addr)
+	if ev.LinkURL != "" {
+		b.WriteString(ev.LinkURL)
+	}
+	return b.String()
 }

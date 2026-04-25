@@ -28,6 +28,7 @@ import (
 	"github.com/15529214579/polymarket-go/internal/risk"
 	"github.com/15529214579/polymarket-go/internal/strategy"
 	"github.com/15529214579/polymarket-go/internal/tickrec"
+	"github.com/15529214579/polymarket-go/internal/whale"
 )
 
 func main() {
@@ -74,6 +75,10 @@ func main() {
 	injuryEnabled := flag.Bool("injury_enabled", false, "enable NBA injury report scanner (ESPN API)")
 	injuryInterval := flag.Duration("injury_interval", 30*time.Minute, "injury scan interval")
 	injuryStarOnly := flag.Bool("injury_star_only", true, "only alert on star players (top ~3-4 per team)")
+	whaleEnabled := flag.Bool("whale_enabled", false, "enable smart-money whale trade tracker")
+	whaleWallet := flag.String("whale_wallet", "", "target wallet address to track (hex 0x…)")
+	whaleMinUSD := flag.Float64("whale_min_usd", 1000, "minimum notional USD to trigger alert")
+	whaleInterval := flag.Duration("whale_interval", 30*time.Second, "whale trade poll interval")
 	flag.Parse()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -123,7 +128,13 @@ func main() {
 			ScanInterval: *injuryInterval,
 			StarOnly:     *injuryStarOnly,
 		}
-		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, *arbEnabled, *arbInterval, *arbMinGapPP, *arbDBPath, injCfg); err != nil && ctx.Err() == nil {
+		whaleCfg := whale.Config{
+			Enabled:      *whaleEnabled,
+			Wallet:       *whaleWallet,
+			MinSizeUSD:   *whaleMinUSD,
+			PollInterval: *whaleInterval,
+		}
+		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, *arbEnabled, *arbInterval, *arbMinGapPP, *arbDBPath, injCfg, whaleCfg); err != nil && ctx.Err() == nil {
 			slog.Error("detect failed", "err", err)
 			os.Exit(1)
 		}
@@ -338,7 +349,7 @@ func runSample(ctx context.Context, topN, windowSec int) error {
 	return ws.Run(ctx)
 }
 
-func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, arbEnabled bool, arbInterval time.Duration, arbMinGapPP float64, arbDBPath string, injCfg injury.Config) error {
+func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, arbEnabled bool, arbInterval time.Duration, arbMinGapPP float64, arbDBPath string, injCfg injury.Config, whaleCfg whale.Config) error {
 	if signalMode != "auto" && signalMode != "prompt" {
 		return fmt.Errorf("invalid signal_mode %q (want auto|prompt)", signalMode)
 	}
@@ -650,6 +661,8 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 								Reason:        string(rst.BlockReason),
 								DayPnLUSD:     rst.DayRealizedPnL,
 								DayLossCapUSD: rst.DayLossCapUSD,
+								DrawdownUSD:   rst.DrawdownUSD,
+								DrawdownCap:   rst.DrawdownCapUSD,
 								OpenPositions: stats.Open,
 							})
 						}
@@ -803,6 +816,8 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 								Reason:        string(rst.BlockReason),
 								DayPnLUSD:     rst.DayRealizedPnL,
 								DayLossCapUSD: rst.DayLossCapUSD,
+								DrawdownUSD:   rst.DrawdownUSD,
+								DrawdownCap:   rst.DrawdownCapUSD,
 								OpenPositions: stats.Open,
 							})
 						}
@@ -917,6 +932,10 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 		}()
 	}
 
+	// Injury scanner: created before signal/lottery goroutines so both can
+	// call injScanner.HasInjuredStar(). Returns nil/false when disabled.
+	injScanner := injury.NewScanner(injCfg)
+
 	go func() {
 		for {
 			select {
@@ -960,6 +979,21 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						"max", maxEntry,
 					)
 					continue
+				}
+				// Injury filter: if this is a basketball market and the team
+				// we'd be betting on has a star OUT/Doubtful, block the trade.
+				if injCfg.Enabled {
+					if blocked, team, players := injuryBlocksMomentum(injScanner, assetSport, meta, sig.AssetID); blocked {
+						slog.Info("signal_blocked_injury",
+							"asset", short(sig.AssetID),
+							"q", metaQ(meta, sig.AssetID),
+							"mid", sig.Mid,
+							"team", team,
+							"injured_stars", players,
+							"delta_pp", sig.DeltaPP,
+						)
+						continue
+					}
 				}
 				// Paper stacking: no per-asset/per-market dedupe here. Auto mode
 				// still has a 5-min cooldown in detector.go so one asset can't
@@ -1179,6 +1213,36 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						if lotteryOpen[c.AssetID] {
 							continue
 						}
+						// Injury filter: skip basketball underdogs whose stars are OUT.
+						if injCfg.Enabled && c.Sport == strategy.SportBasketball {
+							if blocked, team, players := injuryBlocksLottery(injScanner, meta, c.AssetID); blocked {
+								slog.Info("lottery_blocked_injury",
+									"asset", short(c.AssetID),
+									"q", metaQ(meta, c.AssetID),
+									"mid", c.Mid,
+									"team", team,
+									"injured_stars", players,
+								)
+								continue
+							}
+						}
+						// Volatility filter: skip assets with choppy in-play price action.
+						if ws, ok := sampler.Window(c.AssetID); ok {
+							vr := strategy.IsVolatile(ws)
+							if vr.Volatile {
+								slog.Info("lottery_blocked_volatile",
+									"asset", short(c.AssetID),
+									"q", metaQ(meta, c.AssetID),
+									"mid", c.Mid,
+									"sport", string(c.Sport),
+									"delta_pp", vr.DeltaPP,
+									"upticks", vr.Upticks,
+									"downticks", vr.Downticks,
+									"samples", vr.Samples,
+								)
+								continue
+							}
+						}
 						buyIntent := order.Intent{
 							AssetID: c.AssetID,
 							Market:  c.Market,
@@ -1301,11 +1365,10 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 		}
 	}
 
-	// NBA injury scanner: periodic ESPN API poll for star-player injuries.
-	// Guarded by -injury_enabled flag (default false). To remove: delete this
-	// block + internal/injury/ package + InjuryAlert from notify.
+	// NBA injury scanner: periodic ESPN API poll + DM notification.
+	// injScanner is created unconditionally so momentum/lottery filters
+	// can call HasInjuredStar() — it returns nil when disabled.
 	if injCfg.Enabled {
-		injScanner := injury.NewScanner(injCfg)
 		slog.Info("injury_scanner.ready",
 			"interval", injCfg.ScanInterval.String(),
 			"star_only", injCfg.StarOnly,
@@ -1339,6 +1402,30 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						})
 					}
 				}
+			}
+		}()
+	}
+
+	// Smart-money whale tracker: polls target wallet's CLOB trades and
+	// pushes DM for large orders. Feature-flagged via -whale_enabled.
+	if whaleCfg.Enabled {
+		wt := whale.NewTracker(whaleCfg, func(ev whale.AlertEvent) {
+			notifier.WhaleAlert(notify.WhaleAlertEvent{
+				Wallet:    ev.Wallet,
+				Side:      ev.Side,
+				SizeUnits: ev.SizeUnits,
+				Price:     ev.Price,
+				Notional:  ev.Notional,
+				Market:    ev.Question,
+				Outcome:   ev.Outcome,
+				TradeID:   ev.TradeID,
+				LinkURL:   ev.LinkURL,
+				Timestamp: ev.Timestamp,
+			})
+		})
+		go func() {
+			if err := wt.Run(ctx); err != nil && ctx.Err() == nil {
+				slog.Warn("whale_tracker_exit", "err", err.Error())
 			}
 		}()
 	}
@@ -1408,6 +1495,10 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						"day", st.Day,
 						"day_pnl_usd", st.DayRealizedPnL,
 						"cap_usd", st.DayLossCapUSD,
+						"cum_pnl", st.CumulativePnL,
+						"peak_equity", st.PeakEquity,
+						"drawdown", st.DrawdownUSD,
+						"dd_cap", st.DrawdownCapUSD,
 						"blocked", st.Blocked,
 						"reason", string(st.BlockReason),
 						"single_loss_flags", st.SingleLossFlags,
@@ -1943,7 +2034,7 @@ func (h *buyHandler) OnBuy(ctx context.Context, nonce string, slot int, sizeUSD 
 	choice := p.Choices[slot]
 	if err := h.rm.AllowOpen(now); err != nil {
 		st := h.rm.State()
-		return "", fmt.Errorf("风控阻止: %s (day_pnl=%.2f)", st.BlockReason, st.DayRealizedPnL)
+		return "", fmt.Errorf("风控阻止: %s (day_pnl=%.2f dd=%.2f/%.2f)", st.BlockReason, st.DayRealizedPnL, st.DrawdownUSD, st.DrawdownCapUSD)
 	}
 	intent := order.Intent{
 		AssetID: choice.AssetID,
@@ -2195,4 +2286,46 @@ func sendTelegram(ctx context.Context, token, chat, body string) error {
 		return fmt.Errorf("telegram http %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// injuryBlocksMomentum checks whether a momentum signal should be blocked
+// because the team we'd bet on has injured stars. Only applies to basketball.
+// Returns (blocked, teamName, playerList) for logging.
+func injuryBlocksMomentum(sc *injury.Scanner, assetSport map[string]strategy.SportFamily, meta map[string]*assetMeta, assetID string) (bool, string, string) {
+	if assetSport[assetID] != strategy.SportBasketball {
+		return false, "", ""
+	}
+	me := meta[assetID]
+	if me == nil || me.Outcome == "" {
+		return false, "", ""
+	}
+	team := me.Outcome
+	entries := sc.InjuredStars(team)
+	if len(entries) == 0 {
+		return false, "", ""
+	}
+	names := make([]string, len(entries))
+	for i, e := range entries {
+		names[i] = e.Player + "(" + string(e.Status) + ")"
+	}
+	return true, team, strings.Join(names, ", ")
+}
+
+// injuryBlocksLottery checks whether a lottery candidate should be blocked
+// because the underdog team has injured stars. Returns (blocked, teamName, playerList).
+func injuryBlocksLottery(sc *injury.Scanner, meta map[string]*assetMeta, assetID string) (bool, string, string) {
+	me := meta[assetID]
+	if me == nil || me.Outcome == "" {
+		return false, "", ""
+	}
+	team := me.Outcome
+	entries := sc.InjuredStars(team)
+	if len(entries) == 0 {
+		return false, "", ""
+	}
+	names := make([]string, len(entries))
+	for i, e := range entries {
+		names[i] = e.Player + "(" + string(e.Status) + ")"
+	}
+	return true, team, strings.Join(names, ", ")
 }

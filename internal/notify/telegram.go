@@ -165,6 +165,11 @@ func (t *Telegram) InjuryAlert(ev InjuryAlertEvent) {
 	t.enqueue(outgoing{text: FormatInjuryAlert(ev), tag: "injury_alert"})
 }
 
+// WhaleAlert enqueues a smart-money whale trade DM. Guarded by -whale_enabled flag.
+func (t *Telegram) WhaleAlert(ev WhaleAlertEvent) {
+	t.enqueue(outgoing{text: FormatWhaleAlert(ev), tag: "whale_alert"})
+}
+
 // buttonLabel builds a short inline-button caption for ladder-mode buttons.
 func buttonLabel(outcome string, sizeUSD float64, isSignal bool) string {
 	switch strings.ToLower(strings.TrimSpace(outcome)) {

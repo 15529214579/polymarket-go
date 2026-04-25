@@ -23,6 +23,7 @@ type BlockReason string
 const (
 	BlockNone        BlockReason = ""
 	BlockDailyLoss   BlockReason = "daily_loss"
+	BlockDrawdown    BlockReason = "drawdown"
 	BlockFeedSilence BlockReason = "feed_silence"
 	BlockManualPause BlockReason = "manual_pause"
 )
@@ -36,6 +37,10 @@ type Config struct {
 	// MaxSingleLossUSD: per-trade realized loss ceiling. Observational only
 	// (the trade already closed by the time we see it).
 	MaxSingleLossUSD float64
+	// MaxDrawdownPct: portfolio-level max drawdown as fraction of StartingBankrollUSD.
+	// Unlike DailyLossPct which resets each day, drawdown tracks cumulative PnL
+	// from inception. Trips when (peakEquity - currentEquity) > pct × bankroll.
+	MaxDrawdownPct float64
 	// FeedSilenceSec: trip the feed-silence breaker if the WSS is disconnected
 	// AND no book/trade event arrived in this many seconds. Silence alone on a
 	// healthy connection (quiet off-hours market) does NOT trip — SPEC §6
@@ -58,6 +63,7 @@ func DefaultConfig() Config {
 		StartingBankrollUSD: 90.41,
 		DailyLossPct:        0.15,
 		MaxSingleLossUSD:    3.0,
+		MaxDrawdownPct:      0.15,
 		FeedSilenceSec:      120,
 		Loc:                 loc,
 	}
@@ -65,15 +71,20 @@ func DefaultConfig() Config {
 
 // State is the serializable snapshot emitted for logs / heartbeat / reports.
 type State struct {
-	Day             string // YYYY-MM-DD in cfg.Loc
-	DayRealizedPnL  float64
-	DayLossCapUSD   float64 // cfg.StartingBankrollUSD × DailyLossPct (positive number)
-	Blocked         bool
-	BlockReason     BlockReason
-	BlockedAt       time.Time
-	LastFeedAt      time.Time
-	FeedSilentFor   time.Duration
-	SingleLossFlags int // count of trades whose loss exceeded MaxSingleLossUSD today
+	Day              string // YYYY-MM-DD in cfg.Loc
+	DayRealizedPnL   float64
+	DayLossCapUSD    float64 // cfg.StartingBankrollUSD × DailyLossPct (positive number)
+	CumulativePnL    float64
+	PeakEquity       float64
+	CurrentEquity    float64
+	DrawdownUSD      float64
+	DrawdownCapUSD   float64
+	Blocked          bool
+	BlockReason      BlockReason
+	BlockedAt        time.Time
+	LastFeedAt       time.Time
+	FeedSilentFor    time.Duration
+	SingleLossFlags  int // count of trades whose loss exceeded MaxSingleLossUSD today
 }
 
 // Manager is concurrent-safe. Fields mutated under mu.
@@ -83,6 +94,8 @@ type Manager struct {
 
 	day             string
 	dayRealized     float64
+	cumulativePnL   float64
+	peakEquity      float64
 	blocked         bool
 	blockReason     BlockReason
 	blockedAt       time.Time
@@ -99,10 +112,11 @@ func New(cfg Config, now time.Time) *Manager {
 	if cfg.Loc == nil {
 		cfg.Loc = time.UTC
 	}
-	m := &Manager{cfg: cfg}
+	m := &Manager{
+		cfg:        cfg,
+		peakEquity: cfg.StartingBankrollUSD,
+	}
 	m.rolloverLocked(now)
-	// Seed feed heartbeat so CheckFeed doesn't immediately trip before we've
-	// seen our first book event.
 	m.lastFeedAt = now
 	return m
 }
@@ -129,16 +143,33 @@ func (m *Manager) OnClose(pnlUSD float64, at time.Time) (trippedNow bool) {
 	m.rolloverLocked(at)
 
 	m.dayRealized += pnlUSD
+	m.cumulativePnL += pnlUSD
 	if pnlUSD < -m.cfg.MaxSingleLossUSD {
 		m.singleLossFlags++
 	}
 
-	cap := -m.dailyCapAbs() // negative threshold
-	if !m.blocked && m.dayRealized <= cap {
-		m.blocked = true
-		m.blockReason = BlockDailyLoss
-		m.blockedAt = at
-		return true
+	equity := m.cfg.StartingBankrollUSD + m.cumulativePnL
+	if equity > m.peakEquity {
+		m.peakEquity = equity
+	}
+
+	if !m.blocked {
+		dayCap := -m.dailyCapAbs()
+		if m.dayRealized <= dayCap {
+			m.blocked = true
+			m.blockReason = BlockDailyLoss
+			m.blockedAt = at
+			return true
+		}
+		if m.cfg.MaxDrawdownPct > 0 {
+			ddCap := m.cfg.StartingBankrollUSD * m.cfg.MaxDrawdownPct
+			if m.peakEquity-equity > ddCap {
+				m.blocked = true
+				m.blockReason = BlockDrawdown
+				m.blockedAt = at
+				return true
+			}
+		}
 	}
 	return false
 }
@@ -211,10 +242,21 @@ func (m *Manager) State() State {
 	if !m.lastFeedAt.IsZero() {
 		silent = time.Since(m.lastFeedAt)
 	}
+	equity := m.cfg.StartingBankrollUSD + m.cumulativePnL
+	ddCapUSD := m.cfg.StartingBankrollUSD * m.cfg.MaxDrawdownPct
+	dd := m.peakEquity - equity
+	if dd < 0 {
+		dd = 0
+	}
 	return State{
 		Day:             m.day,
 		DayRealizedPnL:  m.dayRealized,
 		DayLossCapUSD:   m.dailyCapAbs(),
+		CumulativePnL:   m.cumulativePnL,
+		PeakEquity:      m.peakEquity,
+		CurrentEquity:   equity,
+		DrawdownUSD:     dd,
+		DrawdownCapUSD:  ddCapUSD,
 		Blocked:         m.blocked,
 		BlockReason:     m.blockReason,
 		BlockedAt:       m.blockedAt,

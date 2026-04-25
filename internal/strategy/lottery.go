@@ -1,6 +1,7 @@
 package strategy
 
 import (
+	"math"
 	"time"
 
 	"github.com/15529214579/polymarket-go/internal/feed"
@@ -74,6 +75,40 @@ type LotteryCandidate struct {
 // Kept narrow so tests don't need a full sampler.
 type LotterySampler interface {
 	TickTail(assetID string, n int) ([]feed.Tick, bool)
+}
+
+// LotteryWindower provides per-asset window stats for volatility checks.
+type LotteryWindower interface {
+	Window(assetID string) (feed.WindowStats, bool)
+}
+
+// VolatileResult carries details about a volatility check for logging.
+type VolatileResult struct {
+	Volatile  bool
+	DeltaPP   float64
+	Upticks   int
+	Downticks int
+	Samples   int
+}
+
+// IsVolatile checks whether an asset's recent window shows back-and-forth
+// in-play action that makes lottery entries risky. Thresholds:
+//   - |DeltaPP| >= 5.0  (5pp net swing in 60s — clearly in-play and moving)
+//   - Upticks+Downticks >= 20  (⅓ of window has direction changes — choppy)
+func IsVolatile(w feed.WindowStats) VolatileResult {
+	r := VolatileResult{
+		DeltaPP:   w.DeltaPP,
+		Upticks:   w.Upticks,
+		Downticks: w.Downticks,
+		Samples:   w.Samples,
+	}
+	if w.Samples < 10 {
+		return r
+	}
+	if math.Abs(w.DeltaPP) >= 5.0 || w.Upticks+w.Downticks >= 20 {
+		r.Volatile = true
+	}
+	return r
 }
 
 // EffectiveFloor returns the actual minimum price to allow for a given sport
