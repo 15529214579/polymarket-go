@@ -47,6 +47,8 @@ type Signal struct {
 	SentimentMod float64 // sentiment multiplier (>1 = amplified, <1 = dampened)
 	FearGreed    int     // 0-100 F&G index at signal time
 	FundingRate  float64 // perpetual funding rate at signal time
+	RegimeBias   float64 // regime direction bias multiplier
+	Score        SignalScore
 }
 
 // SignalCallback is called for each actionable signal. The caller (main.go)
@@ -198,6 +200,8 @@ func scanOnceWithState(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]S
 		slog.Warn("btc_strategy.multi_tf_fail", "err", err.Error())
 	}
 
+	regime, regimeLabel, regimeConf := DetectCurrentRegime(candles1h)
+
 	markets, err := FetchBTCMarkets(ctx)
 	if err != nil {
 		return nil, nil, 0, 0, 0, fmt.Errorf("fetch PM markets: %w", err)
@@ -244,6 +248,7 @@ func scanOnceWithState(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]S
 		"min_gap_pp", cfg.MinGapPP,
 		"multi_tf", tfLabel,
 		"sentiment", sentLabel,
+		"regime", fmt.Sprintf("%s(conf=%.2f)", regimeLabel, regimeConf),
 	)
 
 	var signals []Signal
@@ -265,6 +270,14 @@ func scanOnceWithState(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]S
 		isReach := g.Strike > spot
 		sentMod := sentiment.SentimentModifier(g.Direction, isReach)
 
+		tfAlignment := "n/a"
+		tfConf := 0.0
+		if multiTF != nil {
+			tfAlignment = multiTF.Alignment
+			tfConf = multiTF.Confidence
+		}
+		regBias := RegimeDirectionBias(regime, regimeConf, tfAlignment, g.Direction, isReach)
+
 		var fng int
 		var fr float64
 		if sentiment.FearGreed != nil {
@@ -273,6 +286,8 @@ func scanOnceWithState(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]S
 		if sentiment.FundingRate != nil {
 			fr = sentiment.FundingRate.Rate
 		}
+
+		score := ScoreSignal(g.GapPP, sentMod, regBias, tfAlignment, tfConf, g.EdgeRatio)
 
 		sig := Signal{
 			Strike:       g.Strike,
@@ -288,6 +303,8 @@ func scanOnceWithState(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]S
 			SentimentMod: sentMod,
 			FearGreed:    fng,
 			FundingRate:  fr,
+			RegimeBias:   regBias,
+			Score:        score,
 		}
 		signals = append(signals, sig)
 
@@ -299,7 +316,10 @@ func scanOnceWithState(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]S
 			"direction", g.Direction,
 			"edge_ratio", fmt.Sprintf("%.2f", g.EdgeRatio),
 			"multi_tf", tfLabel,
+			"regime", fmt.Sprintf("%s(%.2f)", regimeLabel, regimeConf),
+			"regime_bias", fmt.Sprintf("%.2f", regBias),
 			"sent_mod", fmt.Sprintf("%.2f", sentMod),
+			"score", fmt.Sprintf("%d/%s", score.Total, score.Tier),
 			"fng", fng,
 			"funding", fmt.Sprintf("%.6f", fr),
 		)
