@@ -22,12 +22,13 @@ const (
 
 // PMMarket represents one BTC price-level market fetched from the Gamma API.
 type PMMarket struct {
-	MarketID    string
-	Question    string
-	Strike      float64 // parsed strike price from question
-	YesPrice    float64 // 0..1
-	NoPrice     float64 // 0..1
-	FetchedAt   time.Time
+	MarketID     string
+	Question     string
+	Strike       float64 // parsed strike price from question
+	YesPrice     float64 // 0..1
+	NoPrice      float64 // 0..1
+	ClobTokenIDs []string // CLOB token IDs for orderbook queries
+	FetchedAt    time.Time
 }
 
 // ImpliedCurvePoint is one point on the implied-probability ladder.
@@ -88,13 +89,21 @@ func FetchBTCMarkets(ctx context.Context) ([]PMMarket, error) {
 		for _, m := range ev.Markets {
 			strike := parseStrikeFromQuestion(m.Question)
 			yesPrice, noPrice := parsePrices(m.OutcomeYes)
+			var tokenIDs []string
+			if m.ClobTokenIDs != "" {
+				var ids []string
+				if json.Unmarshal([]byte(m.ClobTokenIDs), &ids) == nil {
+					tokenIDs = ids
+				}
+			}
 			markets = append(markets, PMMarket{
-				MarketID:  m.ID,
-				Question:  m.Question,
-				Strike:    strike,
-				YesPrice:  yesPrice,
-				NoPrice:   noPrice,
-				FetchedAt: now,
+				MarketID:     m.ID,
+				Question:     m.Question,
+				Strike:       strike,
+				YesPrice:     yesPrice,
+				NoPrice:      noPrice,
+				ClobTokenIDs: tokenIDs,
+				FetchedAt:    now,
 			})
 		}
 	}

@@ -49,6 +49,8 @@ type Signal struct {
 	FundingRate  float64 // perpetual funding rate at signal time
 	RegimeBias       float64 // regime direction bias multiplier
 	InstitutionalMod float64 // institutional flow modifier
+	OnChainMod       float64 // on-chain metrics modifier
+	DepthMod         float64 // orderbook depth modifier
 	Score            SignalScore
 }
 
@@ -236,6 +238,16 @@ func scanOnceWithState(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]S
 		slog.Warn("btc_strategy.save_institutional_fail", "err", err.Error())
 	}
 
+	onchain := FetchOnChainMetrics(ctx)
+	if err := SaveOnChainMetrics(ctx, db, onchain); err != nil {
+		slog.Warn("btc_strategy.save_onchain_fail", "err", err.Error())
+	}
+
+	obDepth := FetchOrderbookDepth(ctx, markets)
+	if err := SaveOrderbookDepth(ctx, db, obDepth); err != nil {
+		slog.Warn("btc_strategy.save_orderbook_fail", "err", err.Error())
+	}
+
 	yearsToExpiry := yearsUntilEnd2026()
 
 	gaps := FindBSGaps(markets, spot, sigma, yearsToExpiry, cfg.MinGapPP)
@@ -267,6 +279,8 @@ func scanOnceWithState(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]S
 		"multi_tf", tfLabel,
 		"sentiment", sentLabel,
 		"institutional", fmt.Sprintf("OI=%.0f L/S=%.3f prem=%.4f%% %s(%.2f)", instFlow.OpenInterest, instFlow.LongShortRatio, instFlow.FuturesPremium, instFlow.FlowSignal, instFlow.FlowScore),
+		"onchain", fmt.Sprintf("mempool=%d fee=$%.2f %s(%.2f)", onchain.MempoolTxs, onchain.AvgFee24h, onchain.OnChainSignal, onchain.OnChainScore),
+		"orderbook", fmt.Sprintf("avg_depth=%.2f min_depth=%.2f markets=%d", obDepth.AvgScore, obDepth.MinScore, len(obDepth.Depths)),
 		"regime", fmt.Sprintf("%s(conf=%.2f)", regimeLabel, regimeConf),
 	)
 
@@ -289,6 +303,8 @@ func scanOnceWithState(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]S
 		isReach := g.Strike > spot
 		sentMod := sentiment.SentimentModifier(g.Direction, isReach)
 		instMod := instFlow.InstitutionalModifier(g.Direction, isReach)
+		chainMod := onchain.OnChainModifier(g.Direction, isReach)
+		depthMod := DepthModifier(obDepth, g.Strike)
 
 		tfAlignment := "n/a"
 		tfConf := 0.0
@@ -325,6 +341,8 @@ func scanOnceWithState(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]S
 			FundingRate:      fr,
 			RegimeBias:       regBias,
 			InstitutionalMod: instMod,
+			OnChainMod:       chainMod,
+			DepthMod:         depthMod,
 			Score:            score,
 		}
 		signals = append(signals, sig)
@@ -341,6 +359,8 @@ func scanOnceWithState(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]S
 			"regime_bias", fmt.Sprintf("%.2f", regBias),
 			"sent_mod", fmt.Sprintf("%.2f", sentMod),
 			"inst_mod", fmt.Sprintf("%.2f", instMod),
+			"chain_mod", fmt.Sprintf("%.2f", chainMod),
+			"depth_mod", fmt.Sprintf("%.2f", depthMod),
 			"score", fmt.Sprintf("%d/%s", score.Total, score.Tier),
 			"fng", fng,
 			"funding", fmt.Sprintf("%.6f", fr),
