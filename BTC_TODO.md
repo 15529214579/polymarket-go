@@ -79,10 +79,12 @@
 - FindBSGaps 已应用 per-strike 调整
 - done: commit `2e0052c`
 
-### 12. [P2] 二阶/三阶马尔科夫
-- 当前: P(S_t+1 | S_t)
-- 改为: P(S_t+1 | S_t, S_t-1) 或 P(S_t+1 | S_t, S_t-1, S_t-2)
-- 捕捉路径依赖（连续上涨后反转概率递增）
+### 12. [P2] ✅ 二阶/三阶马尔科夫
+- ✅ markov2.go: 225 pair states (s[t-1],s[t])→s[t+1], adaptive w2 weight
+- ✅ BlendedPrediction: 1st+2nd order merged (w2 up to 60% when ≥50 obs)
+- ✅ multi_tf.go 已切换到 BlendedPrediction
+- ✅ 8 新测试全部通过
+- 三阶暂不实现（数据量不足以支撑 3375 个三元组状态）
 
 ### 13. [P2] 自动再训练
 - 每日 cron 用最新 90 天数据重新训练转移矩阵
@@ -214,3 +216,4 @@
 | Apr 27 | **#15 Exit Strategy**: exit.go + 3 退出条件 + 仓位追踪 + 6 单测 | gap<3pp 平仓 / BTC±5% 止损 / 7d timeout; scanOnceWithState 返回完整市场状态 |
 
 | Apr 27 | **#24 Regime Detection** + **#25 Signal Scoring** | HMM=MEAN_REVERT(100%); 信号评分: K=69/SIGNAL K=69/SIGNAL K=67/SIGNAL; regime_bias=1.0 (MR+bull+dip=中性) |
+| Apr 27 | **#12 二阶马尔科夫** — markov2.go + BlendedPrediction + multi_tf 集成 | 225 pair states; w2 adaptive (≥50obs→60%); multi_tf 已切 ALIGNED_BULL(0.51); 三阶暂缓(数据不够3375态) |
