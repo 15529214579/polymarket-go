@@ -125,11 +125,14 @@
 - done: commit `2bcbe3f`
 - TODO: 积累 7 天后写分析查询
 
-### 19. [P1] PnL 归因分析
-- 按模型拆分: BS gap / Markov / 联合
-- 按市场拆分: reach vs dip / 不同 strike
-- 按时段拆分: 亚洲时段 / 美洲时段 / 欧洲时段
-- 每日回测自动输出归因报告
+### 19. [P1] 🛠 PnL 归因分析
+- `cmd/backtest -mode=btc-pnl`: 读 btc.db 输出实盘 PnL 报告
+- 含 PM 定价效率分析（deviation 分布图）
+- 每小时自动 logPnLSummary（累计胜率/PnL/快照数）
+- 解盘 log 增强: EV/Kelly/candle range/body 全记录
+- **关键发现: 1h Up/Down PM 定价高效（84% 偏差<0.5pp），几乎无 edge**
+- 下一步: 按市场/时段/regime 分解，需更多数据
+- done: btcpnl.go + resolution 增强 commit `60cde2b`
 
 ### 20. [P1] 🛠 历史 PM 价格补全
 - `updown_prices` 表: 每次 scan 记录 Up/Down 价格 + spread + deviation
@@ -190,3 +193,4 @@
 | Apr 27 | EWMA vol (λ=0.94) + Vol Smile + HMM 3态 regime + btc-updown 回测 | hist=52%/ewma=17%·BTC 1h=掷硬币·策略转向价值投注 |
 | Apr 27 | **策略转向**: 从方向预测→PM 定价偏差套利; 买 PM 定价<0.49 的一侧 | Markov 做 tiebreaker 而非主驱动 |
 | Apr 27 | Kelly Criterion sizing + updown_prices 采集 + 4 单测 | half-Kelly 动态仓位; PM 价格分布数据积累中 |
+| Apr 27 | PnL 报告 + 定价效率分析 + 动量触发 + 解盘增强 | **PM 1h Up/Down 定价高效 (84%<0.5pp)**; 需找低效市场 |
