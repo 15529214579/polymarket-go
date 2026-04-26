@@ -52,9 +52,7 @@ func PredictMultiTF(ctx context.Context) (*MultiTFPrediction, error) {
 			continue
 		}
 
-		tm, _ := Train(candles)
-		retStats := BuildReturnStats(candles)
-		pred, ok := PredictFromCandles(candles, &tm, retStats)
+		pred, ok := BlendedPrediction(candles)
 		results[i] = tfResult{interval: iv, candles: candles, pred: pred, ok: ok}
 	}
 
