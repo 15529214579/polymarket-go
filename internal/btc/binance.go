@@ -28,8 +28,10 @@ type Candle struct {
 type Interval string
 
 const (
-	Interval1h Interval = "1h"
-	Interval1d Interval = "1d"
+	Interval5m  Interval = "5m"
+	Interval15m Interval = "15m"
+	Interval1h  Interval = "1h"
+	Interval1d  Interval = "1d"
 )
 
 // FetchCandles fetches up to limit klines of the given interval from Binance.

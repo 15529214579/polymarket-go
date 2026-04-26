@@ -99,20 +99,43 @@ func RunStrategy(ctx context.Context, cfg StrategyConfig, cb SignalCallback) err
 }
 
 func scanOnce(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]Signal, error) {
-	candles, err := FetchCandles(ctx, "BTCUSDT", Interval1h, 720)
+	candles1h, err := FetchCandles(ctx, "BTCUSDT", Interval1h, 720)
 	if err != nil {
-		return nil, fmt.Errorf("fetch candles: %w", err)
+		return nil, fmt.Errorf("fetch 1h candles: %w", err)
 	}
-	if len(candles) < 24 {
-		return nil, fmt.Errorf("insufficient candles: %d", len(candles))
-	}
-
-	if err := SaveCandles(ctx, db, candles, Interval1h); err != nil {
-		slog.Warn("btc_strategy.save_candles_fail", "err", err.Error())
+	if len(candles1h) < 24 {
+		return nil, fmt.Errorf("insufficient 1h candles: %d", len(candles1h))
 	}
 
-	spot := candles[len(candles)-1].Close
-	sigma := HistoricalVolatility(candles)
+	if err := SaveCandles(ctx, db, candles1h, Interval1h); err != nil {
+		slog.Warn("btc_strategy.save_candles_fail", "interval", "1h", "err", err.Error())
+	}
+
+	candles5m, err := FetchCandles(ctx, "BTCUSDT", Interval5m, 1000)
+	if err != nil {
+		slog.Warn("btc_strategy.fetch_5m_fail", "err", err.Error())
+	} else if len(candles5m) > 0 {
+		if err := SaveCandles(ctx, db, candles5m, Interval5m); err != nil {
+			slog.Warn("btc_strategy.save_candles_fail", "interval", "5m", "err", err.Error())
+		}
+	}
+
+	candles15m, err := FetchCandles(ctx, "BTCUSDT", Interval15m, 1000)
+	if err != nil {
+		slog.Warn("btc_strategy.fetch_15m_fail", "err", err.Error())
+	} else if len(candles15m) > 0 {
+		if err := SaveCandles(ctx, db, candles15m, Interval15m); err != nil {
+			slog.Warn("btc_strategy.save_candles_fail", "interval", "15m", "err", err.Error())
+		}
+	}
+
+	spot := candles1h[len(candles1h)-1].Close
+	sigma := HistoricalVolatility(candles1h)
+
+	multiTF, err := PredictMultiTF(ctx)
+	if err != nil {
+		slog.Warn("btc_strategy.multi_tf_fail", "err", err.Error())
+	}
 
 	markets, err := FetchBTCMarkets(ctx)
 	if err != nil {
@@ -123,9 +146,19 @@ func scanOnce(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]Signal, er
 		slog.Warn("btc_strategy.save_pm_fail", "err", err.Error())
 	}
 
+	trackPMDeltas(ctx, db, markets, spot)
+
 	yearsToExpiry := yearsUntilEnd2026()
 
 	gaps := FindBSGaps(markets, spot, sigma, yearsToExpiry, cfg.MinGapPP)
+
+	tfLabel := "n/a"
+	if multiTF != nil {
+		tfLabel = fmt.Sprintf("%s(bull=%.0f%%,bear=%.0f%%,conf=%.2f)",
+			multiTF.Alignment,
+			multiTF.CombinedBull*100, multiTF.CombinedBear*100,
+			multiTF.Confidence)
+	}
 
 	slog.Info("btc_strategy.scan_done",
 		"spot", spot,
@@ -133,6 +166,7 @@ func scanOnce(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]Signal, er
 		"pm_markets", len(markets),
 		"gaps_found", len(gaps),
 		"min_gap_pp", cfg.MinGapPP,
+		"multi_tf", tfLabel,
 	)
 
 	var signals []Signal
@@ -140,6 +174,17 @@ func scanOnce(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]Signal, er
 		if i >= cfg.TopN {
 			break
 		}
+
+		if multiTF != nil && !multiTF.MultiTFEntryFilter(g.Direction) {
+			slog.Info("btc_strategy.tf_filtered",
+				"strike", g.Strike,
+				"direction", g.Direction,
+				"alignment", multiTF.Alignment,
+				"combined_bull", fmt.Sprintf("%.1f%%", multiTF.CombinedBull*100),
+			)
+			continue
+		}
+
 		sig := Signal{
 			Strike:    g.Strike,
 			Question:  g.Question,
@@ -161,10 +206,46 @@ func scanOnce(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]Signal, er
 			"gap_pp", fmt.Sprintf("%.1f", g.GapPP),
 			"direction", g.Direction,
 			"edge_ratio", fmt.Sprintf("%.2f", g.EdgeRatio),
+			"multi_tf", tfLabel,
 		)
 	}
 
 	return signals, nil
+}
+
+func trackPMDeltas(ctx context.Context, db *sql.DB, markets []PMMarket, spot float64) {
+	const ddl = `CREATE TABLE IF NOT EXISTS pm_btc_deltas (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		timestamp  INTEGER NOT NULL,
+		market_id  TEXT    NOT NULL,
+		strike     REAL,
+		yes_price  REAL,
+		btc_spot   REAL,
+		UNIQUE(timestamp, market_id)
+	);`
+	if _, err := db.ExecContext(ctx, ddl); err != nil {
+		slog.Warn("btc_strategy.delta_ddl_fail", "err", err.Error())
+		return
+	}
+
+	now := time.Now().Unix()
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	stmt, err := tx.PrepareContext(ctx,
+		`INSERT OR IGNORE INTO pm_btc_deltas(timestamp, market_id, strike, yes_price, btc_spot) VALUES(?,?,?,?,?)`)
+	if err != nil {
+		return
+	}
+	defer stmt.Close()
+
+	for _, m := range markets {
+		stmt.ExecContext(ctx, now, m.MarketID, m.Strike, m.YesPrice, spot) //nolint:errcheck
+	}
+	tx.Commit() //nolint:errcheck
 }
 
 func yearsUntilEnd2026() float64 {
