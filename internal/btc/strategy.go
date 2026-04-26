@@ -34,16 +34,19 @@ func DefaultStrategyConfig() StrategyConfig {
 
 // Signal is one actionable BTC market gap detected by the strategy.
 type Signal struct {
-	Strike    float64
-	Question  string
-	MarketID  string
-	PMPrice   float64 // current PM Yes price
-	BSProb    float64 // model fair value
-	GapPP     float64 // (BSProb - PMPrice) * 100; positive = BUY_YES
-	Direction string  // BUY_YES or BUY_NO
-	EdgeRatio float64 // |gap| / PMPrice
-	Spot      float64 // BTC spot at signal time
-	Sigma     float64 // annualized vol used
+	Strike       float64
+	Question     string
+	MarketID     string
+	PMPrice      float64 // current PM Yes price
+	BSProb       float64 // model fair value
+	GapPP        float64 // (BSProb - PMPrice) * 100; positive = BUY_YES
+	Direction    string  // BUY_YES or BUY_NO
+	EdgeRatio    float64 // |gap| / PMPrice
+	Spot         float64 // BTC spot at signal time
+	Sigma        float64 // annualized vol used
+	SentimentMod float64 // sentiment multiplier (>1 = amplified, <1 = dampened)
+	FearGreed    int     // 0-100 F&G index at signal time
+	FundingRate  float64 // perpetual funding rate at signal time
 }
 
 // SignalCallback is called for each actionable signal. The caller (main.go)
@@ -148,6 +151,11 @@ func scanOnce(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]Signal, er
 
 	trackPMDeltas(ctx, db, markets, spot)
 
+	sentiment := FetchSentiment(ctx)
+	if err := SaveSentiment(ctx, db, sentiment); err != nil {
+		slog.Warn("btc_strategy.save_sentiment_fail", "err", err.Error())
+	}
+
 	yearsToExpiry := yearsUntilEnd2026()
 
 	gaps := FindBSGaps(markets, spot, sigma, yearsToExpiry, cfg.MinGapPP)
@@ -160,6 +168,14 @@ func scanOnce(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]Signal, er
 			multiTF.Confidence)
 	}
 
+	sentLabel := "n/a"
+	if sentiment.FearGreed != nil {
+		sentLabel = fmt.Sprintf("F&G=%d(%s)", sentiment.FearGreed.Value, sentiment.FearGreed.Classification)
+	}
+	if sentiment.FundingRate != nil {
+		sentLabel += fmt.Sprintf(" FR=%.4f%%", sentiment.FundingRate.Rate*100)
+	}
+
 	slog.Info("btc_strategy.scan_done",
 		"spot", spot,
 		"sigma_pct", fmt.Sprintf("%.1f%%", sigma*100),
@@ -167,6 +183,7 @@ func scanOnce(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]Signal, er
 		"gaps_found", len(gaps),
 		"min_gap_pp", cfg.MinGapPP,
 		"multi_tf", tfLabel,
+		"sentiment", sentLabel,
 	)
 
 	var signals []Signal
@@ -185,17 +202,32 @@ func scanOnce(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]Signal, er
 			continue
 		}
 
+		isReach := g.Strike > spot
+		sentMod := sentiment.SentimentModifier(g.Direction, isReach)
+
+		var fng int
+		var fr float64
+		if sentiment.FearGreed != nil {
+			fng = sentiment.FearGreed.Value
+		}
+		if sentiment.FundingRate != nil {
+			fr = sentiment.FundingRate.Rate
+		}
+
 		sig := Signal{
-			Strike:    g.Strike,
-			Question:  g.Question,
-			MarketID:  marketIDForStrike(markets, g.Strike),
-			PMPrice:   g.PMPrice,
-			BSProb:    g.BSProb,
-			GapPP:     g.GapPP,
-			Direction: g.Direction,
-			EdgeRatio: g.EdgeRatio,
-			Spot:      spot,
-			Sigma:     sigma,
+			Strike:       g.Strike,
+			Question:     g.Question,
+			MarketID:     marketIDForStrike(markets, g.Strike),
+			PMPrice:      g.PMPrice,
+			BSProb:       g.BSProb,
+			GapPP:        g.GapPP,
+			Direction:    g.Direction,
+			EdgeRatio:    g.EdgeRatio,
+			Spot:         spot,
+			Sigma:        sigma,
+			SentimentMod: sentMod,
+			FearGreed:    fng,
+			FundingRate:  fr,
 		}
 		signals = append(signals, sig)
 
@@ -207,6 +239,9 @@ func scanOnce(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]Signal, er
 			"direction", g.Direction,
 			"edge_ratio", fmt.Sprintf("%.2f", g.EdgeRatio),
 			"multi_tf", tfLabel,
+			"sent_mod", fmt.Sprintf("%.2f", sentMod),
+			"fng", fng,
+			"funding", fmt.Sprintf("%.6f", fr),
 		)
 	}
 
