@@ -1590,6 +1590,10 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 							Reason:     a.Reason,
 							Impact:     a.Impact,
 						})
+						// Star OUT → push buy prompt for opposing team.
+						if a.Status == injury.StatusOut {
+							injuryPushOpponentPrompt(a, meta, assetSport, sampler, pending, notifier)
+						}
 					}
 				}
 			}
@@ -2828,4 +2832,73 @@ func injuryBlocksLottery(sc *injury.Scanner, meta map[string]*assetMeta, assetID
 		names[i] = e.Player + "(" + string(e.Status) + ")"
 	}
 	return true, team, strings.Join(names, ", ")
+}
+
+// injuryPushOpponentPrompt finds the PM market for an injured team's game and
+// pushes a SignalPrompt with buy buttons for the opposing team.
+func injuryPushOpponentPrompt(a injury.InjuryAlert, meta map[string]*assetMeta, assetSport map[string]strategy.SportFamily, sampler *feed.Sampler, pending *notify.PendingStore, notifier notify.Notifier) {
+	lowerTeam := strings.ToLower(a.Team)
+	for assetID, me := range meta {
+		if me.Sibling == "" {
+			continue
+		}
+		if assetSport[assetID] != strategy.SportBasketball {
+			continue
+		}
+		if !strings.Contains(lowerTeam, strings.ToLower(me.Outcome)) {
+			continue
+		}
+		sibMe := meta[me.Sibling]
+		if sibMe == nil {
+			continue
+		}
+
+		sibMid := 0.50
+		if w, ok := sampler.Window(me.Sibling); ok && w.Samples > 0 {
+			sibMid = w.EndMid
+		}
+		injMid := 1.0 - sibMid
+		if w, ok := sampler.Window(assetID); ok && w.Samples > 0 {
+			injMid = w.EndMid
+		}
+
+		choices := []notify.Choice{
+			{AssetID: me.Sibling, Outcome: sibMe.Outcome, Mid: sibMid, IsSignal: true},
+			{AssetID: assetID, Outcome: me.Outcome, Mid: injMid},
+		}
+		sigChoices := []notify.SignalChoice{
+			{Slot: 0, Outcome: sibMe.Outcome, Mid: sibMid, IsSignal: true},
+			{Slot: 1, Outcome: me.Outcome, Mid: injMid},
+		}
+
+		p := pending.Put(notify.PendingIntent{
+			Market:   "injury-alert",
+			Question: me.Question,
+			Choices:  choices,
+		}, time.Now())
+
+		nonce := p.Nonce
+		notifier.SignalPrompt(notify.SignalPromptEvent{
+			Nonce:   p.Nonce,
+			Match:   me.Match,
+			Context: fmt.Sprintf("🚨 %s %s OUT · %s", a.Team, a.StarPlayer, a.Reason),
+			EndIn:   notify.HumanizeEndIn(time.Now(), me.EndTime),
+			Slug:    me.Slug,
+			Choices: sigChoices,
+			OnSent: func(msgID int64, err error) {
+				if err != nil || msgID == 0 {
+					return
+				}
+				pending.SetMessageID(nonce, msgID)
+			},
+		})
+		slog.Info("injury_opponent_prompt",
+			"injured_team", a.Team,
+			"player", a.StarPlayer,
+			"opponent", sibMe.Outcome,
+			"mid", sibMid,
+			"nonce", nonce,
+		)
+		break
+	}
 }
