@@ -140,14 +140,16 @@ func max(a, b int) int {
 }
 
 // MultiTFEntryFilter returns true if the multi-timeframe signal supports
-// entering a position in the given direction.
-// direction: "BUY_YES" (bullish on BTC) or "BUY_NO" (bearish on BTC)
+// entering a position in the given direction. Only blocks when there is
+// strong directional conflict (all timeframes aligned against the trade).
+// MIXED alignment always passes — BS gap is a long-term structural edge,
+// short-term direction being unclear is not a reason to block.
 func (m *MultiTFPrediction) MultiTFEntryFilter(direction string) bool {
 	switch direction {
 	case "BUY_YES":
-		return m.CombinedBull > 0.45 && m.Alignment != "ALIGNED_BEAR"
+		return m.Alignment != "ALIGNED_BEAR" || m.Confidence < 0.55
 	case "BUY_NO":
-		return m.CombinedBear > 0.45 && m.Alignment != "ALIGNED_BULL"
+		return m.Alignment != "ALIGNED_BULL" || m.Confidence < 0.55
 	default:
 		return true
 	}
