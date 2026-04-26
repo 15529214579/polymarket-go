@@ -58,8 +58,15 @@ type SignalCallback func(sig Signal)
 // 2. Fetches PM BTC markets from Gamma API
 // 3. Computes BS first-passage probabilities vs PM prices
 // 4. Fires callback for gaps > MinGapPP
-// 5. Persists data to SQLite for daily backtest iteration
+// 5. Checks open positions for exit conditions
+// 6. Persists data to SQLite for daily backtest iteration
 func RunStrategy(ctx context.Context, cfg StrategyConfig, cb SignalCallback) error {
+	return RunStrategyWithExit(ctx, cfg, cb, nil, DefaultExitConfig())
+}
+
+// RunStrategyWithExit is like RunStrategy but also checks open positions for
+// exit conditions (gap narrowing, stop-loss, timeout) on each scan cycle.
+func RunStrategyWithExit(ctx context.Context, cfg StrategyConfig, cb SignalCallback, exitCb ExitCallback, exitCfg ExitConfig) error {
 	db, err := sql.Open("sqlite", cfg.DBPath+"?_journal_mode=WAL&_busy_timeout=5000")
 	if err != nil {
 		return fmt.Errorf("btc strategy db open: %w", err)
@@ -69,24 +76,54 @@ func RunStrategy(ctx context.Context, cfg StrategyConfig, cb SignalCallback) err
 	if err := InitDB(db); err != nil {
 		return fmt.Errorf("btc strategy db init: %w", err)
 	}
+	if err := InitExitDB(db); err != nil {
+		return fmt.Errorf("btc exit db init: %w", err)
+	}
 
 	slog.Info("btc_strategy.ready",
 		"interval", cfg.ScanInterval.String(),
 		"min_gap_pp", cfg.MinGapPP,
 		"top_n", cfg.TopN,
+		"exit_gap_thresh", exitCfg.GapCloseThreshPP,
+		"exit_stop_loss", fmt.Sprintf("%.0f%%", exitCfg.StopLossPct*100),
+		"exit_timeout", exitCfg.TimeoutDuration.String(),
 	)
 
 	scan := func(trigger string) {
 		if trigger != "" {
 			slog.Info("btc_strategy.momentum_triggered", "trigger", trigger)
 		}
-		signals, scanErr := scanOnce(ctx, db, cfg)
+		signals, markets, spot, sigma, yte, scanErr := scanOnceWithState(ctx, db, cfg)
 		if scanErr != nil {
 			slog.Warn("btc_strategy.scan_fail", "err", scanErr.Error())
 			return
 		}
 		for _, sig := range signals {
+			if err := RecordEntry(ctx, db, sig); err != nil {
+				slog.Warn("btc_exit.record_entry_fail", "err", err.Error())
+			}
 			cb(sig)
+		}
+
+		if exitCb != nil {
+			exits := CheckExits(ctx, db, markets, spot, sigma, yte, exitCfg)
+			for _, ex := range exits {
+				slog.Info("btc_strategy.exit_signal",
+					"position_id", ex.Position.ID,
+					"strike", ex.Position.Strike,
+					"direction", ex.Position.Direction,
+					"reason", string(ex.Reason),
+					"entry_gap", fmt.Sprintf("%.1f", ex.Position.EntryGapPP),
+					"current_gap", fmt.Sprintf("%.1f", ex.CurrentGap),
+					"entry_spot", ex.Position.EntrySpot,
+					"current_spot", ex.CurrentSpot,
+					"pnl_est", fmt.Sprintf("%.1f", ex.PnLEstimate),
+				)
+				if err := ClosePosition(ctx, db, ex.Position.ID, ex.Reason, ex.CurrentGap, ex.CurrentSpot, ex.PnLEstimate); err != nil {
+					slog.Warn("btc_exit.close_fail", "err", err.Error())
+				}
+				exitCb(ex)
+			}
 		}
 	}
 
@@ -116,12 +153,17 @@ func RunStrategy(ctx context.Context, cfg StrategyConfig, cb SignalCallback) err
 }
 
 func scanOnce(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]Signal, error) {
+	signals, _, _, _, _, err := scanOnceWithState(ctx, db, cfg)
+	return signals, err
+}
+
+func scanOnceWithState(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]Signal, []PMMarket, float64, float64, float64, error) {
 	candles1h, err := FetchCandles(ctx, "BTCUSDT", Interval1h, 720)
 	if err != nil {
-		return nil, fmt.Errorf("fetch 1h candles: %w", err)
+		return nil, nil, 0, 0, 0, fmt.Errorf("fetch 1h candles: %w", err)
 	}
 	if len(candles1h) < 24 {
-		return nil, fmt.Errorf("insufficient 1h candles: %d", len(candles1h))
+		return nil, nil, 0, 0, 0, fmt.Errorf("insufficient 1h candles: %d", len(candles1h))
 	}
 
 	if err := SaveCandles(ctx, db, candles1h, Interval1h); err != nil {
@@ -158,7 +200,7 @@ func scanOnce(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]Signal, er
 
 	markets, err := FetchBTCMarkets(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("fetch PM markets: %w", err)
+		return nil, nil, 0, 0, 0, fmt.Errorf("fetch PM markets: %w", err)
 	}
 
 	if err := SavePMPrices(ctx, db, markets); err != nil {
@@ -263,7 +305,7 @@ func scanOnce(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]Signal, er
 		)
 	}
 
-	return signals, nil
+	return signals, markets, spot, sigma, yearsToExpiry, nil
 }
 
 func trackPMDeltas(ctx context.Context, db *sql.DB, markets []PMMarket, spot float64) {
