@@ -175,3 +175,4 @@
 | Apr 26 | BTC live strategy 上线 (1h scan, gap>7pp) | 首次扫描: $50K dip PM=42.5% BS=19% gap=-23pp |
 | Apr 26 | 5m/15m K线 + multi-TF Markov + PM delta tracking | MIXED(bull=2.7%,bear=2.9%) 放行全部 BS gap 信号 |
 | Apr 27 | F&G Index + Funding Rate 接入 + SentimentModifier | F&G=33(Fear), FR≈0, sent_mod=1.0（中性区间无调整） |
+| Apr 27 | **砍长期盘 → 专注 1h Up/Down**; 修 BullProb (3%→51%); confidence 0.52→0.40; 候选窗 1-4h; max 40单/天; PM edge filter ≤0.52 | 首发 3 笔 Up 信号 · Markov 终于能出手了 |
