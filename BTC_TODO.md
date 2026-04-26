@@ -32,10 +32,14 @@
 - 集成到 SentimentModifier 统一输出乘数
 - done: commit `141ef3d`
 
-### 5. [P2] ETF 资金流数据
-- SoSoValue / CoinGlass 公开 API
-- BTC 现货 ETF 日净流入/流出
-- 大资金流入 → 看多信号（修正 BS gap 权重）
+### 5. [P2] ✅ 机构资金流（Institutional Flow Proxy）
+- ETF API 需付费 → 改用 Binance 免费 API 做 proxy
+- `institutional.go`: Open Interest + Long/Short ratio + Futures Premium
+- FlowScore (-1~+1): L/S<0.85 contrarian bullish(+0.4), premium>0.05% bullish(+0.3)
+- InstitutionalModifier: 调整 BS gap 信号权重（bullish→amplify reach, dampen dip）
+- 持久化到 btc_institutional 表
+- 首次结果: OI=96K L/S=0.76(crowd short) → BULLISH(0.40) inst_mod=0.96
+- done: commit `77f7ff1`
 
 ### 6. [P2] 链上大额转账监控
 - Whale Alert API 或 Blockchair
@@ -221,3 +225,4 @@
 | Apr 27 | **#24 Regime Detection** + **#25 Signal Scoring** | HMM=MEAN_REVERT(100%); 信号评分: K=69/SIGNAL K=69/SIGNAL K=67/SIGNAL; regime_bias=1.0 (MR+bull+dip=中性) |
 | Apr 27 | **#12 二阶马尔科夫** — markov2.go + BlendedPrediction + multi_tf 集成 | 225 pair states; w2 adaptive (≥50obs→60%); multi_tf 已切 ALIGNED_BULL(0.51); 三阶暂缓(数据不够3375态) |
 | Apr 27 | **#13 自动再训练** — retrain.go + KL divergence drift detection | 7d滚动vs全量; SymmetricKL>0.15告警; 每6h检查1st+2nd order drift; 6单测 |
+| Apr 27 | **#5 机构资金流** — institutional.go + OI/L-S/FuturesPrem proxy | OI=96K L/S=0.76(crowd short)→BULLISH(0.40); inst_mod=0.96 for dip BUY_NO |
