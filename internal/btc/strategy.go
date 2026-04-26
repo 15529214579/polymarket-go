@@ -47,8 +47,9 @@ type Signal struct {
 	SentimentMod float64 // sentiment multiplier (>1 = amplified, <1 = dampened)
 	FearGreed    int     // 0-100 F&G index at signal time
 	FundingRate  float64 // perpetual funding rate at signal time
-	RegimeBias   float64 // regime direction bias multiplier
-	Score        SignalScore
+	RegimeBias       float64 // regime direction bias multiplier
+	InstitutionalMod float64 // institutional flow modifier
+	Score            SignalScore
 }
 
 // SignalCallback is called for each actionable signal. The caller (main.go)
@@ -230,6 +231,11 @@ func scanOnceWithState(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]S
 		slog.Warn("btc_strategy.save_sentiment_fail", "err", err.Error())
 	}
 
+	instFlow := FetchInstitutionalFlow(ctx)
+	if err := SaveInstitutionalFlow(ctx, db, instFlow); err != nil {
+		slog.Warn("btc_strategy.save_institutional_fail", "err", err.Error())
+	}
+
 	yearsToExpiry := yearsUntilEnd2026()
 
 	gaps := FindBSGaps(markets, spot, sigma, yearsToExpiry, cfg.MinGapPP)
@@ -260,6 +266,7 @@ func scanOnceWithState(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]S
 		"min_gap_pp", cfg.MinGapPP,
 		"multi_tf", tfLabel,
 		"sentiment", sentLabel,
+		"institutional", fmt.Sprintf("OI=%.0f L/S=%.3f prem=%.4f%% %s(%.2f)", instFlow.OpenInterest, instFlow.LongShortRatio, instFlow.FuturesPremium, instFlow.FlowSignal, instFlow.FlowScore),
 		"regime", fmt.Sprintf("%s(conf=%.2f)", regimeLabel, regimeConf),
 	)
 
@@ -281,6 +288,7 @@ func scanOnceWithState(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]S
 
 		isReach := g.Strike > spot
 		sentMod := sentiment.SentimentModifier(g.Direction, isReach)
+		instMod := instFlow.InstitutionalModifier(g.Direction, isReach)
 
 		tfAlignment := "n/a"
 		tfConf := 0.0
@@ -302,21 +310,22 @@ func scanOnceWithState(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]S
 		score := ScoreSignal(g.GapPP, sentMod, regBias, tfAlignment, tfConf, g.EdgeRatio)
 
 		sig := Signal{
-			Strike:       g.Strike,
-			Question:     g.Question,
-			MarketID:     marketIDForStrike(markets, g.Strike),
-			PMPrice:      g.PMPrice,
-			BSProb:       g.BSProb,
-			GapPP:        g.GapPP,
-			Direction:    g.Direction,
-			EdgeRatio:    g.EdgeRatio,
-			Spot:         spot,
-			Sigma:        sigma,
-			SentimentMod: sentMod,
-			FearGreed:    fng,
-			FundingRate:  fr,
-			RegimeBias:   regBias,
-			Score:        score,
+			Strike:           g.Strike,
+			Question:         g.Question,
+			MarketID:         marketIDForStrike(markets, g.Strike),
+			PMPrice:          g.PMPrice,
+			BSProb:           g.BSProb,
+			GapPP:            g.GapPP,
+			Direction:        g.Direction,
+			EdgeRatio:        g.EdgeRatio,
+			Spot:             spot,
+			Sigma:            sigma,
+			SentimentMod:     sentMod,
+			FearGreed:        fng,
+			FundingRate:      fr,
+			RegimeBias:       regBias,
+			InstitutionalMod: instMod,
+			Score:            score,
 		}
 		signals = append(signals, sig)
 
@@ -331,6 +340,7 @@ func scanOnceWithState(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]S
 			"regime", fmt.Sprintf("%s(%.2f)", regimeLabel, regimeConf),
 			"regime_bias", fmt.Sprintf("%.2f", regBias),
 			"sent_mod", fmt.Sprintf("%.2f", sentMod),
+			"inst_mod", fmt.Sprintf("%.2f", instMod),
 			"score", fmt.Sprintf("%d/%s", score.Total, score.Tier),
 			"fng", fng,
 			"funding", fmt.Sprintf("%.6f", fr),
