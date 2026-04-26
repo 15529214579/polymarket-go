@@ -222,7 +222,11 @@ func scanOnceWithState(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]S
 	spot := candles1h[len(candles1h)-1].Close
 	sigmaHist := HistoricalVolatility(candles1h)
 	sigmaEWMA := EWMAVolatility(candles1h, 0.94)
-	sigma := BlendedVolatility(candles1h, 0.94, 0.6) // 60% EWMA + 40% hist, with 25% floor
+	sigmaBase := BlendedVolatility(candles1h, 0.94, 0.6) // 60% EWMA + 40% hist, with 25% floor
+
+	macro := GetMacroState(time.Now().UTC())
+	sigma := MacroVolAdjust(sigmaBase, macro)
+	LogMacroState(macro)
 
 	multiTF, err := PredictMultiTF(ctx)
 	if err != nil {
@@ -282,11 +286,18 @@ func scanOnceWithState(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]S
 		sentLabel += fmt.Sprintf(" FR=%.4f%%", sentiment.FundingRate.Rate*100)
 	}
 
+	macroLabel := macro.Phase
+	if macro.NextEvent != nil {
+		macroLabel = fmt.Sprintf("%s(%s in %.0fh, vol_mult=%.2f)", macro.Phase, macro.NextEvent.Type, macro.HoursUntil, macro.VolMultiplier)
+	}
+
 	slog.Info("btc_strategy.scan_done",
 		"spot", spot,
 		"sigma_hist", fmt.Sprintf("%.1f%%", sigmaHist*100),
 		"sigma_ewma", fmt.Sprintf("%.1f%%", sigmaEWMA*100),
-		"sigma_blended", fmt.Sprintf("%.1f%%", sigma*100),
+		"sigma_blended", fmt.Sprintf("%.1f%%", sigmaBase*100),
+		"sigma_macro", fmt.Sprintf("%.1f%%", sigma*100),
+		"macro", macroLabel,
 		"pm_markets", len(markets),
 		"gaps_found", len(gaps),
 		"min_gap_pp", cfg.MinGapPP,
