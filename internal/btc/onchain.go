@@ -25,14 +25,12 @@ type OnChainMetrics struct {
 
 type blockchairStats struct {
 	Data struct {
-		MempoolTxs       int     `json:"mempool_transactions"`
-		AvgFee24h        float64 `json:"average_transaction_fee_24h"`
-		HashRate         float64 `json:"hashrate_24h"`
-		Difficulty       float64 `json:"difficulty"`
-		BestBlockHeight  int64   `json:"best_block_height"`
-		MempoolSize      float64 `json:"mempool_size"`
-		MempoolTPS       float64 `json:"mempool_tps"`
-		MedianFee        float64 `json:"median_transaction_fee_24h"`
+		MempoolTxs       int             `json:"mempool_transactions"`
+		AvgFee24h        json.Number     `json:"average_transaction_fee_24h"`
+		HashRate         json.Number     `json:"hashrate_24h"`
+		Difficulty       json.Number     `json:"difficulty"`
+		BestBlockHeight  int64           `json:"best_block_height"`
+		MempoolSize      json.Number     `json:"mempool_size"`
 	} `json:"data"`
 }
 
@@ -66,11 +64,11 @@ func FetchOnChainMetrics(ctx context.Context) OnChainMetrics {
 	}
 
 	m.MempoolTxs = stats.Data.MempoolTxs
-	m.AvgFee24h = stats.Data.AvgFee24h
-	m.HashRate = stats.Data.HashRate
-	m.Difficulty = stats.Data.Difficulty
+	m.AvgFee24h, _ = stats.Data.AvgFee24h.Float64()
+	m.HashRate, _ = stats.Data.HashRate.Float64()
+	m.Difficulty, _ = stats.Data.Difficulty.Float64()
 	m.BlockHeight = stats.Data.BestBlockHeight
-	m.MempoolSize = stats.Data.MempoolSize
+	m.MempoolSize, _ = stats.Data.MempoolSize.Float64()
 
 	score := 0.0
 
