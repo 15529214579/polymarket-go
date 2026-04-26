@@ -76,7 +76,10 @@ func RunStrategy(ctx context.Context, cfg StrategyConfig, cb SignalCallback) err
 		"top_n", cfg.TopN,
 	)
 
-	scan := func() {
+	scan := func(trigger string) {
+		if trigger != "" {
+			slog.Info("btc_strategy.momentum_triggered", "trigger", trigger)
+		}
 		signals, scanErr := scanOnce(ctx, db, cfg)
 		if scanErr != nil {
 			slog.Warn("btc_strategy.scan_fail", "err", scanErr.Error())
@@ -87,7 +90,16 @@ func RunStrategy(ctx context.Context, cfg StrategyConfig, cb SignalCallback) err
 		}
 	}
 
-	scan()
+	scan("")
+
+	momentumCh := make(chan struct{}, 1)
+	watcher := NewMomentumWatcher(func() {
+		select {
+		case momentumCh <- struct{}{}:
+		default:
+		}
+	})
+	go watcher.Run(ctx)
 
 	tk := time.NewTicker(cfg.ScanInterval)
 	defer tk.Stop()
@@ -96,7 +108,9 @@ func RunStrategy(ctx context.Context, cfg StrategyConfig, cb SignalCallback) err
 		case <-ctx.Done():
 			return nil
 		case <-tk.C:
-			scan()
+			scan("")
+		case <-momentumCh:
+			scan("sharp_move")
 		}
 	}
 }
