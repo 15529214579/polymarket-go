@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/15529214579/polymarket-go/internal/arb"
+	"github.com/15529214579/polymarket-go/internal/btc"
 	"github.com/15529214579/polymarket-go/internal/config"
 	"github.com/15529214579/polymarket-go/internal/feed"
 	"github.com/15529214579/polymarket-go/internal/injury"
@@ -87,6 +88,12 @@ func main() {
 	whaleProfile := flag.String("whale_profile", "", "(legacy) whale's Polymarket profile URL")
 	whaleMinUSD := flag.Float64("whale_min_usd", 1000, "(legacy) minimum notional USD to trigger alert")
 	whaleInterval := flag.Duration("whale_interval", 30*time.Second, "whale trade poll interval")
+	btcEnabled := flag.Bool("btc_enabled", false, "enable BTC prediction strategy (BS first-passage vs PM gap)")
+	btcInterval := flag.Duration("btc_interval", 1*time.Hour, "BTC strategy scan interval")
+	btcMinGapPP := flag.Float64("btc_min_gap_pp", 7.0, "BTC minimum gap in pp to signal")
+	btcTopN := flag.Int("btc_top_n", 3, "BTC max signals per scan cycle")
+	btcSizeUSD := flag.Float64("btc_size_usd", 5.0, "BTC default signal size hint")
+	btcDBPath := flag.String("btc_db", "db/btc.db", "SQLite path for BTC strategy data")
 	flag.Parse()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -161,7 +168,15 @@ func main() {
 		if *oddsPapiSports != "" {
 			oddsPapiCfg.SportKeys = strings.Split(*oddsPapiSports, ",")
 		}
-		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, *arbEnabled, *arbInterval, *arbMinGapPP, *arbDBPath, injCfg, whaleCfg, oddsPapiCfg, *confirmDelay); err != nil && ctx.Err() == nil {
+		btcCfg := btc.StrategyConfig{
+				Enabled:      *btcEnabled,
+				ScanInterval: *btcInterval,
+				MinGapPP:     *btcMinGapPP,
+				TopN:         *btcTopN,
+				SizeUSD:      *btcSizeUSD,
+				DBPath:       *btcDBPath,
+			}
+			if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, *arbEnabled, *arbInterval, *arbMinGapPP, *arbDBPath, injCfg, whaleCfg, oddsPapiCfg, *confirmDelay, btcCfg); err != nil && ctx.Err() == nil {
 			slog.Error("detect failed", "err", err)
 			os.Exit(1)
 		}
@@ -376,7 +391,7 @@ func runSample(ctx context.Context, topN, windowSec int) error {
 	return ws.Run(ctx)
 }
 
-func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, arbEnabled bool, arbInterval time.Duration, arbMinGapPP float64, arbDBPath string, injCfg injury.Config, whaleCfg whale.Config, oddsPapiCfg odds.OddsPapiConfig, confirmDelay time.Duration) error {
+func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, arbEnabled bool, arbInterval time.Duration, arbMinGapPP float64, arbDBPath string, injCfg injury.Config, whaleCfg whale.Config, oddsPapiCfg odds.OddsPapiConfig, confirmDelay time.Duration, btcCfg btc.StrategyConfig) error {
 	if signalMode != "auto" && signalMode != "prompt" && signalMode != "whale" {
 		return fmt.Errorf("invalid signal_mode %q (want auto|prompt|whale)", signalMode)
 	}
@@ -1786,6 +1801,72 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 		go func() {
 			if err := wt.Run(ctx); err != nil && ctx.Err() == nil {
 				slog.Warn("whale_tracker_exit", "err", err.Error())
+			}
+		}()
+	}
+
+	// BTC prediction strategy: independent goroutine scanning PM BTC markets
+	// vs Black-Scholes first-passage fair value. Fires SignalPrompt DMs for
+	// gaps > btc_min_gap_pp. Completely independent of sports strategies.
+	if btcCfg.Enabled {
+		go func() {
+			if err := btc.RunStrategy(ctx, btcCfg, func(sig btc.Signal) {
+				dirEmoji := "📈"
+				dirLabel := "BUY Yes"
+				if sig.Direction == "BUY_NO" {
+					dirEmoji = "📉"
+					dirLabel = "BUY No"
+				}
+
+				// Build choice for the signal direction.
+				choices := []notify.Choice{{
+					AssetID:  sig.MarketID,
+					Outcome:  sig.Direction,
+					Mid:      sig.PMPrice,
+					IsSignal: true,
+				}}
+				sigChoices := []notify.SignalChoice{{
+					Slot: 0, Outcome: sig.Direction, Mid: sig.PMPrice, IsSignal: true,
+				}}
+
+				p := pending.Put(notify.PendingIntent{
+					Market:   sig.MarketID,
+					Question: sig.Question,
+					Choices:  choices,
+				}, time.Now())
+
+				ctxLine := fmt.Sprintf(
+					"%s BTC $%.0f · %s\nSpot: $%.0f · Vol: %.0f%% · Gap: %+.1fpp\nBS fair: %.1f%% vs PM: %.1f%%",
+					dirEmoji, sig.Strike, dirLabel,
+					sig.Spot, sig.Sigma*100, sig.GapPP,
+					sig.BSProb*100, sig.PMPrice*100,
+				)
+
+				slug := "what-price-will-bitcoin-hit-before-2027"
+				nonceSnap := p.Nonce
+				notifier.SignalPrompt(notify.SignalPromptEvent{
+					Nonce:      p.Nonce,
+					Match:      sig.Question,
+					Context:    ctxLine,
+					Slug:       slug,
+					WhaleLabel: "₿ BTC策略",
+					Choices:    sigChoices,
+					ExpiresIn:  2 * time.Hour,
+					OnSent: func(msgID int64, err error) {
+						if err != nil || msgID == 0 {
+							return
+						}
+						pending.SetMessageID(nonceSnap, msgID)
+					},
+				})
+				slog.Info("btc_strategy.signal_pushed",
+					"strike", sig.Strike,
+					"direction", sig.Direction,
+					"gap_pp", sig.GapPP,
+					"nonce", p.Nonce,
+				)
+			}); err != nil && ctx.Err() == nil {
+				slog.Warn("btc_strategy_exit", "err", err.Error())
 			}
 		}()
 	}
