@@ -61,14 +61,21 @@ type gammaMarket struct {
 // the Polymarket Gamma API.
 func FetchBTCMarkets(ctx context.Context) ([]PMMarket, error) {
 	url := fmt.Sprintf("%s?slug=%s&closed=false", gammaEventsURL, btcSlug)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := newGammaRequest(ctx, url)
 	if err != nil {
-		return nil, fmt.Errorf("build request: %w", err)
+		return nil, err
 	}
+	return doGammaFetch(req)
+}
 
+func newGammaRequest(ctx context.Context, url string) (*http.Request, error) {
+	return http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+}
+
+func doGammaFetch(req *http.Request) ([]PMMarket, error) {
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetch BTC markets: %w", err)
+		return nil, fmt.Errorf("fetch markets: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -79,7 +86,6 @@ func FetchBTCMarkets(ctx context.Context) ([]PMMarket, error) {
 
 	var events []gammaEvent
 	if err := json.NewDecoder(resp.Body).Decode(&events); err != nil {
-		// Gamma sometimes returns a single object instead of array
 		return nil, fmt.Errorf("decode events: %w", err)
 	}
 
@@ -108,31 +114,31 @@ func FetchBTCMarkets(ctx context.Context) ([]PMMarket, error) {
 		}
 	}
 
-	// Sort by strike ascending for curve display.
 	sort.Slice(markets, func(i, j int) bool {
 		return markets[i].Strike < markets[j].Strike
 	})
 	return markets, nil
 }
 
-// parseStrikeFromQuestion tries to extract a dollar amount from the question
-// string, e.g. "Will Bitcoin reach $120,000 before 2027?" → 120000.
+// parseStrikeFromQuestion extracts a dollar amount from the question string.
+// e.g. "Will Bitcoin reach $120,000 before 2027?" → 120000
+// e.g. "Will the price of Solana be above $80 on April 27?" → 80
 func parseStrikeFromQuestion(q string) float64 {
 	q = strings.ReplaceAll(q, ",", "")
 	for _, field := range strings.Fields(q) {
-		field = strings.Trim(field, "$?.!,")
-		if strings.HasPrefix(field, "$") {
-			field = field[1:]
+		raw := strings.Trim(field, "?.!,")
+		if !strings.HasPrefix(raw, "$") {
+			continue
 		}
-		// try removing trailing K/k
+		num := raw[1:]
 		multiplier := 1.0
-		upper := strings.ToUpper(field)
+		upper := strings.ToUpper(num)
 		if strings.HasSuffix(upper, "K") {
 			multiplier = 1000
-			field = field[:len(field)-1]
+			num = num[:len(num)-1]
 		}
-		f, err := strconv.ParseFloat(field, 64)
-		if err == nil && f > 1000 {
+		f, err := strconv.ParseFloat(num, 64)
+		if err == nil && f > 0 {
 			return f * multiplier
 		}
 	}

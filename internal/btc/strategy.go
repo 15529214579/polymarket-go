@@ -32,8 +32,9 @@ func DefaultStrategyConfig() StrategyConfig {
 	}
 }
 
-// Signal is one actionable BTC market gap detected by the strategy.
+// Signal is one actionable crypto market gap detected by the strategy.
 type Signal struct {
+	Coin         string  // "BTC", "ETH", "SOL", etc. Empty = BTC for backwards compat
 	Strike       float64
 	Question     string
 	MarketID     string
@@ -94,6 +95,8 @@ func RunStrategyWithExit(ctx context.Context, cfg StrategyConfig, cb SignalCallb
 		"exit_timeout", exitCfg.TimeoutDuration.String(),
 	)
 
+	coins := []CoinConfig{CoinETH, CoinSOL}
+
 	var scanCount int
 	scan := func(trigger string) {
 		scanCount++
@@ -110,6 +113,17 @@ func RunStrategyWithExit(ctx context.Context, cfg StrategyConfig, cb SignalCallb
 				slog.Warn("btc_exit.record_entry_fail", "err", err.Error())
 			}
 			cb(sig)
+		}
+
+		for _, coin := range coins {
+			coinSignals, coinErr := ScanCoinOnce(ctx, db, coin, cfg)
+			if coinErr != nil {
+				slog.Warn("multicoin.scan_fail", "coin", coin.Name, "err", coinErr.Error())
+				continue
+			}
+			for _, sig := range coinSignals {
+				cb(sig)
+			}
 		}
 
 		if exitCb != nil {
