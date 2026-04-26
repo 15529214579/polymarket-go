@@ -94,6 +94,12 @@ func main() {
 	btcTopN := flag.Int("btc_top_n", 3, "BTC max signals per scan cycle")
 	btcSizeUSD := flag.Float64("btc_size_usd", 5.0, "BTC default signal size hint")
 	btcDBPath := flag.String("btc_db", "db/btc.db", "SQLite path for BTC strategy data")
+	updownEnabled := flag.Bool("updown_enabled", false, "enable BTC Up/Down short-term auto-trading (volume strategy)")
+	updownInterval := flag.Duration("updown_interval", 15*time.Minute, "Up/Down market scan interval")
+	updownConfidence := flag.Float64("updown_confidence", 0.52, "minimum Markov confidence to enter Up/Down trade")
+	updownSize := flag.Float64("updown_size", 5.0, "Up/Down per-trade size in USDC")
+	updownMaxDaily := flag.Int("updown_max_daily", 20, "Up/Down max bets per day")
+	updownDB := flag.String("updown_db", "db/btc.db", "SQLite path for Up/Down bet tracking")
 	flag.Parse()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -176,7 +182,15 @@ func main() {
 				SizeUSD:      *btcSizeUSD,
 				DBPath:       *btcDBPath,
 			}
-			if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, *arbEnabled, *arbInterval, *arbMinGapPP, *arbDBPath, injCfg, whaleCfg, oddsPapiCfg, *confirmDelay, btcCfg); err != nil && ctx.Err() == nil {
+			updownCfg := btc.UpDownConfig{
+				Enabled:       *updownEnabled,
+				ScanInterval:  *updownInterval,
+				MinConfidence: *updownConfidence,
+				SizeUSD:       *updownSize,
+				MaxDailyBets:  *updownMaxDaily,
+				DBPath:        *updownDB,
+			}
+			if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, *arbEnabled, *arbInterval, *arbMinGapPP, *arbDBPath, injCfg, whaleCfg, oddsPapiCfg, *confirmDelay, btcCfg, updownCfg); err != nil && ctx.Err() == nil {
 			slog.Error("detect failed", "err", err)
 			os.Exit(1)
 		}
@@ -391,7 +405,7 @@ func runSample(ctx context.Context, topN, windowSec int) error {
 	return ws.Run(ctx)
 }
 
-func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, arbEnabled bool, arbInterval time.Duration, arbMinGapPP float64, arbDBPath string, injCfg injury.Config, whaleCfg whale.Config, oddsPapiCfg odds.OddsPapiConfig, confirmDelay time.Duration, btcCfg btc.StrategyConfig) error {
+func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, arbEnabled bool, arbInterval time.Duration, arbMinGapPP float64, arbDBPath string, injCfg injury.Config, whaleCfg whale.Config, oddsPapiCfg odds.OddsPapiConfig, confirmDelay time.Duration, btcCfg btc.StrategyConfig, updownCfg btc.UpDownConfig) error {
 	if signalMode != "auto" && signalMode != "prompt" && signalMode != "whale" {
 		return fmt.Errorf("invalid signal_mode %q (want auto|prompt|whale)", signalMode)
 	}
@@ -1867,6 +1881,69 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				)
 			}); err != nil && ctx.Err() == nil {
 				slog.Warn("btc_strategy_exit", "err", err.Error())
+			}
+		}()
+	}
+
+	if updownCfg.Enabled {
+		go func() {
+			if err := btc.RunUpDownStrategy(ctx, updownCfg, func(sig btc.UpDownSignal) {
+				dirEmoji := "🟢"
+				if sig.PredictedDirection == "Down" {
+					dirEmoji = "🔴"
+				}
+
+				outcome := "Up"
+				if sig.PredictedDirection == "Down" {
+					outcome = "Down"
+				}
+
+				choices := []notify.Choice{{
+					AssetID:  sig.ConditionID,
+					Outcome:  outcome,
+					Mid:      sig.PMPrice,
+					IsSignal: true,
+				}}
+				sigChoices := []notify.SignalChoice{{
+					Slot: 0, Outcome: outcome, Mid: sig.PMPrice, IsSignal: true,
+				}}
+
+				p := pending.Put(notify.PendingIntent{
+					Market:   sig.ConditionID,
+					Question: sig.Question,
+					Choices:  choices,
+				}, time.Now())
+
+				ctxLine := fmt.Sprintf(
+					"%s BTC %s · conf %.1f%% · PM %.1f¢\nSpot: $%.0f · Alignment: %s",
+					dirEmoji, sig.PredictedDirection, sig.Confidence*100, sig.PMPrice*100,
+					sig.Spot, sig.MarketSlug,
+				)
+
+				nonceSnap := p.Nonce
+				notifier.SignalPrompt(notify.SignalPromptEvent{
+					Nonce:      p.Nonce,
+					Match:      sig.Question,
+					Context:    ctxLine,
+					Slug:       sig.MarketSlug,
+					WhaleLabel: "₿ BTC短期预测",
+					Choices:    sigChoices,
+					ExpiresIn:  1 * time.Hour,
+					OnSent: func(msgID int64, err error) {
+						if err != nil || msgID == 0 {
+							return
+						}
+						pending.SetMessageID(nonceSnap, msgID)
+					},
+				})
+				slog.Info("updown_strategy.signal_pushed",
+					"slug", sig.MarketSlug,
+					"direction", sig.PredictedDirection,
+					"confidence", fmt.Sprintf("%.3f", sig.Confidence),
+					"nonce", p.Nonce,
+				)
+			}); err != nil && ctx.Err() == nil {
+				slog.Warn("updown_strategy_exit", "err", err.Error())
 			}
 		}()
 	}
