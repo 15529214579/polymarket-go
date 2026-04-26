@@ -136,6 +136,47 @@ func TestEWMAVolatility(t *testing.T) {
 	}
 }
 
+func TestBlendedVolatility(t *testing.T) {
+	candles := make([]Candle, 200)
+	candles[0] = Candle{Close: 100}
+	for i := 1; i < 200; i++ {
+		delta := 0.3
+		if i%2 == 0 {
+			delta = -0.3
+		}
+		if i > 150 {
+			delta *= 0.1
+		}
+		candles[i] = Candle{Close: candles[i-1].Close + delta}
+	}
+
+	blended := BlendedVolatility(candles, 0.94, 0.6)
+	if blended < 0.25 {
+		t.Fatalf("blended vol should be >= floor 0.25, got %f", blended)
+	}
+
+	ewma := EWMAVolatility(candles, 0.94)
+	hist := HistoricalVolatility(candles)
+	if ewma >= hist && blended < ewma {
+		t.Fatalf("blended should be >= EWMA when EWMA >= hist")
+	}
+	if ewma < hist && blended <= ewma {
+		t.Fatalf("blended %f should be > pure EWMA %f when hist %f is higher", blended, ewma, hist)
+	}
+}
+
+func TestBlendedVolFloor(t *testing.T) {
+	candles := make([]Candle, 100)
+	candles[0] = Candle{Close: 100}
+	for i := 1; i < 100; i++ {
+		candles[i] = Candle{Close: candles[i-1].Close + 0.001}
+	}
+	blended := BlendedVolatility(candles, 0.94, 0.6)
+	if blended < 0.25 {
+		t.Fatalf("blended vol floor not applied, got %f", blended)
+	}
+}
+
 func TestVolSmileAdjust(t *testing.T) {
 	base := 0.50
 

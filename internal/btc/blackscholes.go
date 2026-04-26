@@ -137,6 +137,31 @@ func VolSmileAdjust(baseVol, spot, strike float64) float64 {
 	return baseVol * skewFactor
 }
 
+// BlendedVolatility combines EWMA (recent regime) and historical vol (tail risk)
+// using variance blending with a crypto vol floor. Prevents EWMA alone from
+// underestimating tail risk during calm periods.
+func BlendedVolatility(candles []Candle, lambda, ewmaWeight float64) float64 {
+	sigmaEWMA := EWMAVolatility(candles, lambda)
+	sigmaHist := HistoricalVolatility(candles)
+
+	if sigmaEWMA <= 0 {
+		sigmaEWMA = sigmaHist
+	}
+	if sigmaHist <= 0 {
+		sigmaHist = sigmaEWMA
+	}
+
+	histWeight := 1.0 - ewmaWeight
+	blendedVar := ewmaWeight*sigmaEWMA*sigmaEWMA + histWeight*sigmaHist*sigmaHist
+	blended := math.Sqrt(blendedVar)
+
+	const volFloor = 0.25 // BTC annualized vol floor — crypto never below 25%
+	if blended < volFloor {
+		blended = volFloor
+	}
+	return blended
+}
+
 // normCDF approximates the standard normal cumulative distribution function.
 func normCDF(x float64) float64 {
 	return 0.5 * math.Erfc(-x/math.Sqrt2)

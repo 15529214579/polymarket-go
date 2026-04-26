@@ -149,10 +149,7 @@ func scanOnce(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]Signal, er
 	spot := candles1h[len(candles1h)-1].Close
 	sigmaHist := HistoricalVolatility(candles1h)
 	sigmaEWMA := EWMAVolatility(candles1h, 0.94)
-	sigma := sigmaEWMA
-	if sigma <= 0 {
-		sigma = sigmaHist
-	}
+	sigma := BlendedVolatility(candles1h, 0.94, 0.6) // 60% EWMA + 40% hist, with 25% floor
 
 	multiTF, err := PredictMultiTF(ctx)
 	if err != nil {
@@ -199,6 +196,7 @@ func scanOnce(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]Signal, er
 		"spot", spot,
 		"sigma_hist", fmt.Sprintf("%.1f%%", sigmaHist*100),
 		"sigma_ewma", fmt.Sprintf("%.1f%%", sigmaEWMA*100),
+		"sigma_blended", fmt.Sprintf("%.1f%%", sigma*100),
 		"pm_markets", len(markets),
 		"gaps_found", len(gaps),
 		"min_gap_pp", cfg.MinGapPP,
