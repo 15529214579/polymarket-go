@@ -298,10 +298,10 @@ func PredictHourlyDirection(ctx context.Context) (DirectionPrediction, error) {
 	default:
 		if mtf.CombinedBull >= mtf.CombinedBear {
 			pred.Direction = "Up"
-			pred.Confidence = mtf.CombinedBull * 0.8
+			pred.Confidence = mtf.Confidence
 		} else {
 			pred.Direction = "Down"
-			pred.Confidence = mtf.CombinedBear * 0.8
+			pred.Confidence = mtf.Confidence
 		}
 	}
 
@@ -565,8 +565,8 @@ func updownScanOnce(ctx context.Context, db *sql.DB, cfg UpDownConfig, cb UpDown
 	}
 
 	now := time.Now()
-	minEnd := now.Add(2 * time.Hour)
-	maxEnd := now.Add(6 * time.Hour)
+	minEnd := now.Add(1 * time.Hour)
+	maxEnd := now.Add(4 * time.Hour)
 
 	var candidates []UpDownMarket
 	for _, m := range markets {
@@ -626,6 +626,15 @@ func updownScanOnce(ctx context.Context, db *sql.DB, cfg UpDownConfig, cb UpDown
 		if pred.Direction == "Up" {
 			tokenID = m.UpTokenID
 			pmPrice = m.UpPrice
+		}
+
+		if pmPrice > 0.52 {
+			slog.Info("updown_strategy.skip_no_edge",
+				"slug", m.Slug,
+				"direction", pred.Direction,
+				"pm_price", fmt.Sprintf("%.3f", pmPrice),
+			)
+			continue
 		}
 
 		sig := UpDownSignal{

@@ -234,8 +234,8 @@ type Prediction struct {
 	CurrentStateName  string
 	NextProbs         []float64 // probability of transitioning to each next state
 	ExpectedReturn    float64   // E[next-period return] = Σ p(s') × avgRet(s')
-	BullProb          float64   // P(next state is SURGE or UP)
-	BearProb          float64   // P(next state is CRASH or DOWN)
+	BullProb          float64   // P(next candle closes up) — weighted by return stats
+	BearProb          float64   // P(next candle closes down)
 }
 
 // Predict returns a Prediction from the trained model for the given current state.
@@ -249,19 +249,21 @@ func Predict(currentState int, tm *TransitionMatrix, retStats [NStates]ReturnSta
 
 	if probs == nil {
 		pred.NextProbs = make([]float64, NStates)
+		pred.BullProb = 0.5
+		pred.BearProb = 0.5
 		return pred
 	}
 	pred.NextProbs = probs
 
 	for s, p := range probs {
-		pred.ExpectedReturn += p * retStats[s].AvgRet()
-		ret, _ := StateComponents(s)
-		if ret == RetSurge || ret == RetUp {
-			pred.BullProb += p
+		avgRet := retStats[s].AvgRet()
+		pred.ExpectedReturn += p * avgRet
+		posRate := 0.5
+		if retStats[s].N > 0 {
+			posRate = float64(retStats[s].NPos) / float64(retStats[s].N)
 		}
-		if ret == RetCrash || ret == RetDown {
-			pred.BearProb += p
-		}
+		pred.BullProb += p * posRate
+		pred.BearProb += p * (1.0 - posRate)
 	}
 	return pred
 }

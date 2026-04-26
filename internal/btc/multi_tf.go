@@ -117,8 +117,11 @@ func PredictMultiTF(ctx context.Context) (*MultiTFPrediction, error) {
 		mtp.Confidence = mtp.CombinedBear
 	default:
 		mtp.Alignment = "MIXED"
-		majority := float64(max(bullCount, bearCount)) / float64(len(active))
-		mtp.Confidence = majority * 0.5
+		dominant := mtp.CombinedBull
+		if mtp.CombinedBear > mtp.CombinedBull {
+			dominant = mtp.CombinedBear
+		}
+		mtp.Confidence = dominant * 0.8
 	}
 
 	slog.Info("multi_tf.prediction",
