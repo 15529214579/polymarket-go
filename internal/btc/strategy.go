@@ -91,7 +91,9 @@ func RunStrategyWithExit(ctx context.Context, cfg StrategyConfig, cb SignalCallb
 		"exit_timeout", exitCfg.TimeoutDuration.String(),
 	)
 
+	var scanCount int
 	scan := func(trigger string) {
+		scanCount++
 		if trigger != "" {
 			slog.Info("btc_strategy.momentum_triggered", "trigger", trigger)
 		}
@@ -126,6 +128,16 @@ func RunStrategyWithExit(ctx context.Context, cfg StrategyConfig, cb SignalCallb
 				}
 				exitCb(ex)
 			}
+		}
+
+		if scanCount%6 == 0 {
+			go func() {
+				c1h, ferr := FetchCandles(ctx, "BTCUSDT", Interval1h, 720)
+				if ferr != nil || len(c1h) < 200 {
+					return
+				}
+				CheckDrift(c1h, 168) // 7-day window vs full
+			}()
 		}
 	}
 
