@@ -41,15 +41,24 @@
 - 首次结果: OI=96K L/S=0.76(crowd short) → BULLISH(0.40) inst_mod=0.96
 - done: commit `77f7ff1`
 
-### 6. [P2] 链上大额转账监控
-- Whale Alert API 或 Blockchair
-- 交易所净流入 > 阈值 → 抛压信号
-- 交易所净流出 → 囤币信号
+### 6. [P2] ✅ 链上指标监控（On-Chain Metrics）
+- `onchain.go`: Blockchair API → mempool/fees/hashrate/difficulty/block height
+- OnChainScore (-1~+1): 高mempool+高fee=活跃(bullish), 低活动=bearish
+- ExchangeNetFlow 启发式: 高mempool+高fee=INFLOW, 低mempool=OUTFLOW
+- OnChainModifier: 调整 BS gap 信号权重
+- 持久化到 btc_onchain 表
+- 首次结果: mempool=860 fee=$238 hashrate=1.03e21 OUTFLOW NEUTRAL(0.15)
+- done: commit `559dcee` + `f35b665`
 
-### 7. [P3] 宏观事件日历
-- FOMC 利率决议 / CPI / 非农就业
-- 事件前 24h 波动率上调 20-30%
-- 事件后 2h 波动率回落 → 入场窗口
+### 7. [P3] ✅ 宏观事件日历
+- `macro.go`: 2026 全年 FOMC/CPI/NFP/PCE 日期硬编码（免费 API 已下线）
+- 事件前 24h: vol 线性上调 — FOMC 30% / CPI 25% / NFP 20% / PCE 15%
+- 事件后 2h: vol cooldown 15%（入场窗口）
+- MacroVolAdjust 集成到 scanOnceWithState，sigma = macro × blended
+- scan_done 日志新增 sigma_macro + macro label
+- 首次结果: phase=normal, next=PCE 2026-04-30 (87h), vol_mult=1.00
+- 6 单测覆盖
+- done: commit `3b9df2b`
 
 ---
 
@@ -125,10 +134,14 @@
 - EV per dollar 写入日志
 - done: 本次 commit
 
-### 17. [P2] PM 盘口深度分析
-- gamma API orderbook 数据
-- 深度不足的市场 → 滑点大 → 降低仓位或跳过
-- 大单挂在某个价位 → 该价位有支撑/阻力
+### 17. [P2] ✅ PM 盘口深度分析 (CLOB Orderbook)
+- `orderbook.go`: CLOB API → per-market bid/ask depth + spread + mid price
+- DepthScore (0-1): $500+ depth=1.0, <$10=0.2, wide spread penalty
+- DepthModifier: illiquid(<0.3) → 0.5x, thin(<0.5) → 0.75x, deep → 1.0x
+- PMMarket 新增 ClobTokenIDs 字段（从 gamma API 传播）
+- 持久化到 btc_orderbook 表
+- 首次结果: 34 markets, avg_depth=0.56, min_depth=0.00
+- done: commit `559dcee`
 
 ---
 
@@ -177,10 +190,15 @@
 - **策略转向：价值投注（买 PM 定价偏低的一侧）**
 - done: commit `2e0052c`
 
-### 23. [P2] 多币种扩展 (ETH/SOL)
-- PM 上有 ETH/SOL 价格预测市场
-- 复用同一套 Markov + BS 框架
-- 币种间相关性利用: BTC 涨 → ETH 通常跟涨 → 联合入场
+### 23. [P2] ✅ 多币种扩展 (ETH/SOL)
+- `multicoin.go`: CoinConfig + ScanCoinOnce + coin_candles/coin_pm_prices 表
+- 重构 FetchBTCMarkets 共享 Gamma API 通用 fetcher
+- 修复 parseStrikeFromQuestion 支持小额 strike ($80 SOL)
+- ETH: 16 markets, 9 gaps, top: $1500 dip -18.1pp
+- SOL: 18 markets, 10 gaps, top: $40 dip -27.9pp (66/SIGNAL!)
+- 每轮 BTC scan 后自动扫 ETH+SOL
+- 4 新测试覆盖
+- done: commit `fd79ade`
 
 ### 24. [P2] ✅ Regime Detection 自动切换
 - `regime.go`: RegimeDirectionBias 按 HMM regime + multi-TF alignment 调信号权重
@@ -226,3 +244,6 @@
 | Apr 27 | **#12 二阶马尔科夫** — markov2.go + BlendedPrediction + multi_tf 集成 | 225 pair states; w2 adaptive (≥50obs→60%); multi_tf 已切 ALIGNED_BULL(0.51); 三阶暂缓(数据不够3375态) |
 | Apr 27 | **#13 自动再训练** — retrain.go + KL divergence drift detection | 7d滚动vs全量; SymmetricKL>0.15告警; 每6h检查1st+2nd order drift; 6单测 |
 | Apr 27 | **#5 机构资金流** — institutional.go + OI/L-S/FuturesPrem proxy | OI=96K L/S=0.76(crowd short)→BULLISH(0.40); inst_mod=0.96 for dip BUY_NO |
+| Apr 27 | **#6 链上指标** + **#17 盘口深度** — onchain.go + orderbook.go | mempool=860 fee=$238 NEUTRAL(0.15); 34 markets avg_depth=0.56; 信号升至 73/SIGNAL (regime_bias=1.12) |
+| Apr 27 | **#23 多币种 ETH/SOL** — multicoin.go + parseStrike 修复 + 通用 Gamma fetcher | ETH 16mkt 9gaps top $1500/-18.1pp; SOL 18mkt 10gaps top $40/-27.9pp(66/SIGNAL); 信号宇宙 3x 扩展 |
+| Apr 27 | **#7 宏观日历** — macro.go + FOMC/CPI/NFP/PCE 2026 全年 + MacroVolAdjust | phase=normal, next=PCE 04-30(87h), vol_mult=1.00; 事件前24h vol↑15-30%, 事件后2h cooldown 15%; 6单测 |
