@@ -403,6 +403,36 @@ func recordBet(ctx context.Context, db *sql.DB, m UpDownMarket, pred DirectionPr
 	}
 }
 
+func logPnLSummary(ctx context.Context, db *sql.DB) {
+	var totalBets, resolved, wins int
+	var totalPnL float64
+	var pending int
+
+	db.QueryRowContext(ctx, "SELECT COUNT(*) FROM updown_bets").Scan(&totalBets)
+	db.QueryRowContext(ctx, "SELECT COUNT(*) FROM updown_bets WHERE actual_direction IS NOT NULL").Scan(&resolved)
+	db.QueryRowContext(ctx, "SELECT COUNT(*) FROM updown_bets WHERE actual_direction IS NULL").Scan(&pending)
+	db.QueryRowContext(ctx, "SELECT COUNT(*) FROM updown_bets WHERE pnl > 0").Scan(&wins)
+	db.QueryRowContext(ctx, "SELECT COALESCE(SUM(pnl), 0) FROM updown_bets WHERE pnl IS NOT NULL").Scan(&totalPnL)
+
+	wr := 0.0
+	if resolved > 0 {
+		wr = float64(wins) / float64(resolved) * 100
+	}
+
+	var priceSnapshots int
+	db.QueryRowContext(ctx, "SELECT COUNT(*) FROM updown_prices").Scan(&priceSnapshots)
+
+	slog.Info("updown.pnl_summary",
+		"total_bets", totalBets,
+		"resolved", resolved,
+		"pending", pending,
+		"wins", wins,
+		"win_rate", fmt.Sprintf("%.1f%%", wr),
+		"total_pnl", fmt.Sprintf("$%+.2f", totalPnL),
+		"price_snapshots", priceSnapshots,
+	)
+}
+
 // --- Resolution Checker ---
 
 func resolveSettledBets(ctx context.Context, db *sql.DB) {
@@ -476,13 +506,24 @@ func resolveSettledBets(ctx context.Context, db *sql.DB) {
 			continue
 		}
 
+		candleRange := (c.High - c.Low) / c.Open * 100
+		candleBody := (c.Close - c.Open) / c.Open * 100
+		ev := ExpectedValue(pmPrice, 0.50)
+		kellyF := KellyFraction(pmPrice, 0.50)
+
 		slog.Info("updown.resolved",
 			"slug", b.slug,
 			"predicted", b.predicted,
 			"actual", actual,
 			"pnl", fmt.Sprintf("%.2f", pnl),
-			"candle_open", c.Open,
-			"candle_close", c.Close,
+			"size_usd", fmt.Sprintf("%.2f", b.sizeUSD),
+			"pm_price", fmt.Sprintf("%.3f", pmPrice),
+			"ev_at_entry", fmt.Sprintf("%.3f", ev),
+			"kelly_at_entry", fmt.Sprintf("%.3f", kellyF),
+			"candle_open", fmt.Sprintf("%.2f", c.Open),
+			"candle_close", fmt.Sprintf("%.2f", c.Close),
+			"candle_range_pct", fmt.Sprintf("%.2f%%", candleRange),
+			"candle_body_pct", fmt.Sprintf("%+.2f%%", candleBody),
 		)
 	}
 }
@@ -577,11 +618,17 @@ func RunUpDownStrategy(ctx context.Context, cfg UpDownConfig, cb UpDownSignalCal
 		"max_daily", cfg.MaxDailyBets,
 	)
 
+	scanCount := 0
 	scan := func() {
 		resolveSettledBets(ctx, db)
 
 		if err := updownScanOnce(ctx, db, cfg, cb); err != nil {
 			slog.Warn("updown_strategy.scan_fail", "err", err.Error())
+		}
+
+		scanCount++
+		if scanCount%6 == 0 {
+			logPnLSummary(ctx, db)
 		}
 	}
 
