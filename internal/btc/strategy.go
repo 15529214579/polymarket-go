@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"math"
 	"time"
+
+	_ "modernc.org/sqlite" //nolint:revive // register sqlite driver
 )
 
 // StrategyConfig configures the live BTC prediction strategy.
@@ -55,7 +57,7 @@ type SignalCallback func(sig Signal)
 // 4. Fires callback for gaps > MinGapPP
 // 5. Persists data to SQLite for daily backtest iteration
 func RunStrategy(ctx context.Context, cfg StrategyConfig, cb SignalCallback) error {
-	db, err := sql.Open("sqlite3", cfg.DBPath+"?_journal_mode=WAL&_busy_timeout=5000")
+	db, err := sql.Open("sqlite", cfg.DBPath+"?_journal_mode=WAL&_busy_timeout=5000")
 	if err != nil {
 		return fmt.Errorf("btc strategy db open: %w", err)
 	}
