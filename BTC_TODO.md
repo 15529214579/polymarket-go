@@ -7,15 +7,15 @@
 
 ## 一、数据源扩展
 
-### 1. [P0] 5min K线接入
+### 1. [P0] ✅ 5min K线接入
 - Binance BTCUSDT 5min candles（免费无 key）
-- 用于短期动量检测 + 入场择时
-- 存入 btc.db `btc_candles` 表（interval='5m'）
+- 每次 scan 自动 fetch 1000 根 + 存 btc.db（interval='5m'）
+- done: commit `2bcbe3f`
 
-### 2. [P0] 15min K线接入
+### 2. [P0] ✅ 15min K线接入
 - Binance BTCUSDT 15min candles
-- 用于中期趋势确认
-- 与 1h 叠加做多时间尺度状态
+- 每次 scan 自动 fetch 1000 根 + 存 btc.db（interval='15m'）
+- done: commit `2bcbe3f`
 
 ### 3. [P1] Fear & Greed Index 接入
 - alternative.me API（免费）
@@ -48,10 +48,11 @@
 
 ## 二、模型优化
 
-### 8. [P0] 多时间尺度马尔科夫
-- 叠加 5min（短期动量）+ 15min（趋势）+ 1h（基准）
-- 状态空间: 5min_state × 15min_state × 1h_state
-- 只在三个时间尺度信号一致时入场
+### 8. [P0] ✅ 多时间尺度马尔科夫
+- `multi_tf.go`: PredictMultiTF 加权共识（5m=20%, 15m=30%, 1h=50%）
+- Alignment 检测: ALIGNED_BULL / ALIGNED_BEAR / MIXED
+- Confidence 评分 + entry filter（只在强反向时阻止）
+- done: commit `2bcbe3f` + `f85a577`
 
 ### 9. [P1] Hidden Markov Model (HMM)
 - 隐状态: 趋势/震荡/反转 三个 regime
@@ -85,10 +86,11 @@
 
 ## 三、入场/出场/仓位
 
-### 14. [P0] 入场择时优化
-- 5min 马尔科夫 bull 信号 + BS gap > 阈值 → 联合触发
-- 15min 趋势确认（不在趋势反转时入场）
-- 目标: 减少 gap 存在但 BTC 正在反向运动时的入场
+### 14. [P0] ✅ 入场择时优化
+- MultiTFEntryFilter 联合 BS gap + 多时间尺度方向
+- ALIGNED_BEAR 且 confidence>0.55 时阻止 BUY_YES，反之亦然
+- MIXED 全部放行（BS gap 是结构性 edge，短线无方向时不阻止）
+- done: commit `f85a577`
 
 ### 15. [P1] 出场策略
 - BS gap 从 >10pp 收窄到 <3pp → 平仓（alpha 已耗尽）
@@ -109,10 +111,11 @@
 
 ## 四、数据追踪与分析
 
-### 18. [P0] PM 价格 delta 追踪
-- BTC 涨/跌 X% 后，PM 盘口调价速度和幅度
-- 建表 `pm_btc_delta`：btc_change_pct, pm_old_price, pm_new_price, lag_minutes
-- 如果 PM 调价滞后 >30min → 可操作套利窗口
+### 18. [P0] ✅ PM 价格 delta 追踪
+- `pm_btc_deltas` 表每次 scan 记录 PM 价格 + BTC spot
+- 积累数据后做 PM 调价速度回归分析
+- done: commit `2bcbe3f`
+- TODO: 积累 7 天后写分析查询
 
 ### 19. [P1] PnL 归因分析
 - 按模型拆分: BS gap / Markov / 联合
@@ -167,3 +170,4 @@
 |------|-------|------|
 | Apr 26 | 基础 Markov + BS + PM tracker + 1h 回测 | Markov 49.9% 掷硬币; BS gap 10-23pp 有价值 |
 | Apr 26 | BTC live strategy 上线 (1h scan, gap>7pp) | 首次扫描: $50K dip PM=42.5% BS=19% gap=-23pp |
+| Apr 26 | 5m/15m K线 + multi-TF Markov + PM delta tracking | MIXED(bull=2.7%,bear=2.9%) 放行全部 BS gap 信号 |
