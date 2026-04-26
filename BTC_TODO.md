@@ -65,11 +65,13 @@
 - 7 个单测覆盖
 - done: commit `2e0052c`
 
-### 10. [P1] ✅ 动态波动率 (EWMA)
+### 10. [P1] ✅ 动态波动率 (EWMA → Blended)
 - EWMA λ=0.94 替换固定窗口历史波动率
-- 90d hist=52.1% vs ewma=16.7%（近期 BTC 波动低）
-- strategy.go 已切换到 EWMA 为主
-- done: commit `2e0052c`
+- 90d hist=37.7% vs ewma=16.7%（近期 BTC 波动低）
+- **问题**: 纯 EWMA 低估尾部风险，$55K dip 产生 -48.8pp 虚假信号
+- **修复**: BlendedVolatility (60% EWMA + 40% hist) + 25% vol floor
+- 效果: 信号从 17→14 个，gap 缩小 ~40%（$55K: -48.8→-30.6pp）
+- done: commit `2e0052c` (EWMA) + `1a08f92` (blended)
 
 ### 11. [P1] ✅ 波动率微笑 (Vol Smile)
 - `VolSmileAdjust`: 按 log-moneyness 线性调整
@@ -97,10 +99,14 @@
 - MIXED 全部放行（BS gap 是结构性 edge，短线无方向时不阻止）
 - done: commit `f85a577`
 
-### 15. [P1] 出场策略
-- BS gap 从 >10pp 收窄到 <3pp → 平仓（alpha 已耗尽）
-- BTC 价格向不利方向移动 >5% → 止损
-- 持仓超过 7 天无 gap 变化 → timeout 退出
+### 15. [P1] ✅ 出场策略
+- `exit.go`: btc_positions 表 + CheckExits 每轮扫描检查
+- 三出场条件: gap<3pp(alpha 耗尽) / BTC±5% 止损 / 7 天 timeout
+- `scanOnceWithState` 返回市场状态供 exit checker 使用
+- `RunStrategyWithExit` 封装 entry+exit 完整循环
+- 信号触发即自动记录仓位, 每轮 scan 自动检查退出
+- 6 单测覆盖全部退出路径 + hold 场景
+- done: commit `e0e4c5c`
 
 ### 16. [P1] ✅ 仓位管理 (Kelly Criterion)
 - `kelly.go`: KellyFraction (half-Kelly), KellySizeUSD, ValueEdge, ExpectedValue
@@ -167,17 +173,26 @@
 - 复用同一套 Markov + BS 框架
 - 币种间相关性利用: BTC 涨 → ETH 通常跟涨 → 联合入场
 
-### 24. [P2] Regime Detection 自动切换
-- 牛市 regime: 只做 reach 市场（买 Yes）
-- 熊市 regime: 只做 dip 市场（买 No）
-- 震荡 regime: 双向扫 gap
-- 用 HMM 隐状态或 200 日均线斜率判断
+### 24. [P2] ✅ Regime Detection 自动切换
+- `regime.go`: RegimeDirectionBias 按 HMM regime + multi-TF alignment 调信号权重
+- TREND: 顺势放大(1.3x) + 逆势压缩(0.77x)
+- MEAN_REVERT: 逆势放大(1.2x) + 顺势中性
+- VOLATILE: 全局压缩(0.5-1.0x)
+- 集成到 scanOnce, 每个 signal 带 regime_bias 字段
+- 5 单测覆盖
+- done: commit `220deaa`
 
-### 25. [P3] 信号质量评分系统
-- 综合: BS gap 大小 + Markov 置信度 + 时间尺度一致性 + funding rate + F&G
-- 0-100 分制
-- >80 分自动入场 / 60-80 推按钮 / <60 静默记录
-- 每日回测更新评分模型权重
+### 25. [P2] ✅ 信号质量评分系统
+- `scoring.go`: ScoreSignal 综合 5 维度 → 0-100 分
+  - GapScore (0-35): BS gap 大小
+  - SentimentScore (0-15): F&G + funding rate 对齐度
+  - RegimeScore (0-20): HMM regime 支持度
+  - TFScore (0-15): 多时间尺度一致性
+  - EdgeScore (0-15): 相对边际(gap/price)
+- 三档: AUTO(>80) / SIGNAL(60-80) / LOG(<60)
+- Signal struct 新增 Score 字段, 日志输出 score/tier
+- 4 单测覆盖
+- done: commit `220deaa`
 
 ---
 
@@ -194,3 +209,8 @@
 | Apr 27 | **策略转向**: 从方向预测→PM 定价偏差套利; 买 PM 定价<0.49 的一侧 | Markov 做 tiebreaker 而非主驱动 |
 | Apr 27 | Kelly Criterion sizing + updown_prices 采集 + 4 单测 | half-Kelly 动态仓位; PM 价格分布数据积累中 |
 | Apr 27 | PnL 报告 + 定价效率分析 + 动量触发 + 解盘增强 | **PM 1h Up/Down 定价高效 (84%<0.5pp)**; 需找低效市场 |
+| Apr 27 | 启用 btc_enabled 价格级策略; 128 snapshots 分析 Up/Down 死局 | **Up/Down 最大偏差 0.5pp，无法覆盖 2% fee**; 价格级策略首扫: $55K/-48.8pp $50K/-41.4pp $45K/-33.3pp 全 BUY_NO; ⚠️ EWMA=16.7% vs hist=37.7% 尾部风险低估 |
+| Apr 27 | **BlendedVol** (60%EWMA+40%hist+25%floor) + bot-daemon.sh 修复 btc_enabled | gap 缩小 40%: $55K -48.8→-30.6pp; 修复 cron-poke 重启不带 btc_enabled 导致双 daemon 409 冲突 |
+| Apr 27 | **#15 Exit Strategy**: exit.go + 3 退出条件 + 仓位追踪 + 6 单测 | gap<3pp 平仓 / BTC±5% 止损 / 7d timeout; scanOnceWithState 返回完整市场状态 |
+
+| Apr 27 | **#24 Regime Detection** + **#25 Signal Scoring** | HMM=MEAN_REVERT(100%); 信号评分: K=69/SIGNAL K=69/SIGNAL K=67/SIGNAL; regime_bias=1.0 (MR+bull+dip=中性) |
