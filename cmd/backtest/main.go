@@ -100,7 +100,7 @@ func main() {
 	defaultDB := filepath.Join(os.Getenv("HOME"), ".openclaw", "workspace-dev3", "polymarket-agent", "db", "polymarket_agent.db")
 	dbPath := flag.String("db", defaultDB, "python polymarket-agent sqlite db path")
 	minGap := flag.Float64("min_gap", 5.0, "minimum abs(gap_pp) to include in analysis")
-	mode := flag.String("mode", "summary", "summary | tpsl-sweep | tickpath-sweep")
+	mode := flag.String("mode", "summary", "summary | tpsl-sweep | tickpath-sweep | markov")
 	feeBP := flag.Float64("fee_bp", 0, "per-leg fee (bp); round-trip = 2x")
 	defaultTickDir := filepath.Join(os.Getenv("HOME"), "work", "polymarket-go", "db", "tickpath")
 	tickDir := flag.String("tick_dir", defaultTickDir, "directory of per-position .jsonl tick recordings")
@@ -128,6 +128,8 @@ func dispatch(mode, dbPath string, minGap, feeBP float64, tickDir, journalDir st
 		return runTpslSweep(context.Background(), db, feeBP)
 	case "tickpath-sweep":
 		return runTickPathSweep(tickDir, journalDir, feeBP)
+	case "markov":
+		return runMarkovBacktest(tickDir, feeBP)
 	default:
 		return fmt.Errorf("unknown mode: %s", mode)
 	}
