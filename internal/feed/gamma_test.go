@@ -16,9 +16,13 @@ func TestIsLoLMarket(t *testing.T) {
 		m    Market
 		want bool
 	}{
-		{"lol prefix", Market{Question: "LoL: Gen.G vs T1", Slug: "lol-gen-g-vs-t1-2026-04-20"}, true},
-		{"lol slug only", Market{Question: "Who wins?", Slug: "lol-worlds-final-2026"}, true},
-		{"league of legends phrase", Market{Question: "League of Legends Worlds winner"}, true},
+		{"lol lck match", Market{Question: "LoL: Gen.G vs T1 - LCK Spring", Slug: "lol-gen-g-vs-t1-2026-04-20"}, true},
+		{"lol lpl match", Market{Question: "LoL: EDG vs JDG (BO3) - LPL Summer", Slug: "lol-edg-jdg-2026-04-20"}, true},
+		{"lol lec blocked", Market{Question: "LoL: Fnatic vs G2 - LEC Regular Season", Slug: "lol-fnc-g2-2026-04-20"}, false},
+		{"lol ljl blocked", Market{Question: "LoL: DFM vs SGB - LJL 2026 Spring", Slug: "lol-dfm-sgb-2026-04-20"}, false},
+		{"lol no league blocked", Market{Question: "LoL: Gen.G vs T1", Slug: "lol-gen-g-vs-t1-2026-04-20"}, false},
+		{"lol slug only no league", Market{Question: "Who wins?", Slug: "lol-worlds-final-2026"}, false},
+		{"league of legends lck", Market{Question: "League of Legends LCK finals winner"}, true},
 		{"election false positive", Market{Question: "2026 election winner", Slug: "election-2026"}, false},
 	}
 	for _, c := range cases {
@@ -92,20 +96,21 @@ func TestIsDota2Market(t *testing.T) {
 
 func TestFilterSports_UnionAndOrder(t *testing.T) {
 	in := []Market{
-		{Slug: "lol-lec-vit-gx-2026-04-19"},
+		{Question: "LoL: T1 vs Gen.G - LCK Spring", Slug: "lol-lck-t1-geng-2026-04-19"},
 		{Slug: "nba-atl-nyk-2026-04-20"},
 		{Slug: "epl-cry-wes-2026-04-20-cry"},
 		{Slug: "dota2-gl-heroic-2026-04-22"},
-		{Slug: "will-the-lakers-win-the-2026-nba-finals"}, // excluded
-		{Slug: "election-2026"},                           // excluded
+		{Slug: "will-the-lakers-win-the-2026-nba-finals"},  // excluded
+		{Slug: "election-2026"},                            // excluded
 		{Slug: "nba-playoffs-who-will-win-series-foo-bar"},
+		{Question: "LoL: Fnatic vs G2 - LEC Regular", Slug: "lol-lec-fnc-g2-2026-04-19"}, // excluded (LEC)
 	}
 	out := FilterSports(in)
 	if len(out) != 5 {
 		t.Fatalf("want 5, got %d", len(out))
 	}
 	want := []string{
-		"lol-lec-vit-gx-2026-04-19",
+		"lol-lck-t1-geng-2026-04-19",
 		"nba-atl-nyk-2026-04-20",
 		"epl-cry-wes-2026-04-20-cry",
 		"dota2-gl-heroic-2026-04-22",

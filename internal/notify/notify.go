@@ -91,7 +91,8 @@ type SignalPromptEvent struct {
 	TailLen  int
 	BuyRatio float64
 
-	Slug      string        // market slug for newshare link
+	Slug       string // market slug for newshare link
+	WhaleLabel string // if set, this is a whale-follow signal (shows 🐋 instead of ⚡)
 	SizesUSD  []float64     // default {10, 20, ..., 100}
 	ExpiresIn time.Duration // visual-only hint in the DM body
 
@@ -259,7 +260,11 @@ func FormatSignalPrompt(ev SignalPromptEvent) string {
 		mid = sig.Mid
 	}
 
-	fmt.Fprintf(&b, "⚡ %s ↑ @ %.4f\n", truncateStr(signalOutcome, 40), mid)
+	if ev.WhaleLabel != "" {
+		fmt.Fprintf(&b, "🐋 %s BUY %s @ %.4f\n", ev.WhaleLabel, truncateStr(signalOutcome, 40), mid)
+	} else {
+		fmt.Fprintf(&b, "⚡ %s ↑ @ %.4f\n", truncateStr(signalOutcome, 40), mid)
+	}
 
 	match := ev.Match
 	if match == "" && len(ev.Choices) > 0 {

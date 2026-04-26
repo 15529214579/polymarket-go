@@ -56,7 +56,7 @@ func main() {
 	ladderTP2Pct := flag.Float64("ladder_tp2_pct", 9.99, "ladder TP2 trigger: 9.99 = effectively disabled")
 	ladderTP2Frac := flag.Float64("ladder_tp2_frac", 1.00, "fraction of initial units to close on TP2 (1.0 = all remaining)")
 	ladderSLPct := flag.Float64("ladder_sl_pct", 0.15, "ladder stop-loss: exit ≤ entry × (1 - this) closes 100%")
-	ladderMaxHold := flag.Duration("ladder_max_hold", 4*time.Hour, "ladder hard timeout — closes remainder")
+	ladderMaxHold := flag.Duration("ladder_max_hold", 6*time.Hour, "ladder hard timeout — closes remainder")
 	// Phase 7.g lottery comparison strategy (SPEC §2.5). Parallel to momentum:
 	// scan subscribed assets, open a small paper position when mid is in the
 	// low-price band, hold to settlement, journal with source=lottery so PnL
@@ -81,6 +81,7 @@ func main() {
 	injuryInterval := flag.Duration("injury_interval", 30*time.Minute, "injury scan interval")
 	injuryStarOnly := flag.Bool("injury_star_only", true, "only alert on star players (top ~3-4 per team)")
 	whaleEnabled := flag.Bool("whale_enabled", false, "enable smart-money whale trade tracker")
+	confirmDelay := flag.Duration("confirm_delay", 10*time.Second, "wait N seconds after signal trigger, re-check price before entry")
 	whaleWallets := flag.String("whale_wallets", "", "tracked wallets: addr|label|minUSD|profileURL,... (comma-separated)")
 	whaleWallet := flag.String("whale_wallet", "", "(legacy) single target wallet address (hex 0x…)")
 	whaleProfile := flag.String("whale_profile", "", "(legacy) whale's Polymarket profile URL")
@@ -160,7 +161,7 @@ func main() {
 		if *oddsPapiSports != "" {
 			oddsPapiCfg.SportKeys = strings.Split(*oddsPapiSports, ",")
 		}
-		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, *arbEnabled, *arbInterval, *arbMinGapPP, *arbDBPath, injCfg, whaleCfg, oddsPapiCfg); err != nil && ctx.Err() == nil {
+		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, *arbEnabled, *arbInterval, *arbMinGapPP, *arbDBPath, injCfg, whaleCfg, oddsPapiCfg, *confirmDelay); err != nil && ctx.Err() == nil {
 			slog.Error("detect failed", "err", err)
 			os.Exit(1)
 		}
@@ -375,7 +376,7 @@ func runSample(ctx context.Context, topN, windowSec int) error {
 	return ws.Run(ctx)
 }
 
-func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, arbEnabled bool, arbInterval time.Duration, arbMinGapPP float64, arbDBPath string, injCfg injury.Config, whaleCfg whale.Config, oddsPapiCfg odds.OddsPapiConfig) error {
+func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, arbEnabled bool, arbInterval time.Duration, arbMinGapPP float64, arbDBPath string, injCfg injury.Config, whaleCfg whale.Config, oddsPapiCfg odds.OddsPapiConfig, confirmDelay time.Duration) error {
 	if signalMode != "auto" && signalMode != "prompt" && signalMode != "whale" {
 		return fmt.Errorf("invalid signal_mode %q (want auto|prompt|whale)", signalMode)
 	}
@@ -445,10 +446,23 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 
 	cfg := strategy.DefaultConfig()
 	cfg.WindowSec = windowSec
+	cfg.ConfirmDelay = confirmDelay
 	if windowSec < cfg.MinSamplesWarm {
 		cfg.MinSamplesWarm = windowSec / 2
 	}
 	det := strategy.NewDetector(cfg, sampler)
+	for _, m := range mkts {
+		tokens := m.ClobTokenIDs()
+		var ids []string
+		for _, t := range tokens {
+			if t != "" {
+				ids = append(ids, t)
+			}
+		}
+		if len(ids) > 0 {
+			det.RegisterMarket(m.ConditionID, ids)
+		}
+	}
 	exitCfg := strategy.DefaultExitConfig()
 	exit := strategy.NewExitTracker(exitCfg)
 	ladder := strategy.NewLadderTracker(ladderCfg)
@@ -474,6 +488,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 	// its own memory, exits, and the callback lands on a daemon that doesn't
 	// know the nonce → "已过期或已点过" even on a fresh click.
 	const adminTrigger = "db/admin/send-prompt.trigger"
+	const adminResume = "db/admin/resume-risk.trigger"
 	_ = os.MkdirAll(filepath.Dir(adminTrigger), 0o755)
 	slog.Info("paper_client.ready", "slippage_bp", slippageBp, "per_pos_usd", posCfg.PerPositionUSD)
 	slog.Info("risk.ready",
@@ -613,13 +628,17 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 			case <-ctx.Done():
 				return
 			case <-tk.C:
-				data, err := os.ReadFile(adminTrigger)
-				if err != nil {
-					continue
+				if data, err := os.ReadFile(adminTrigger); err == nil {
+					_ = os.Remove(adminTrigger)
+					if err := sendAdminPrompt(data, mkts, meta, sampler, pending, notifier); err != nil {
+						slog.Warn("admin_prompt_fail", "err", err.Error())
+					}
 				}
-				_ = os.Remove(adminTrigger)
-				if err := sendAdminPrompt(data, mkts, meta, sampler, pending, notifier); err != nil {
-					slog.Warn("admin_prompt_fail", "err", err.Error())
+				if _, err := os.Stat(adminResume); err == nil {
+					_ = os.Remove(adminResume)
+					rm.Resume()
+					slog.Info("risk_admin_resume", "by", "trigger_file")
+					notifier.RiskResume(notify.RiskResumeEvent{})
 				}
 			}
 		}
@@ -698,21 +717,24 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						exitFee := res.FeeUSD
 						netPnL := closed.PnLUSD - entryFee - exitFee
 						stats := pm.Stats()
-						if tripped := rm.OnClose(netPnL, sig.Time); tripped {
-							rst := rm.State()
-							slog.Error("risk_trip",
-								"reason", string(rst.BlockReason),
-								"day_pnl_usd", rst.DayRealizedPnL,
-								"cap_usd", rst.DayLossCapUSD,
-							)
-							notifier.RiskTrip(notify.RiskTripEvent{
-								Reason:        string(rst.BlockReason),
-								DayPnLUSD:     rst.DayRealizedPnL,
-								DayLossCapUSD: rst.DayLossCapUSD,
-								DrawdownUSD:   rst.DrawdownUSD,
-								DrawdownCap:   rst.DrawdownCapUSD,
-								OpenPositions: stats.Open,
-							})
+						posSource, _ := src.Peek(closed.ID)
+						if posSource != "manual" {
+							if tripped := rm.OnClose(netPnL, sig.Time); tripped {
+								rst := rm.State()
+								slog.Error("risk_trip",
+									"reason", string(rst.BlockReason),
+									"day_pnl_usd", rst.DayRealizedPnL,
+									"cap_usd", rst.DayLossCapUSD,
+								)
+								notifier.RiskTrip(notify.RiskTripEvent{
+									Reason:        string(rst.BlockReason),
+									DayPnLUSD:     rst.DayRealizedPnL,
+									DayLossCapUSD: rst.DayLossCapUSD,
+									DrawdownUSD:   rst.DrawdownUSD,
+									DrawdownCap:   rst.DrawdownCapUSD,
+									OpenPositions: stats.Open,
+								})
+							}
 						}
 						if netPnL <= -largeFillUSD || netPnL >= largeFillUSD {
 							notifier.LargeFill(notify.LargeFillEvent{
@@ -853,21 +875,24 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						exitFee := res.FeeUSD
 						netPnL := closedTranche.PnLUSD - entryFeeShare - exitFee
 						stats := pm.Stats()
-						if tripped := rm.OnClose(netPnL, ex.Time); tripped {
-							rst := rm.State()
-							slog.Error("risk_trip",
-								"reason", string(rst.BlockReason),
-								"day_pnl_usd", rst.DayRealizedPnL,
-								"cap_usd", rst.DayLossCapUSD,
-							)
-							notifier.RiskTrip(notify.RiskTripEvent{
-								Reason:        string(rst.BlockReason),
-								DayPnLUSD:     rst.DayRealizedPnL,
-								DayLossCapUSD: rst.DayLossCapUSD,
-								DrawdownUSD:   rst.DrawdownUSD,
-								DrawdownCap:   rst.DrawdownCapUSD,
-								OpenPositions: stats.Open,
-							})
+						ladderSource, _ := src.Peek(p.ID)
+						if ladderSource != "manual" {
+							if tripped := rm.OnClose(netPnL, ex.Time); tripped {
+								rst := rm.State()
+								slog.Error("risk_trip",
+									"reason", string(rst.BlockReason),
+									"day_pnl_usd", rst.DayRealizedPnL,
+									"cap_usd", rst.DayLossCapUSD,
+								)
+								notifier.RiskTrip(notify.RiskTripEvent{
+									Reason:        string(rst.BlockReason),
+									DayPnLUSD:     rst.DayRealizedPnL,
+									DayLossCapUSD: rst.DayLossCapUSD,
+									DrawdownUSD:   rst.DrawdownUSD,
+									DrawdownCap:   rst.DrawdownCapUSD,
+									OpenPositions: stats.Open,
+								})
+							}
 						}
 						if netPnL <= -largeFillUSD || netPnL >= largeFillUSD {
 							notifier.LargeFill(notify.LargeFillEvent{
@@ -942,9 +967,14 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 							"realized_pnl", stats.RealizedPnLUSD,
 						)
 						if ex.Reason == strategy.ExitLadderSL {
-							det.NotifySL(ex.AssetID)
+							var cid string
+							if me := meta[ex.AssetID]; me != nil {
+								cid = me.ConditionID
+							}
+							det.NotifySL(ex.AssetID, cid)
 							slog.Info("sl_cooldown_extended",
 								"asset", short(ex.AssetID),
+								"market", short(cid),
 								"cooldown", det.CooldownAfterSL().String())
 						}
 					}
@@ -1629,12 +1659,13 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 
 				nonceSnap := p.Nonce
 				notifier.SignalPrompt(notify.SignalPromptEvent{
-					Nonce:     p.Nonce,
-					Match:     ev.Question,
-					Context:   ctxLine,
-					Slug:      ev.Slug,
-					Choices:   sigChoices,
-					ExpiresIn: 10 * time.Minute,
+					Nonce:      p.Nonce,
+					Match:      ev.Question,
+					Context:    ctxLine,
+					Slug:       ev.Slug,
+					WhaleLabel: whaleTag,
+					Choices:    sigChoices,
+					ExpiresIn:  10 * time.Minute,
 					OnSent: func(msgID int64, err error) {
 						if err != nil || msgID == 0 {
 							return
@@ -1950,19 +1981,22 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					}
 					netPnL := closed.PnLUSD - entryFeeShare
 					stats := pm.Stats()
-					if tripped := rm.OnClose(netPnL, now); tripped {
-						rst := rm.State()
-						slog.Error("risk_trip",
-							"reason", string(rst.BlockReason),
-							"day_pnl_usd", rst.DayRealizedPnL,
-							"cap_usd", rst.DayLossCapUSD,
-						)
-						notifier.RiskTrip(notify.RiskTripEvent{
-							Reason:        string(rst.BlockReason),
-							DayPnLUSD:     rst.DayRealizedPnL,
-							DayLossCapUSD: rst.DayLossCapUSD,
-							OpenPositions: stats.Open,
-						})
+					settleSource, _ := src.Peek(closed.ID)
+					if settleSource != "manual" {
+						if tripped := rm.OnClose(netPnL, now); tripped {
+							rst := rm.State()
+							slog.Error("risk_trip",
+								"reason", string(rst.BlockReason),
+								"day_pnl_usd", rst.DayRealizedPnL,
+								"cap_usd", rst.DayLossCapUSD,
+							)
+							notifier.RiskTrip(notify.RiskTripEvent{
+								Reason:        string(rst.BlockReason),
+								DayPnLUSD:     rst.DayRealizedPnL,
+								DayLossCapUSD: rst.DayLossCapUSD,
+								OpenPositions: stats.Open,
+							})
+						}
 					}
 					if netPnL <= -largeFillUSD || netPnL >= largeFillUSD {
 						notifier.LargeFill(notify.LargeFillEvent{
@@ -2515,16 +2549,19 @@ func (h *buyHandler) OnClose(ctx context.Context, nonce string, messageID int64)
 		totalNetPnL += netPnL
 		closedCount++
 		stats := h.pm.Stats()
-		if tripped := h.rm.OnClose(netPnL, now); tripped {
-			rst := h.rm.State()
-			h.notifier.RiskTrip(notify.RiskTripEvent{
-				Reason:        string(rst.BlockReason),
-				DayPnLUSD:     rst.DayRealizedPnL,
-				DayLossCapUSD: rst.DayLossCapUSD,
-				DrawdownUSD:   rst.DrawdownUSD,
-				DrawdownCap:   rst.DrawdownCapUSD,
-				OpenPositions: stats.Open,
-			})
+		closeSource, _ := h.src.Peek(closed.ID)
+		if closeSource != "manual" {
+			if tripped := h.rm.OnClose(netPnL, now); tripped {
+				rst := h.rm.State()
+				h.notifier.RiskTrip(notify.RiskTripEvent{
+					Reason:        string(rst.BlockReason),
+					DayPnLUSD:     rst.DayRealizedPnL,
+					DayLossCapUSD: rst.DayLossCapUSD,
+					DrawdownUSD:   rst.DrawdownUSD,
+					DrawdownCap:   rst.DrawdownCapUSD,
+					OpenPositions: stats.Open,
+				})
+			}
 		}
 		if netPnL <= -h.largeFillUSD || netPnL >= h.largeFillUSD {
 			h.notifier.LargeFill(notify.LargeFillEvent{

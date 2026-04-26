@@ -45,6 +45,7 @@ type Config struct {
 	MinSamplesWarm       int           // don't fire until window has this many samples
 	CooldownPerAsset     time.Duration // dedup per asset after a fire
 	CooldownAfterSL      time.Duration // extended cooldown after a stop-loss exit
+	ConfirmDelay         time.Duration // wait this long after signal, re-check before firing
 }
 
 func DefaultConfig() Config {
@@ -57,7 +58,13 @@ func DefaultConfig() Config {
 		MinSamplesWarm:   30,
 		CooldownPerAsset: 5 * time.Minute,
 		CooldownAfterSL:  1 * time.Hour,
+		ConfirmDelay:     10 * time.Second,
 	}
+}
+
+type pendingConfirm struct {
+	signal Signal
+	readyAt time.Time
 }
 
 type Detector struct {
@@ -65,24 +72,45 @@ type Detector struct {
 	sampler *feed.Sampler
 	out     chan Signal
 
-	lastFire map[string]time.Time
+	lastFire      map[string]time.Time
+	marketAssets  map[string][]string // conditionID → []assetID
+	pending       map[string]*pendingConfirm // assetID → awaiting confirmation
 }
 
 func NewDetector(cfg Config, sampler *feed.Sampler) *Detector {
 	return &Detector{
-		cfg:      cfg,
-		sampler:  sampler,
-		out:      make(chan Signal, 64),
-		lastFire: map[string]time.Time{},
+		cfg:          cfg,
+		sampler:      sampler,
+		out:          make(chan Signal, 64),
+		lastFire:     map[string]time.Time{},
+		marketAssets: map[string][]string{},
+		pending:      map[string]*pendingConfirm{},
 	}
+}
+
+// RegisterMarket tells the detector which assets belong to the same market
+// (conditionID). NotifySL uses this to cool down all outcomes in a market.
+func (d *Detector) RegisterMarket(conditionID string, assetIDs []string) {
+	d.marketAssets[conditionID] = assetIDs
 }
 
 func (d *Detector) Signals() <-chan Signal { return d.out }
 
-// NotifySL extends the cooldown for an asset after a stop-loss exit.
-func (d *Detector) NotifySL(assetID string) {
-	if d.cfg.CooldownAfterSL > 0 {
-		d.lastFire[assetID] = time.Now().Add(d.cfg.CooldownAfterSL - d.cfg.CooldownPerAsset)
+// NotifySL extends the cooldown for all assets in the same market after a
+// stop-loss exit. conditionID identifies the market; if empty or unknown, falls
+// back to cooling only the single assetID.
+func (d *Detector) NotifySL(assetID, conditionID string) {
+	if d.cfg.CooldownAfterSL <= 0 {
+		return
+	}
+	coolUntil := time.Now().Add(d.cfg.CooldownAfterSL - d.cfg.CooldownPerAsset)
+	siblings := d.marketAssets[conditionID]
+	if len(siblings) == 0 {
+		d.lastFire[assetID] = coolUntil
+		return
+	}
+	for _, id := range siblings {
+		d.lastFire[id] = coolUntil
 	}
 }
 
@@ -90,6 +118,8 @@ func (d *Detector) CooldownAfterSL() time.Duration { return d.cfg.CooldownAfterS
 
 func (d *Detector) Run(ctx context.Context) error {
 	ticks := d.sampler.Ticks()
+	confirmTicker := time.NewTicker(1 * time.Second)
+	defer confirmTicker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
@@ -99,8 +129,34 @@ func (d *Detector) Run(ctx context.Context) error {
 				return nil
 			}
 			if sig, fired := d.evaluate(t); fired {
+				if d.cfg.ConfirmDelay > 0 {
+					d.pending[sig.AssetID] = &pendingConfirm{
+						signal:  sig,
+						readyAt: time.Now().Add(d.cfg.ConfirmDelay),
+					}
+				} else {
+					select {
+					case d.out <- sig:
+					default:
+					}
+				}
+			}
+		case now := <-confirmTicker.C:
+			for assetID, pc := range d.pending {
+				if now.Before(pc.readyAt) {
+					continue
+				}
+				delete(d.pending, assetID)
+				w, ok := d.sampler.Window(assetID)
+				if !ok || w.Samples < d.cfg.MinSamplesWarm {
+					continue
+				}
+				if w.EndMid <= pc.signal.Mid-pc.signal.Mid*float64(d.cfg.MinDeltaPP)/100 {
+					continue
+				}
+				pc.signal.Mid = w.EndMid
 				select {
-				case d.out <- sig:
+				case d.out <- pc.signal:
 				default:
 				}
 			}

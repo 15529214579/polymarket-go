@@ -107,24 +107,42 @@ func (c *GammaClient) ListActiveMarkets(ctx context.Context, pageLimit int) ([]M
 	return all, nil
 }
 
+// allowedLoLLeagues — only these leagues pass the LoL filter. LJL (Japan),
+// LEC (Europe), and other minor leagues had negative EV in paper trading.
+var allowedLoLLeagues = []string{"lck", "lpl"}
+
 // IsLoLMarket — real LoL markets on Polymarket always have "LoL:" prefix
 // in the question or "lol-" in the slug, so match on those to avoid matching
 // substrings like "election" (contains "lec"). Excludes non-moneyline
 // derivatives (handicap / totals / O-U) that ride the same slug prefix.
+// Additionally filters to only allowed leagues (LCK, LPL).
 func IsLoLMarket(m Market) bool {
 	q := strings.ToLower(m.Question)
 	slug := strings.ToLower(m.Slug)
 	if !isMoneylineQuestion(q) || !isMoneylineSlug(slug) {
 		return false
 	}
+	isLoL := false
 	if strings.HasPrefix(q, "lol:") || strings.HasPrefix(q, "lol ") {
-		return true
+		isLoL = true
 	}
 	if strings.Contains(q, "league of legends") {
-		return true
+		isLoL = true
 	}
 	if strings.HasPrefix(slug, "lol-") {
-		return true
+		isLoL = true
+	}
+	if !isLoL {
+		return false
+	}
+	return isAllowedLoLLeague(q, slug)
+}
+
+func isAllowedLoLLeague(q, slug string) bool {
+	for _, league := range allowedLoLLeagues {
+		if strings.Contains(q, league) || strings.Contains(slug, league) {
+			return true
+		}
 	}
 	return false
 }

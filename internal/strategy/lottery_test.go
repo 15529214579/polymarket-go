@@ -158,7 +158,7 @@ func TestIsVolatile(t *testing.T) {
 }
 
 func TestClassifySport_FromMarket(t *testing.T) {
-	lol := feed.Market{Question: "LoL: T1 vs Hanwha"}
+	lol := feed.Market{Question: "LoL: T1 vs Hanwha - LCK Spring"}
 	nba := feed.Market{Slug: "nba-atl-nyk-2026-04-21"}
 	epl := feed.Market{Slug: "epl-ars-che-2026-04-21"}
 	other := feed.Market{Question: "Bitcoin > 100k by 2026?"}
