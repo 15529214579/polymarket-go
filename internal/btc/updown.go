@@ -332,9 +332,50 @@ func initUpDownDB(db *sql.DB) error {
     actual_direction TEXT,
     pnl REAL,
     resolved_at INTEGER
+);
+CREATE TABLE IF NOT EXISTS updown_prices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp INTEGER NOT NULL,
+    slug TEXT NOT NULL,
+    up_price REAL,
+    down_price REAL,
+    spread REAL,
+    deviation REAL,
+    UNIQUE(timestamp, slug)
 );`
 	_, err := db.Exec(ddl)
 	return err
+}
+
+func logUpDownPrices(ctx context.Context, db *sql.DB, markets []UpDownMarket) {
+	now := time.Now().Unix()
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	stmt, err := tx.PrepareContext(ctx,
+		`INSERT OR IGNORE INTO updown_prices(timestamp, slug, up_price, down_price, spread, deviation)
+		 VALUES(?,?,?,?,?,?)`)
+	if err != nil {
+		return
+	}
+	defer stmt.Close()
+
+	for _, m := range markets {
+		if m.UpPrice <= 0 || m.DownPrice <= 0 {
+			continue
+		}
+		spread := m.UpPrice + m.DownPrice - 1.0
+		cheaperSide := m.UpPrice
+		if m.DownPrice < cheaperSide {
+			cheaperSide = m.DownPrice
+		}
+		deviation := 0.50 - cheaperSide
+		stmt.ExecContext(ctx, now, m.Slug, m.UpPrice, m.DownPrice, spread, deviation) //nolint:errcheck
+	}
+	tx.Commit() //nolint:errcheck
 }
 
 func slugAlreadyBet(ctx context.Context, db *sql.DB, slug string) bool {
@@ -568,6 +609,8 @@ func updownScanOnce(ctx context.Context, db *sql.DB, cfg UpDownConfig, cb UpDown
 	minEnd := now.Add(1 * time.Hour)
 	maxEnd := now.Add(4 * time.Hour)
 
+	logUpDownPrices(ctx, db, markets)
+
 	var candidates []UpDownMarket
 	for _, m := range markets {
 		if m.EndDate.Before(minEnd) || m.EndDate.After(maxEnd) {
@@ -675,6 +718,14 @@ func updownScanOnce(ctx context.Context, db *sql.DB, cfg UpDownConfig, cb UpDown
 			conf = 1
 		}
 
+		// Kelly sizing: fair prob ≈ 0.50, PM price = pmPrice
+		betSize := KellySizeUSD(90.0, pmPrice, 0.50, cfg.SizeUSD*3)
+		if betSize < 1.0 {
+			betSize = cfg.SizeUSD // fallback to default
+		}
+
+		ev := ExpectedValue(pmPrice, 0.50)
+
 		usePred := DirectionPrediction{
 			Direction:  direction,
 			Confidence: conf,
@@ -690,11 +741,11 @@ func updownScanOnce(ctx context.Context, db *sql.DB, cfg UpDownConfig, cb UpDown
 			PredictedDirection: direction,
 			Confidence:         conf,
 			Spot:               spot,
-			SizeUSD:            cfg.SizeUSD,
+			SizeUSD:            betSize,
 		}
 
 		cb(sig)
-		recordBet(ctx, db, m, usePred, spot, cfg.SizeUSD, tokenID)
+		recordBet(ctx, db, m, usePred, spot, betSize, tokenID)
 		dailyBets++
 
 		slog.Info("updown_strategy.signal",
@@ -702,6 +753,8 @@ func updownScanOnce(ctx context.Context, db *sql.DB, cfg UpDownConfig, cb UpDown
 			"direction", direction,
 			"pm_price", fmt.Sprintf("%.3f", pmPrice),
 			"edge_pp", fmt.Sprintf("%.1f", edge*100),
+			"ev_per_dollar", fmt.Sprintf("%.3f", ev),
+			"kelly_size", fmt.Sprintf("%.2f", betSize),
 			"regime", rName,
 			"spot", fmt.Sprintf("%.0f", spot),
 		)
