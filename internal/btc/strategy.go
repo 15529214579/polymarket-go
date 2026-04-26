@@ -133,7 +133,12 @@ func scanOnce(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]Signal, er
 	}
 
 	spot := candles1h[len(candles1h)-1].Close
-	sigma := HistoricalVolatility(candles1h)
+	sigmaHist := HistoricalVolatility(candles1h)
+	sigmaEWMA := EWMAVolatility(candles1h, 0.94)
+	sigma := sigmaEWMA
+	if sigma <= 0 {
+		sigma = sigmaHist
+	}
 
 	multiTF, err := PredictMultiTF(ctx)
 	if err != nil {
@@ -178,7 +183,8 @@ func scanOnce(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]Signal, er
 
 	slog.Info("btc_strategy.scan_done",
 		"spot", spot,
-		"sigma_pct", fmt.Sprintf("%.1f%%", sigma*100),
+		"sigma_hist", fmt.Sprintf("%.1f%%", sigmaHist*100),
+		"sigma_ewma", fmt.Sprintf("%.1f%%", sigmaEWMA*100),
 		"pm_markets", len(markets),
 		"gaps_found", len(gaps),
 		"min_gap_pp", cfg.MinGapPP,

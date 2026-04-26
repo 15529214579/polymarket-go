@@ -100,13 +100,13 @@ func main() {
 	defaultDB := filepath.Join(os.Getenv("HOME"), ".openclaw", "workspace-dev3", "polymarket-agent", "db", "polymarket_agent.db")
 	dbPath := flag.String("db", defaultDB, "python polymarket-agent sqlite db path")
 	minGap := flag.Float64("min_gap", 5.0, "minimum abs(gap_pp) to include in analysis")
-	mode := flag.String("mode", "summary", "summary | tpsl-sweep | tickpath-sweep | markov | btc-markov")
+	mode := flag.String("mode", "summary", "summary | tpsl-sweep | tickpath-sweep | markov | btc-markov | btc-updown")
 	feeBP := flag.Float64("fee_bp", 0, "per-leg fee (bp); round-trip = 2x")
 	defaultTickDir := filepath.Join(os.Getenv("HOME"), "work", "polymarket-go", "db", "tickpath")
 	tickDir := flag.String("tick_dir", defaultTickDir, "directory of per-position .jsonl tick recordings")
 	defaultJournalDir := filepath.Join(os.Getenv("HOME"), "work", "polymarket-go", "db", "journal")
 	journalDir := flag.String("journal_dir", defaultJournalDir, "directory of journal .jsonl files")
-	btcDays := flag.Int("days", 90, "btc-markov: number of historical days to fetch")
+	btcDays := flag.Int("days", 90, "btc-markov/btc-updown: number of historical days to fetch")
 	btcTrainPct := flag.Float64("train_pct", 0.67, "btc-markov: fraction of data used for training (0..1)")
 	defaultDBDir := filepath.Join(os.Getenv("HOME"), "work", "polymarket-go", "db")
 	btcDBDir := flag.String("db_dir", defaultDBDir, "btc-markov: directory for btc_markov.db")
@@ -136,6 +136,8 @@ func dispatch(mode, dbPath string, minGap, feeBP float64, tickDir, journalDir st
 		return runMarkovBacktest(tickDir, feeBP)
 	case "btc-markov":
 		return runBTCMarkovBacktest(btcDays, btcTrainPct, btcDBDir)
+	case "btc-updown":
+		return runBTCUpDownBacktest(&btcDays, &feeBP)
 	default:
 		return fmt.Errorf("unknown mode: %s", mode)
 	}

@@ -593,21 +593,7 @@ func updownScanOnce(ctx context.Context, db *sql.DB, cfg UpDownConfig, cb UpDown
 		return nil
 	}
 
-	pred, err := PredictHourlyDirection(ctx)
-	if err != nil {
-		return fmt.Errorf("predict: %w", err)
-	}
-
-	if pred.Confidence < cfg.MinConfidence {
-		slog.Info("updown_strategy.low_confidence",
-			"confidence", fmt.Sprintf("%.3f", pred.Confidence),
-			"min", cfg.MinConfidence,
-			"direction", pred.Direction,
-		)
-		return nil
-	}
-
-	candles, err := FetchCandles(ctx, "BTCUSDT", Interval1h, 2)
+	candles, err := FetchCandles(ctx, "BTCUSDT", Interval1h, 200)
 	if err != nil {
 		return fmt.Errorf("fetch spot: %w", err)
 	}
@@ -616,25 +602,83 @@ func updownScanOnce(ctx context.Context, db *sql.DB, cfg UpDownConfig, cb UpDown
 		spot = candles[len(candles)-1].Close
 	}
 
+	regime, rName, rConf := DetectCurrentRegime(candles)
+	slog.Info("updown_strategy.regime",
+		"regime", rName,
+		"regime_conf", fmt.Sprintf("%.2f", rConf),
+	)
+
+	pred, err := PredictHourlyDirection(ctx)
+	if err != nil {
+		slog.Warn("updown_strategy.predict_fail", "err", err.Error())
+	}
+
 	for _, m := range candidates {
 		if dailyBets >= cfg.MaxDailyBets {
 			break
 		}
 
-		tokenID := m.DownTokenID
-		pmPrice := m.DownPrice
-		if pred.Direction == "Up" {
-			tokenID = m.UpTokenID
-			pmPrice = m.UpPrice
+		// Value betting: buy whichever side PM underprices.
+		// BTC 1h up/down is ~50/50, so fair price for each side is ~0.50.
+		// Buy the side that's cheaper (further below 0.50).
+		direction := "Up"
+		tokenID := m.UpTokenID
+		pmPrice := m.UpPrice
+		edge := 0.50 - m.UpPrice
+
+		if m.DownPrice < m.UpPrice {
+			direction = "Down"
+			tokenID = m.DownTokenID
+			pmPrice = m.DownPrice
+			edge = 0.50 - m.DownPrice
 		}
 
-		if pmPrice > 0.52 {
+		// Markov tiebreaker: if model has directional conviction, follow it
+		if pred.Confidence >= cfg.MinConfidence {
+			if pred.Direction == "Up" && m.UpPrice <= 0.52 {
+				direction = "Up"
+				tokenID = m.UpTokenID
+				pmPrice = m.UpPrice
+				edge = 0.50 - m.UpPrice
+			} else if pred.Direction == "Down" && m.DownPrice <= 0.52 {
+				direction = "Down"
+				tokenID = m.DownTokenID
+				pmPrice = m.DownPrice
+				edge = 0.50 - m.DownPrice
+			}
+		}
+
+		// Skip if no value edge (both sides priced at or above fair value)
+		if pmPrice > 0.49 {
 			slog.Info("updown_strategy.skip_no_edge",
 				"slug", m.Slug,
-				"direction", pred.Direction,
-				"pm_price", fmt.Sprintf("%.3f", pmPrice),
+				"up_price", fmt.Sprintf("%.3f", m.UpPrice),
+				"down_price", fmt.Sprintf("%.3f", m.DownPrice),
 			)
 			continue
+		}
+
+		// Skip VOLATILE regime — consistently bad for directional bets
+		if regime == RegimeVolat && rConf >= 0.6 {
+			slog.Info("updown_strategy.skip_volatile",
+				"slug", m.Slug,
+				"regime_conf", fmt.Sprintf("%.2f", rConf),
+			)
+			continue
+		}
+
+		conf := edge * 2 // normalize edge to 0-1 scale
+		if conf < 0 {
+			conf = 0
+		}
+		if conf > 1 {
+			conf = 1
+		}
+
+		usePred := DirectionPrediction{
+			Direction:  direction,
+			Confidence: conf,
+			Alignment:  "VALUE",
 		}
 
 		sig := UpDownSignal{
@@ -643,23 +687,23 @@ func updownScanOnce(ctx context.Context, db *sql.DB, cfg UpDownConfig, cb UpDown
 			ConditionID:        m.ConditionID,
 			TokenID:            tokenID,
 			PMPrice:            pmPrice,
-			PredictedDirection: pred.Direction,
-			Confidence:         pred.Confidence,
+			PredictedDirection: direction,
+			Confidence:         conf,
 			Spot:               spot,
 			SizeUSD:            cfg.SizeUSD,
 		}
 
 		cb(sig)
-		recordBet(ctx, db, m, pred, spot, cfg.SizeUSD, tokenID)
+		recordBet(ctx, db, m, usePred, spot, cfg.SizeUSD, tokenID)
 		dailyBets++
 
 		slog.Info("updown_strategy.signal",
 			"slug", m.Slug,
-			"direction", pred.Direction,
-			"confidence", fmt.Sprintf("%.3f", pred.Confidence),
+			"direction", direction,
 			"pm_price", fmt.Sprintf("%.3f", pmPrice),
+			"edge_pp", fmt.Sprintf("%.1f", edge*100),
+			"regime", rName,
 			"spot", fmt.Sprintf("%.0f", spot),
-			"alignment", pred.Alignment,
 		)
 	}
 
