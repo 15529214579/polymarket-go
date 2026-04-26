@@ -86,10 +86,13 @@
 - ✅ 8 新测试全部通过
 - 三阶暂不实现（数据量不足以支撑 3375 个三元组状态）
 
-### 13. [P2] 自动再训练
-- 每日 cron 用最新 90 天数据重新训练转移矩阵
-- 检测矩阵漂移（KL divergence > 阈值 → 告警）
-- 滚动窗口 vs 全量数据 A/B 对比
+### 13. [P2] ✅ 自动再训练 (KL Drift Detection)
+- `retrain.go`: KLDivergence, SymmetricKL, MatrixDrift, Matrix2Drift, CheckDrift
+- 7天滚动窗口 vs 全量历史比较（1st + 2nd order 同时检测）
+- Symmetric KL > 0.15 触发 DRIFT_ALERT 日志告警
+- 集成到 scan 循环：每 6 次 scan (~6h) 自动运行
+- 6 单测覆盖 (identical/different distributions, same/different windows)
+- done: commit `95983a5`
 
 ---
 
@@ -217,3 +220,4 @@
 
 | Apr 27 | **#24 Regime Detection** + **#25 Signal Scoring** | HMM=MEAN_REVERT(100%); 信号评分: K=69/SIGNAL K=69/SIGNAL K=67/SIGNAL; regime_bias=1.0 (MR+bull+dip=中性) |
 | Apr 27 | **#12 二阶马尔科夫** — markov2.go + BlendedPrediction + multi_tf 集成 | 225 pair states; w2 adaptive (≥50obs→60%); multi_tf 已切 ALIGNED_BULL(0.51); 三阶暂缓(数据不够3375态) |
+| Apr 27 | **#13 自动再训练** — retrain.go + KL divergence drift detection | 7d滚动vs全量; SymmetricKL>0.15告警; 每6h检查1st+2nd order drift; 6单测 |
