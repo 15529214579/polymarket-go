@@ -17,17 +17,20 @@
 - 每次 scan 自动 fetch 1000 根 + 存 btc.db（interval='15m'）
 - done: commit `2bcbe3f`
 
-### 3. [P1] Fear & Greed Index 接入
+### 3. [P1] ✅ Fear & Greed Index 接入
 - alternative.me API（免费）
 - 极度恐慌 (<25) 时 dip 市场被高估概率更大
 - 极度贪婪 (>75) 时 reach 市场被低估概率更大
-- 作为 BS gap 的加权因子
+- SentimentModifier: fear dampens reach BUY_YES, amplifies dip BUY_NO
+- 持久化到 btc_sentiment 表
+- done: commit `141ef3d`
 
-### 4. [P1] Funding Rate 接入
+### 4. [P1] ✅ Funding Rate 接入
 - Binance perpetual BTCUSDT funding rate（8h 周期）
-- 正 funding = 多头拥挤 → 回调风险
-- 负 funding = 空头拥挤 → 反弹概率
-- 用于修正马尔科夫转移概率
+- 正 funding >0.05% = 多头拥挤 → dampen reach BUY_YES
+- 负 funding <-0.05% = 空头拥挤 → dampen dip BUY_YES
+- 集成到 SentimentModifier 统一输出乘数
+- done: commit `141ef3d`
 
 ### 5. [P2] ETF 资金流数据
 - SoSoValue / CoinGlass 公开 API
@@ -171,3 +174,4 @@
 | Apr 26 | 基础 Markov + BS + PM tracker + 1h 回测 | Markov 49.9% 掷硬币; BS gap 10-23pp 有价值 |
 | Apr 26 | BTC live strategy 上线 (1h scan, gap>7pp) | 首次扫描: $50K dip PM=42.5% BS=19% gap=-23pp |
 | Apr 26 | 5m/15m K线 + multi-TF Markov + PM delta tracking | MIXED(bull=2.7%,bear=2.9%) 放行全部 BS gap 信号 |
+| Apr 27 | F&G Index + Funding Rate 接入 + SentimentModifier | F&G=33(Fear), FR≈0, sent_mod=1.0（中性区间无调整） |
