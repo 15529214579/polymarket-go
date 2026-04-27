@@ -2,6 +2,8 @@ package risk
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -304,4 +306,53 @@ func TestDrawdown_DailyBreakerTakePrecedence(t *testing.T) {
 	if got := m.State().BlockReason; got != BlockDailyLoss {
 		t.Fatalf("expected BlockDailyLoss (checked first), got %q", got)
 	}
+}
+
+func TestSaveLoadState_SameDay(t *testing.T) {
+	now := time.Date(2026, 4, 27, 14, 0, 0, 0, time.UTC)
+	m := New(testCfg(), now)
+	m.OnClose(-5, now)
+	m.OnClose(-3, now)
+
+	path := filepath.Join(t.TempDir(), "risk.json")
+	if err := m.SaveState(path); err != nil {
+		t.Fatal(err)
+	}
+
+	m2 := New(testCfg(), now)
+	if err := m2.LoadState(path, now); err != nil {
+		t.Fatal(err)
+	}
+	if got := m2.State().DayRealizedPnL; got != -8 {
+		t.Fatalf("day pnl not restored: got %v want -8", got)
+	}
+}
+
+func TestLoadState_DifferentDay_IgnoresDayPnL(t *testing.T) {
+	yesterday := time.Date(2026, 4, 26, 14, 0, 0, 0, time.UTC)
+	m := New(testCfg(), yesterday)
+	m.OnClose(-10, yesterday)
+
+	path := filepath.Join(t.TempDir(), "risk.json")
+	_ = m.SaveState(path)
+
+	today := time.Date(2026, 4, 27, 14, 0, 0, 0, time.UTC)
+	m2 := New(testCfg(), today)
+	_ = m2.LoadState(path, today)
+	if got := m2.State().DayRealizedPnL; got != 0 {
+		t.Fatalf("should not restore yesterday's day pnl: got %v", got)
+	}
+	if got := m2.State().CumulativePnL; got != -10 {
+		t.Fatalf("cumulative pnl should restore: got %v want -10", got)
+	}
+}
+
+func TestLoadState_MissingFile(t *testing.T) {
+	now := time.Date(2026, 4, 27, 14, 0, 0, 0, time.UTC)
+	m := New(testCfg(), now)
+	err := m.LoadState(filepath.Join(t.TempDir(), "nonexistent.json"), now)
+	if err != nil {
+		t.Fatalf("missing file should not error: %v", err)
+	}
+	_ = os.TempDir() // suppress unused import
 }

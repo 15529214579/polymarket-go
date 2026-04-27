@@ -12,6 +12,7 @@ package strategy
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/15529214579/polymarket-go/internal/feed"
@@ -149,11 +150,30 @@ func (d *Detector) Run(ctx context.Context) error {
 				delete(d.pending, assetID)
 				w, ok := d.sampler.Window(assetID)
 				if !ok || w.Samples < d.cfg.MinSamplesWarm {
+					slog.Info("confirm_reject",
+						"asset", assetID[:min(8, len(assetID))],
+						"reason", "window_lost",
+						"orig_mid", pc.signal.Mid,
+					)
 					continue
 				}
-				if w.EndMid <= pc.signal.Mid-pc.signal.Mid*float64(d.cfg.MinDeltaPP)/100 {
+				threshold := pc.signal.Mid - pc.signal.Mid*float64(d.cfg.MinDeltaPP)/100
+				if w.EndMid <= threshold {
+					slog.Info("confirm_reject",
+						"asset", assetID[:min(8, len(assetID))],
+						"reason", "price_retrace",
+						"orig_mid", fmt.Sprintf("%.4f", pc.signal.Mid),
+						"cur_mid", fmt.Sprintf("%.4f", w.EndMid),
+						"threshold", fmt.Sprintf("%.4f", threshold),
+					)
 					continue
 				}
+				slog.Info("confirm_fire",
+					"asset", assetID[:min(8, len(assetID))],
+					"orig_mid", fmt.Sprintf("%.4f", pc.signal.Mid),
+					"cur_mid", fmt.Sprintf("%.4f", w.EndMid),
+					"delay", d.cfg.ConfirmDelay.String(),
+				)
 				pc.signal.Mid = w.EndMid
 				select {
 				case d.out <- pc.signal:

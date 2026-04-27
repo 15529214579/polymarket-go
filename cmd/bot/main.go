@@ -501,6 +501,18 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 	riskCfg := risk.DefaultConfig()
 	riskCfg.FeedConnected = ws.Connected
 	rm := risk.New(riskCfg, time.Now())
+	const riskStatePath = "db/risk_state.json"
+	if err := rm.LoadState(riskStatePath, time.Now()); err != nil {
+		slog.Warn("risk.load_state_failed", "err", err)
+	} else {
+		st := rm.State()
+		slog.Info("risk.state_loaded",
+			"day", st.Day,
+			"day_pnl", st.DayRealizedPnL,
+			"cumulative_pnl", st.CumulativePnL,
+			"blocked", st.Blocked,
+		)
+	}
 	notifier := buildNotifier()
 	defer func() {
 		sctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -519,6 +531,11 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 	const adminTrigger = "db/admin/send-prompt.trigger"
 	const adminResume = "db/admin/resume-risk.trigger"
 	_ = os.MkdirAll(filepath.Dir(adminTrigger), 0o755)
+	slog.Info("daemon.startup",
+		"pid", os.Getpid(),
+		"args", fmt.Sprintf("%v", os.Args[1:]),
+		"reason", os.Getenv("RESTART_REASON"),
+	)
 	slog.Info("paper_client.ready", "slippage_bp", slippageBp, "per_pos_usd", posCfg.PerPositionUSD)
 	slog.Info("risk.ready",
 		"bankroll_usd", riskCfg.StartingBankrollUSD,
@@ -563,20 +580,21 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 			slog.Warn("sidecar_chat_id_parse_fail", "err", err.Error())
 		} else {
 			h := &buyHandler{
-				pm:           pm,
-				exit:         exit,
-				ladder:       ladder,
-				paper:        paper,
-				rm:           rm,
-				pending:      pending,
-				closePending: closePending,
-				notifier:     notifier,
-				meta:         meta,
-				src:          src,
-				recorder:     recorder,
-				jrn:          jrn,
-				largeFillUSD: largeFillUSD,
-				exitMode:     exitMode,
+				pm:            pm,
+				exit:          exit,
+				ladder:        ladder,
+				paper:         paper,
+				rm:            rm,
+				pending:       pending,
+				closePending:  closePending,
+				notifier:      notifier,
+				meta:          meta,
+				src:           src,
+				recorder:      recorder,
+				jrn:           jrn,
+				largeFillUSD:  largeFillUSD,
+				exitMode:      exitMode,
+				riskStatePath: riskStatePath,
 			}
 			lp := notify.NewLongPoll(notify.LongPollConfig{
 				BotToken:       sidecarToken,
@@ -666,6 +684,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				if _, err := os.Stat(adminResume); err == nil {
 					_ = os.Remove(adminResume)
 					rm.Resume()
+					_ = rm.SaveState(riskStatePath)
 					slog.Info("risk_admin_resume", "by", "trigger_file")
 					notifier.RiskResume(notify.RiskResumeEvent{})
 				}
@@ -764,6 +783,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 									OpenPositions: stats.Open,
 								})
 							}
+							_ = rm.SaveState(riskStatePath)
 						}
 						if netPnL <= -largeFillUSD || netPnL >= largeFillUSD {
 							notifier.LargeFill(notify.LargeFillEvent{
@@ -922,6 +942,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 									OpenPositions: stats.Open,
 								})
 							}
+							_ = rm.SaveState(riskStatePath)
 						}
 						if netPnL <= -largeFillUSD || netPnL >= largeFillUSD {
 							notifier.LargeFill(notify.LargeFillEvent{
@@ -2115,6 +2136,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 								OpenPositions: stats.Open,
 							})
 						}
+						_ = rm.SaveState(riskStatePath)
 					}
 					if netPnL <= -largeFillUSD || netPnL >= largeFillUSD {
 						notifier.LargeFill(notify.LargeFillEvent{
@@ -2485,20 +2507,21 @@ func runPromptTest(ctx context.Context, _ float64) error {
 // Executes synchronously on the longpoll goroutine; Telegram dispatch of the
 // resulting DM is async via notifier.
 type buyHandler struct {
-	pm           *strategy.PositionManager
-	exit         *strategy.ExitTracker
-	ladder       *strategy.LadderTracker
-	paper        order.Client
-	rm           *risk.Manager
-	pending      *notify.PendingStore
-	closePending *notify.CloseStore
-	notifier     notify.Notifier
-	meta         map[string]*assetMeta
-	src          *sourceTracker
-	recorder     *tickrec.Recorder
-	jrn          *journal.Journal
-	largeFillUSD float64
-	exitMode     string
+	pm            *strategy.PositionManager
+	exit          *strategy.ExitTracker
+	ladder        *strategy.LadderTracker
+	paper         order.Client
+	rm            *risk.Manager
+	pending       *notify.PendingStore
+	closePending  *notify.CloseStore
+	notifier      notify.Notifier
+	meta          map[string]*assetMeta
+	src           *sourceTracker
+	recorder      *tickrec.Recorder
+	jrn           *journal.Journal
+	largeFillUSD  float64
+	exitMode      string
+	riskStatePath string
 }
 
 func (h *buyHandler) OnBuy(ctx context.Context, nonce string, slot int, sizeUSD float64, mode string, messageID int64) (string, error) {
@@ -2680,6 +2703,7 @@ func (h *buyHandler) OnClose(ctx context.Context, nonce string, messageID int64)
 					OpenPositions: stats.Open,
 				})
 			}
+			_ = h.rm.SaveState(h.riskStatePath)
 		}
 		if netPnL <= -h.largeFillUSD || netPnL >= h.largeFillUSD {
 			h.notifier.LargeFill(notify.LargeFillEvent{

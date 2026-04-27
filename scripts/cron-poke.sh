@@ -31,7 +31,7 @@ bot_was_down=0
 if echo "$bot_status" | grep -q 'NOT RUNNING'; then
   bot_was_down=1
   echo "[bot] not running, restarting" >> "$log"
-  "$ROOT/scripts/bot-daemon.sh" start >> "$log" 2>&1 || true
+  RESTART_REASON=cron-poke "$ROOT/scripts/bot-daemon.sh" start >> "$log" 2>&1 || true
   # Push immediate telegram alert (bypass cooldown) unless quiet window
   if [ "${quiet:-0}" = "0" ] && [ -f "$ROOT/.env.local" ]; then
     set -a; . "$ROOT/.env.local"; set +a

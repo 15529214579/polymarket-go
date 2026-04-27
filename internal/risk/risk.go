@@ -11,8 +11,10 @@
 package risk
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 )
@@ -282,4 +284,61 @@ func (m *Manager) rolloverLocked(now time.Time) {
 
 func (m *Manager) dailyCapAbs() float64 {
 	return m.cfg.StartingBankrollUSD * m.cfg.DailyLossPct
+}
+
+// persistedState is the on-disk format for surviving restarts.
+type persistedState struct {
+	Day           string      `json:"day"`
+	DayRealized   float64     `json:"day_realized"`
+	CumulativePnL float64     `json:"cumulative_pnl"`
+	PeakEquity    float64     `json:"peak_equity"`
+	Blocked       bool        `json:"blocked"`
+	BlockReason   BlockReason `json:"block_reason,omitempty"`
+}
+
+// SaveState writes the current risk state to a JSON file so it survives daemon restarts.
+func (m *Manager) SaveState(path string) error {
+	m.mu.Lock()
+	ps := persistedState{
+		Day:           m.day,
+		DayRealized:   m.dayRealized,
+		CumulativePnL: m.cumulativePnL,
+		PeakEquity:    m.peakEquity,
+		Blocked:       m.blocked,
+		BlockReason:   m.blockReason,
+	}
+	m.mu.Unlock()
+	data, err := json.MarshalIndent(ps, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
+}
+
+// LoadState restores risk state from a previously saved file. Only applies
+// state for the current day (same cfg.Loc timezone). If the file is from a
+// previous day, it is ignored — fresh start.
+func (m *Manager) LoadState(path string, now time.Time) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	var ps persistedState
+	if err := json.Unmarshal(data, &ps); err != nil {
+		return err
+	}
+	today := now.In(m.cfg.Loc).Format("2006-01-02")
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.cumulativePnL = ps.CumulativePnL
+	m.peakEquity = ps.PeakEquity
+	if ps.Day == today {
+		m.dayRealized = ps.DayRealized
+		m.blocked = ps.Blocked
+		m.blockReason = ps.BlockReason
+	}
+	return nil
 }

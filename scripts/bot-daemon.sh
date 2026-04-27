@@ -33,6 +33,7 @@ start() {
     return 0
   fi
   export PATH="/usr/local/go/bin:$PATH"
+  export RESTART_REASON="${RESTART_REASON:-manual}"
   ( cd "$ROOT" && go build -o bin/bot ./cmd/bot ) || { echo "build failed"; exit 1; }
   cd "$ROOT" || exit 1
   shift_args=("${@:2}")
@@ -41,7 +42,7 @@ start() {
   # whale SELL → close prompt with buttons. Lottery scanner still runs.
   # OddsPapi: Pinnacle sharp-line scanner for football (EPL/UCL/La Liga) at 3h.
   # fee_bp=0 matches CLOB V1; update after V2 cutover.
-  args=(-mode=detect -signal_mode=whale -exit_mode=ladder -markets=20 -window=60 -fee_bp=0 -injury_enabled -injury_interval=15m -whale_enabled "-whale_wallets=0xdb27bf2ac5d428a9c63dbc914611036855a6c56e|drpufferfish|1000|https://polymarket.com/@drpufferfish,0xbddf61af533ff524d27154e589d2d7a81510c684|countryside|1500|https://polymarket.com/@countryside,0xc2e7800b5af46e6093872b177b7a5e7f0563be51|beachboy4|5000|https://polymarket.com/@beachboy4" -oddspapi_enabled -oddspapi_interval=3h -oddspapi_bookmaker=pinnacle -oddspapi_sports=soccer_epl,soccer_spain_la_liga,soccer_uefa_champs_league -updown_enabled -updown_interval=10m -updown_confidence=0.40 -updown_size=5 -updown_max_daily=40 -updown_db=db/btc.db -btc_enabled)
+  args=(-mode=detect -signal_mode=whale -exit_mode=ladder -markets=20 -window=60 -fee_bp=0 -injury_enabled -injury_interval=15m -whale_enabled "-whale_wallets=0xdb27bf2ac5d428a9c63dbc914611036855a6c56e|drpufferfish|1000|https://polymarket.com/@drpufferfish,0xbddf61af533ff524d27154e589d2d7a81510c684|countryside|1500|https://polymarket.com/@countryside,0xc2e7800b5af46e6093872b177b7a5e7f0563be51|beachboy4|5000|https://polymarket.com/@beachboy4" -oddspapi_enabled -oddspapi_interval=3h -oddspapi_bookmaker=pinnacle -oddspapi_sports=soccer_epl,soccer_spain_la_liga,soccer_uefa_champs_league -updown_enabled -updown_interval=10m -updown_confidence=0.40 -updown_size=5 -updown_max_daily=40 -updown_db=db/btc.db)
   if [ "${#shift_args[@]}" -gt 0 ]; then
     args=("${shift_args[@]}")
   fi
