@@ -151,6 +151,8 @@ type InjuryAlertEvent struct {
 	OpponentName   string
 	OpponentInj    []InjuryInfo // all injuries on the opponent
 	MatchTitle     string       // "Lakers vs Rockets" — the game matchup
+	GameContext    string       // "Game 5 · 季后赛第一轮" etc.
+	GameTime      time.Time    // tipoff / market end time
 }
 
 type InjuryInfo struct {
@@ -360,11 +362,18 @@ func FormatSignalFilled(ev FillReceiptEvent) string {
 func FormatInjuryAlert(ev InjuryAlertEvent) string {
 	var b strings.Builder
 
-	// Header: matchup
+	// Header: matchup + game info + time
 	if ev.MatchTitle != "" {
 		fmt.Fprintf(&b, "🏀 %s\n", ev.MatchTitle)
 	}
-	b.WriteString("━━━━━━━━━━━━━━━━━━━\n")
+	if ev.GameContext != "" {
+		fmt.Fprintf(&b, "📅 %s\n", ev.GameContext)
+	}
+	if !ev.GameTime.IsZero() {
+		sgt := ev.GameTime.In(time.FixedZone("SGT", 8*3600))
+		fmt.Fprintf(&b, "⏰ %s SGT\n", sgt.Format("01/02 15:04"))
+	}
+	b.WriteString("━━━━━━━━━━━━━━━━━━━\n\n")
 
 	// Trigger: who just went down
 	icon := "🏥"
@@ -376,7 +385,6 @@ func FormatInjuryAlert(ev InjuryAlertEvent) string {
 		icon = "🚨"
 	}
 
-	// Find the trigger player's role/impact from TeamInjuries
 	triggerRole := ""
 	triggerImpact := 0
 	for _, inj := range ev.TeamInjuries {
@@ -426,7 +434,6 @@ func FormatInjuryAlert(ev InjuryAlertEvent) string {
 	}
 	fmt.Fprintf(&b, "  💔 缺阵 %d 人 · 损失实力 ~%d%%\n", teamOutCount, teamOutPct)
 
-	// Opponent injury roster
 	b.WriteString("\n")
 	oppOutPct := 0
 	oppOutCount := 0
@@ -456,7 +463,7 @@ func FormatInjuryAlert(ev InjuryAlertEvent) string {
 		fmt.Fprintf(&b, "  💔 缺阵 %d 人 · 损失实力 ~%d%%\n", oppOutCount, oppOutPct)
 	}
 
-	// Verdict: side-by-side comparison
+	// Verdict
 	b.WriteString("\n⚖️ 阵容对比:\n")
 	fmt.Fprintf(&b, "  %s: -%d%% 实力（缺 %d 人）\n", ev.Team, teamOutPct, teamOutCount)
 	if ev.OpponentName != "" {
@@ -464,7 +471,6 @@ func FormatInjuryAlert(ev InjuryAlertEvent) string {
 	}
 	b.WriteString("\n")
 
-	// Winner assessment
 	if ev.OpponentName != "" {
 		diff := teamOutPct - oppOutPct
 		if diff > 15 {

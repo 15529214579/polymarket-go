@@ -107,15 +107,24 @@ func isStar(team, player string) bool {
 	return false
 }
 
+type GameInfo struct {
+	HomeTeam   string
+	AwayTeam   string
+	Tipoff     time.Time
+	Status     string // "Scheduled" / "In Progress" / "Final"
+	SeriesNote string // "Game 5 · Series tied 2-2" etc.
+}
+
 type Scanner struct {
 	cfg      Config
 	client   *http.Client
 	seen     map[string]time.Time // "2006-01-02:team:player:status" → alert time
 	seenPath string               // persistence file path
 
-	mu       sync.RWMutex
-	cache    map[string][]InjuryEntry // team → current star injuries (refreshed each Scan)
-	allCache map[string][]InjuryEntry // team → ALL injuries (stars + non-stars, OUT/Doubtful/Questionable)
+	mu        sync.RWMutex
+	cache     map[string][]InjuryEntry // team → current star injuries (refreshed each Scan)
+	allCache  map[string][]InjuryEntry // team → ALL injuries (stars + non-stars, OUT/Doubtful/Questionable)
+	games     map[string]GameInfo      // team name → today's game (both teams point to same GameInfo)
 }
 
 func NewScanner(cfg Config, dbDir string) *Scanner {
@@ -126,6 +135,7 @@ func NewScanner(cfg Config, dbDir string) *Scanner {
 		seenPath: filepath.Join(dbDir, "injury_seen.json"),
 		cache:    make(map[string][]InjuryEntry),
 		allCache: make(map[string][]InjuryEntry),
+		games:    make(map[string]GameInfo),
 	}
 	s.loadSeen()
 	return s
@@ -188,6 +198,12 @@ func (s *Scanner) Scan(ctx context.Context) ([]InjuryAlert, error) {
 	entries, err := s.fetchInjuries(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("injury fetch: %w", err)
+	}
+
+	if games, err := s.fetchScoreboard(ctx); err == nil {
+		s.mu.Lock()
+		s.games = games
+		s.mu.Unlock()
 	}
 
 	now := time.Now()
@@ -391,4 +407,97 @@ func parseStatus(s string) PlayerStatus {
 	default:
 		return StatusAvail
 	}
+}
+
+func (s *Scanner) GameFor(team string) (GameInfo, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	g, ok := s.games[team]
+	return g, ok
+}
+
+type espnScoreboard struct {
+	Events []struct {
+		Date         string `json:"date"`
+		Competitions []struct {
+			Status struct {
+				Type struct {
+					Description string `json:"description"`
+				} `json:"type"`
+			} `json:"status"`
+			Competitors []struct {
+				HomeAway string `json:"homeAway"`
+				Team     struct {
+					DisplayName string `json:"displayName"`
+				} `json:"team"`
+			} `json:"competitors"`
+			Series struct {
+				Summary string `json:"summary"`
+				Title   string `json:"title"`
+			} `json:"series"`
+		} `json:"competitions"`
+	} `json:"events"`
+}
+
+func (s *Scanner) fetchScoreboard(ctx context.Context) (map[string]GameInfo, error) {
+	url := "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard"
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "polymarket-go/1.0")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return nil, fmt.Errorf("espn scoreboard %d: %s", resp.StatusCode, body)
+	}
+
+	var data espnScoreboard
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return nil, fmt.Errorf("espn scoreboard decode: %w", err)
+	}
+
+	games := make(map[string]GameInfo)
+	for _, ev := range data.Events {
+		if len(ev.Competitions) == 0 {
+			continue
+		}
+		comp := ev.Competitions[0]
+		var home, away string
+		for _, c := range comp.Competitors {
+			if c.HomeAway == "home" {
+				home = c.Team.DisplayName
+			} else {
+				away = c.Team.DisplayName
+			}
+		}
+		tipoff, _ := time.Parse(time.RFC3339, ev.Date)
+
+		seriesNote := ""
+		if comp.Series.Title != "" {
+			seriesNote = comp.Series.Title
+			if comp.Series.Summary != "" {
+				seriesNote += " · " + comp.Series.Summary
+			}
+		}
+
+		gi := GameInfo{
+			HomeTeam:   home,
+			AwayTeam:   away,
+			Tipoff:     tipoff,
+			Status:     comp.Status.Type.Description,
+			SeriesNote: seriesNote,
+		}
+		games[home] = gi
+		games[away] = gi
+	}
+
+	slog.Info("scoreboard_fetch", "games", len(data.Events))
+	return games, nil
 }

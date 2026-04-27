@@ -3007,6 +3007,11 @@ func injuryTeamInMarkets(team string, meta map[string]*assetMeta, assetSport map
 
 // injuryFindOpponent returns the opponent team name for a given team by scanning PM markets.
 func injuryFindOpponent(team string, meta map[string]*assetMeta, assetSport map[string]strategy.SportFamily) string {
+	opp, _, _ := injuryFindOpponentAndGame(team, meta, assetSport)
+	return opp
+}
+
+func injuryFindOpponentAndGame(team string, meta map[string]*assetMeta, assetSport map[string]strategy.SportFamily) (opponent, gameCtx string, gameTime time.Time) {
 	lt := strings.ToLower(team)
 	for assetID, me := range meta {
 		if assetSport[assetID] != strategy.SportBasketball {
@@ -3019,10 +3024,10 @@ func injuryFindOpponent(team string, meta map[string]*assetMeta, assetSport map[
 			continue
 		}
 		if sib := meta[me.Sibling]; sib != nil {
-			return sib.Outcome
+			return sib.Outcome, me.Context, me.EndTime
 		}
 	}
-	return ""
+	return "", "", time.Time{}
 }
 
 // injuryBuildAlertEvent constructs a rich InjuryAlertEvent with both teams' injury context.
@@ -3058,15 +3063,38 @@ func injuryBuildAlertEvent(a injury.InjuryAlert, injScanner *injury.Scanner, met
 		}
 	}
 
-	// Find opponent and their injuries
-	opponent := injuryFindOpponent(a.Team, meta, assetSport)
-	if opponent != "" {
-		ev.OpponentName = opponent
-		ev.MatchTitle = a.Team + " vs " + opponent
+	// Use ESPN scoreboard for accurate game time and series info
+	if gi, ok := injScanner.GameFor(a.Team); ok {
+		if a.Team == gi.HomeTeam || strings.Contains(strings.ToLower(a.Team), strings.ToLower(gi.HomeTeam)) {
+			ev.OpponentName = gi.AwayTeam
+			ev.MatchTitle = gi.AwayTeam + " @ " + gi.HomeTeam
+		} else {
+			ev.OpponentName = gi.HomeTeam
+			ev.MatchTitle = a.Team + " @ " + gi.HomeTeam
+		}
+		ev.GameTime = gi.Tipoff
+		ev.GameContext = gi.SeriesNote
+		if gi.Status != "" && gi.Status != "Scheduled" {
+			ev.GameContext += " (" + gi.Status + ")"
+		}
 
-		oppEntries := injScanner.AllInjuries(opponent)
+		oppEntries := injScanner.AllInjuries(ev.OpponentName)
 		for _, e := range oppEntries {
-			ev.OpponentInj = append(ev.OpponentInj, buildInfo(opponent, e))
+			ev.OpponentInj = append(ev.OpponentInj, buildInfo(ev.OpponentName, e))
+		}
+	} else {
+		// Fallback to PM market data
+		opponent, gameCtx, gameTime := injuryFindOpponentAndGame(a.Team, meta, assetSport)
+		if opponent != "" {
+			ev.OpponentName = opponent
+			ev.MatchTitle = a.Team + " vs " + opponent
+			ev.GameContext = gameCtx
+			ev.GameTime = gameTime
+
+			oppEntries := injScanner.AllInjuries(opponent)
+			for _, e := range oppEntries {
+				ev.OpponentInj = append(ev.OpponentInj, buildInfo(opponent, e))
+			}
 		}
 	}
 
