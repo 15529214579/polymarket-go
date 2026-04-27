@@ -1701,7 +1701,11 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				var order []gameKey
 				for _, a := range alerts {
 					if !injuryTeamInMarkets(a.Team, meta, assetSport) {
-						continue
+						// Fallback: also allow if ESPN scoreboard has an upcoming game for this team
+						if _, hasGame := injScanner.GameFor(a.Team); !hasGame {
+							slog.Info("injury_skip_no_market", "team", a.Team, "player", a.StarPlayer)
+							continue
+						}
 					}
 					if injuryGameFinished(a.Team, injScanner) {
 						slog.Info("injury_skip_final", "team", a.Team, "player", a.StarPlayer)
@@ -3398,12 +3402,43 @@ func injuryBuildAlertEvent(a injury.InjuryAlert, injScanner *injury.Scanner, met
 						ev.OpponentPrice = w.EndMid
 					}
 				}
+				ev.Slug = me.Slug
 				break
 			}
 		}
 	}
 
+	// Fallback: generate slug from ESPN game data when not found in WSS-tracked markets
+	if ev.Slug == "" && !ev.GameTime.IsZero() {
+		if gi, ok := injScanner.GameFor(a.Team); ok {
+			ev.Slug = injuryGuessSlug(gi.AwayTeam, gi.HomeTeam, ev.GameTime)
+		}
+	}
+
 	return ev
+}
+
+// injuryGuessSlug generates a PM-style slug from team names and game date.
+// PM NBA slugs follow the pattern: nba-{away_abbr}-{home_abbr}-YYYY-MM-DD
+func injuryGuessSlug(teamA, teamB string, gameTime time.Time) string {
+	abbr := map[string]string{
+		"Atlanta Hawks": "atl", "Boston Celtics": "bos", "Brooklyn Nets": "bkn",
+		"Charlotte Hornets": "cha", "Chicago Bulls": "chi", "Cleveland Cavaliers": "cle",
+		"Dallas Mavericks": "dal", "Denver Nuggets": "den", "Detroit Pistons": "det",
+		"Golden State Warriors": "gsw", "Houston Rockets": "hou", "Indiana Pacers": "ind",
+		"LA Clippers": "lac", "Los Angeles Lakers": "lal", "Memphis Grizzlies": "mem",
+		"Miami Heat": "mia", "Milwaukee Bucks": "mil", "Minnesota Timberwolves": "min",
+		"New Orleans Pelicans": "nop", "New York Knicks": "nyk", "Oklahoma City Thunder": "okc",
+		"Orlando Magic": "orl", "Philadelphia 76ers": "phi", "Phoenix Suns": "phx",
+		"Portland Trail Blazers": "por", "Sacramento Kings": "sac", "San Antonio Spurs": "sas",
+		"Toronto Raptors": "tor", "Utah Jazz": "uta", "Washington Wizards": "was",
+	}
+	a, b := abbr[teamA], abbr[teamB]
+	if a == "" || b == "" {
+		return ""
+	}
+	utcDate := gameTime.UTC().Format("2006-01-02")
+	return fmt.Sprintf("nba-%s-%s-%s", a, b, utcDate)
 }
 
 // injuryPushOpponentPrompt finds the PM market for an injured team's game and

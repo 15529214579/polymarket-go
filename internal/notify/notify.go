@@ -158,6 +158,7 @@ type InjuryAlertEvent struct {
 	GameTime      time.Time      // tipoff / market end time
 	TeamPrice      float64        // PM price for the injured team (0 if unknown)
 	OpponentPrice  float64        // PM price for the opponent team (0 if unknown)
+	Slug           string         // PM market slug for newshare link
 }
 
 type InjuryInfo struct {
@@ -463,6 +464,10 @@ func FormatInjuryAlert(ev InjuryAlertEvent) string {
 		default:
 			b.WriteString("🤝 双方伤情接近 · 影响基本抵消")
 		}
+	}
+
+	if ev.Slug != "" {
+		fmt.Fprintf(&b, "\nhttps://newshare.bwb.online/zh/polymarket/event?slug=%s&_nobar=true&_needChain=matic", ev.Slug)
 	}
 
 	return b.String()
