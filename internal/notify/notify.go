@@ -38,6 +38,8 @@ type Notifier interface {
 	// InjuryAlert pushes an NBA injury alert DM. Guarded by -injury_enabled flag;
 	// to remove: delete this method + InjuryAlertEvent + FormatInjuryAlert.
 	InjuryAlert(ev InjuryAlertEvent)
+	// TextAlert pushes a pre-formatted text alert (used by new strategy scanners).
+	TextAlert(text string)
 	// WhaleAlert pushes a smart-money whale trade notification. Guarded by
 	// -whale_enabled flag; to remove: delete this method + WhaleAlertEvent +
 	// FormatWhaleAlert.

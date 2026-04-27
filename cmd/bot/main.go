@@ -20,6 +20,8 @@ import (
 	"github.com/15529214579/polymarket-go/internal/arb"
 	"github.com/15529214579/polymarket-go/internal/btc"
 	"github.com/15529214579/polymarket-go/internal/config"
+	"github.com/15529214579/polymarket-go/internal/elon"
+	"github.com/15529214579/polymarket-go/internal/eurovision"
 	"github.com/15529214579/polymarket-go/internal/feed"
 	"github.com/15529214579/polymarket-go/internal/injury"
 	"github.com/15529214579/polymarket-go/internal/journal"
@@ -100,6 +102,16 @@ func main() {
 	updownSize := flag.Float64("updown_size", 5.0, "Up/Down per-trade size in USDC")
 	updownMaxDaily := flag.Int("updown_max_daily", 20, "Up/Down max bets per day")
 	updownDB := flag.String("updown_db", "db/btc.db", "SQLite path for Up/Down bet tracking")
+	// Phase 10: new strategy scanners
+	btcDailyEnabled := flag.Bool("btc_daily_enabled", false, "enable BTC daily threshold scanner")
+	btcDailyInterval := flag.Duration("btc_daily_interval", 15*time.Minute, "BTC daily threshold scan interval")
+	btcDailyMinEdge := flag.Float64("btc_daily_min_edge_pp", 5.0, "BTC daily minimum edge in pp to signal")
+	elonEnabled := flag.Bool("elon_enabled", false, "enable Elon tweet count scanner")
+	elonInterval := flag.Duration("elon_interval", 30*time.Minute, "Elon tweet count scan interval")
+	elonMinEdge := flag.Float64("elon_min_edge_pp", 5.0, "Elon minimum edge in pp to signal")
+	eurovisionEnabled := flag.Bool("eurovision_enabled", false, "enable Eurovision odds scanner")
+	eurovisionInterval := flag.Duration("eurovision_interval", 6*time.Hour, "Eurovision scan interval")
+	eurovisionMinEdge := flag.Float64("eurovision_min_edge_pp", 5.0, "Eurovision minimum edge in pp to signal")
 	flag.Parse()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -190,7 +202,18 @@ func main() {
 				MaxDailyBets:  *updownMaxDaily,
 				DBPath:        *updownDB,
 			}
-			if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, *arbEnabled, *arbInterval, *arbMinGapPP, *arbDBPath, injCfg, whaleCfg, oddsPapiCfg, *confirmDelay, btcCfg, updownCfg); err != nil && ctx.Err() == nil {
+			p10 := phase10Config{
+				BTCDailyEnabled:    *btcDailyEnabled,
+				BTCDailyInterval:   *btcDailyInterval,
+				BTCDailyMinEdge:    *btcDailyMinEdge,
+				ElonEnabled:        *elonEnabled,
+				ElonInterval:       *elonInterval,
+				ElonMinEdge:        *elonMinEdge,
+				EurovisionEnabled:  *eurovisionEnabled,
+				EurovisionInterval: *eurovisionInterval,
+				EurovisionMinEdge:  *eurovisionMinEdge,
+			}
+			if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, *arbEnabled, *arbInterval, *arbMinGapPP, *arbDBPath, injCfg, whaleCfg, oddsPapiCfg, *confirmDelay, btcCfg, updownCfg, p10); err != nil && ctx.Err() == nil {
 			slog.Error("detect failed", "err", err)
 			os.Exit(1)
 		}
@@ -405,7 +428,19 @@ func runSample(ctx context.Context, topN, windowSec int) error {
 	return ws.Run(ctx)
 }
 
-func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, arbEnabled bool, arbInterval time.Duration, arbMinGapPP float64, arbDBPath string, injCfg injury.Config, whaleCfg whale.Config, oddsPapiCfg odds.OddsPapiConfig, confirmDelay time.Duration, btcCfg btc.StrategyConfig, updownCfg btc.UpDownConfig) error {
+type phase10Config struct {
+	BTCDailyEnabled    bool
+	BTCDailyInterval   time.Duration
+	BTCDailyMinEdge    float64
+	ElonEnabled        bool
+	ElonInterval       time.Duration
+	ElonMinEdge        float64
+	EurovisionEnabled  bool
+	EurovisionInterval time.Duration
+	EurovisionMinEdge  float64
+}
+
+func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, arbEnabled bool, arbInterval time.Duration, arbMinGapPP float64, arbDBPath string, injCfg injury.Config, whaleCfg whale.Config, oddsPapiCfg odds.OddsPapiConfig, confirmDelay time.Duration, btcCfg btc.StrategyConfig, updownCfg btc.UpDownConfig, p10 phase10Config) error {
 	if signalMode != "auto" && signalMode != "prompt" && signalMode != "whale" {
 		return fmt.Errorf("invalid signal_mode %q (want auto|prompt|whale)", signalMode)
 	}
@@ -2012,6 +2047,125 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				)
 			}); err != nil && ctx.Err() == nil {
 				slog.Warn("updown_strategy_exit", "err", err.Error())
+			}
+		}()
+	}
+
+	// Phase 10: BTC Daily Threshold scanner
+	if p10.BTCDailyEnabled {
+		go func() {
+			slog.Info("btc_daily_scanner.start", "interval", p10.BTCDailyInterval.String(), "min_edge_pp", p10.BTCDailyMinEdge)
+			if sigs, err := btc.ScanDailyBTC(ctx, p10.BTCDailyMinEdge); err != nil {
+				slog.Warn("btc_daily_scan_err", "err", err.Error())
+			} else {
+				for _, s := range sigs {
+					msg := btc.FormatDailySignal(s)
+					slog.Info("btc_daily_signal", "slug", s.Market.Slug, "side", s.Side, "edge_pp", fmt.Sprintf("%.1f", s.Edge*100))
+					notifier.TextAlert(msg)
+				}
+			}
+			tk := time.NewTicker(p10.BTCDailyInterval)
+			defer tk.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-tk.C:
+					sigs, err := btc.ScanDailyBTC(ctx, p10.BTCDailyMinEdge)
+					if err != nil {
+						slog.Warn("btc_daily_scan_err", "err", err.Error())
+						continue
+					}
+					slog.Info("btc_daily_scan", "signals", len(sigs))
+					for _, s := range sigs {
+						msg := btc.FormatDailySignal(s)
+						slog.Info("btc_daily_signal", "slug", s.Market.Slug, "side", s.Side, "edge_pp", fmt.Sprintf("%.1f", s.Edge*100))
+						notifier.TextAlert(msg)
+					}
+				}
+			}
+		}()
+	}
+
+	// Phase 10: Elon tweet count scanner
+	if p10.ElonEnabled {
+		go func() {
+			xToken := os.Getenv("X_BEARER_TOKEN")
+			if xToken == "" {
+				slog.Warn("elon_scanner.disabled", "reason", "X_BEARER_TOKEN not set")
+				return
+			}
+			slog.Info("elon_scanner.start", "interval", p10.ElonInterval.String(), "min_edge_pp", p10.ElonMinEdge)
+			tk := time.NewTicker(p10.ElonInterval)
+			defer tk.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-tk.C:
+					markets, err := elon.FetchElonMarkets(ctx)
+					if err != nil {
+						slog.Warn("elon_fetch_err", "err", err.Error())
+						continue
+					}
+					if len(markets) == 0 {
+						slog.Info("elon_scan", "markets", 0)
+						continue
+					}
+					m0 := markets[0]
+					count, err := elon.CountTweetsViaSearch(ctx, xToken, m0.Start, time.Now().UTC())
+					if err != nil {
+						slog.Warn("elon_count_err", "err", err.Error())
+						continue
+					}
+					hoursLeft := m0.End.Sub(time.Now().UTC()).Hours()
+					sigs := elon.EvalSignals(markets, count, hoursLeft, p10.ElonMinEdge)
+					slog.Info("elon_scan", "markets", len(markets), "count", count, "hours_left", fmt.Sprintf("%.1f", hoursLeft), "signals", len(sigs))
+					for _, s := range sigs {
+						msg := elon.FormatTweetSignal(s)
+						slog.Info("elon_signal", "range", fmt.Sprintf("%d-%d", s.Market.RangeLo, s.Market.RangeHi), "side", s.Side, "edge_pp", fmt.Sprintf("%.1f", s.Edge*100))
+						notifier.TextAlert(msg)
+					}
+				}
+			}
+		}()
+	}
+
+	// Phase 10: Eurovision odds scanner
+	if p10.EurovisionEnabled {
+		go func() {
+			oddsKey := os.Getenv("ODDS_API_KEY")
+			if oddsKey == "" {
+				slog.Warn("eurovision_scanner.disabled", "reason", "ODDS_API_KEY not set")
+				return
+			}
+			slog.Info("eurovision_scanner.start", "interval", p10.EurovisionInterval.String(), "min_edge_pp", p10.EurovisionMinEdge)
+			tk := time.NewTicker(p10.EurovisionInterval)
+			defer tk.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-tk.C:
+					markets, err := eurovision.FetchEurovisionMarkets(ctx)
+					if err != nil {
+						slog.Warn("eurovision_fetch_err", "err", err.Error())
+						continue
+					}
+					oddsEntries, err := eurovision.FetchEurovisionOdds(ctx, oddsKey)
+					if err != nil {
+						slog.Warn("eurovision_odds_err", "err", err.Error())
+						continue
+					}
+					consensus := eurovision.ConsensusOdds(oddsEntries)
+					sigs := eurovision.EvalSignals(markets, consensus, p10.EurovisionMinEdge)
+					slog.Info("eurovision_scan", "markets", len(markets), "odds_entries", len(oddsEntries), "signals", len(sigs))
+					for _, s := range sigs {
+						msg := eurovision.FormatSignal(s)
+						slog.Info("eurovision_signal", "country", s.Market.Country, "side", s.Side, "edge_pp", fmt.Sprintf("%.1f", s.Edge*100))
+						notifier.TextAlert(msg)
+					}
+				}
 			}
 		}()
 	}

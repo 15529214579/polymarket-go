@@ -97,6 +97,28 @@ func TestIsDota2Market(t *testing.T) {
 	}
 }
 
+func TestIsTennisMarket(t *testing.T) {
+	cases := []struct {
+		slug string
+		want bool
+	}{
+		{"wta-sabalen-osaka-2026-04-27", true},
+		{"wta-bencic-baptist-2026-04-27", true},
+		{"wta-sierra-pliskov-2026-04-27", true},
+		{"wta-you-lu-2026-04-27", true},
+		{"wta-andreev-bondar-2026-04-27", true},
+		{"atp-tsitsip-aguilar-2026-04-27", true},
+		{"atp-atmane-zverev-2026-04-26", true},
+		{"will-lorenzo-musetti-win-the-2026-mens-french-open", false}, // seasonal
+		{"nba-atl-nyk-2026-04-20", false},
+	}
+	for _, c := range cases {
+		if got := IsTennisMarket(Market{Slug: c.slug}); got != c.want {
+			t.Errorf("%s: got %v want %v", c.slug, got, c.want)
+		}
+	}
+}
+
 func TestFilterSports_UnionAndOrder(t *testing.T) {
 	in := []Market{
 		{Question: "LoL: T1 vs Gen.G - LCK Spring", Slug: "lol-lck-t1-geng-2026-04-19"},
@@ -107,10 +129,12 @@ func TestFilterSports_UnionAndOrder(t *testing.T) {
 		{Slug: "election-2026"},                            // excluded
 		{Slug: "nba-playoffs-who-will-win-series-foo-bar"},
 		{Question: "LoL: Fnatic vs G2 - LEC Regular", Slug: "lol-lec-fnc-g2-2026-04-19"}, // excluded (LEC)
+		{Slug: "wta-sabalen-osaka-2026-04-27"},
+		{Slug: "atp-tsitsip-aguilar-2026-04-27"},
 	}
 	out := FilterSports(in)
-	if len(out) != 5 {
-		t.Fatalf("want 5, got %d", len(out))
+	if len(out) != 7 {
+		t.Fatalf("want 7, got %d", len(out))
 	}
 	want := []string{
 		"lol-lck-t1-geng-2026-04-19",
@@ -118,6 +142,8 @@ func TestFilterSports_UnionAndOrder(t *testing.T) {
 		"epl-cry-wes-2026-04-20-cry",
 		"dota2-gl-heroic-2026-04-22",
 		"nba-playoffs-who-will-win-series-foo-bar",
+		"wta-sabalen-osaka-2026-04-27",
+		"atp-tsitsip-aguilar-2026-04-27",
 	}
 	for i, m := range out {
 		if m.Slug != want[i] {

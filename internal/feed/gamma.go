@@ -182,6 +182,8 @@ var (
 	reNBAPlayoffs = regexp.MustCompile(`^nba-playoffs-`) // series-winner in-play
 	reEPLDaily    = regexp.MustCompile(`^epl-[a-z]{2,4}-[a-z]{2,4}-\d{4}-\d{2}-\d{2}`)
 	reDota2Daily  = regexp.MustCompile(`^dota2-[a-z0-9]+-[a-z0-9]+-\d{4}-\d{2}-\d{2}`)
+	reWTADaily    = regexp.MustCompile(`^wta-[a-z]+-[a-z]+-\d{4}-\d{2}-\d{2}`)
+	reATPDaily    = regexp.MustCompile(`^atp-[a-z]+-[a-z]+-\d{4}-\d{2}-\d{2}`)
 )
 
 // isMoneylineSlug — exclude derivatives (spread / total / over-under / prop)
@@ -226,10 +228,19 @@ func IsDota2Market(m Market) bool {
 	return reDota2Daily.MatchString(slug)
 }
 
-// IsSportsMarket — union of LoL + basketball + football (soccer) + Dota 2.
+// IsTennisMarket — WTA/ATP daily matchups, moneyline only.
+func IsTennisMarket(m Market) bool {
+	slug := strings.ToLower(m.Slug)
+	if !isMoneylineSlug(slug) {
+		return false
+	}
+	return reWTADaily.MatchString(slug) || reATPDaily.MatchString(slug)
+}
+
+// IsSportsMarket — union of LoL + basketball + football (soccer) + Dota 2 + tennis.
 // Used for subscription targeting. Keep narrow: only in-play daily / series markets.
 func IsSportsMarket(m Market) bool {
-	return IsLoLMarket(m) || IsBasketballMarket(m) || IsFootballMarket(m) || IsDota2Market(m)
+	return IsLoLMarket(m) || IsBasketballMarket(m) || IsFootballMarket(m) || IsDota2Market(m) || IsTennisMarket(m)
 }
 
 // FilterLoL returns only LoL markets from a list.

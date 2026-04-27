@@ -186,6 +186,10 @@ func (t *Telegram) InjuryAlert(ev InjuryAlertEvent) {
 	t.enqueue(outgoing{text: FormatInjuryAlert(ev), tag: "injury_alert"})
 }
 
+func (t *Telegram) TextAlert(text string) {
+	t.enqueue(outgoing{text: text, tag: "text_alert"})
+}
+
 // ClosePrompt enqueues a DM with a close button when a whale sells an asset
 // we hold. The boss clicks "✅ 平仓" to confirm or ignores.
 func (t *Telegram) ClosePrompt(ev ClosePromptEvent) {

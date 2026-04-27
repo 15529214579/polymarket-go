@@ -14,6 +14,7 @@ func (Nop) EditSignalExpired(int64)                  {}
 func (Nop) EditSignalFilled(FillReceiptEvent, int64) {}
 func (Nop) FillReceipt(FillReceiptEvent)             {}
 func (Nop) InjuryAlert(InjuryAlertEvent)             {}
+func (Nop) TextAlert(string)                         {}
 func (Nop) WhaleAlert(WhaleAlertEvent)               {}
 func (Nop) ClosePrompt(ClosePromptEvent)             {}
 func (Nop) EditCloseDone(string, int64)              {}
