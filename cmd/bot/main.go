@@ -1062,7 +1062,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 
 	// Injury scanner: created before signal/lottery goroutines so both can
 	// call injScanner.HasInjuredStar(). Returns nil/false when disabled.
-	injScanner := injury.NewScanner(injCfg)
+	injScanner := injury.NewScanner(injCfg, "db")
 
 	go func() {
 		for {

@@ -104,12 +104,12 @@ func TestScanFiltersCorrectly(t *testing.T) {
 
 func TestScanDedup(t *testing.T) {
 	cfg := Config{Enabled: true, StarOnly: true}
-	scanner := NewScanner(cfg)
+	scanner := NewScanner(cfg, t.TempDir())
 
-	// Manually add to seen
-	scanner.seen["Denver Nuggets:Nikola Jokic"] = time.Now()
+	// Manually add to seen with today's date-based key
+	key := scanner.seenKey("Denver Nuggets", "Nikola Jokic", StatusOut)
+	scanner.seen[key] = time.Now()
 
-	// Scan logic should skip already-seen within 6h
 	entries := []InjuryEntry{
 		{Player: "Nikola Jokic", Team: "Denver Nuggets", Status: StatusOut},
 	}
@@ -124,8 +124,8 @@ func TestScanDedup(t *testing.T) {
 			if !isStar(team, e.Player) {
 				continue
 			}
-			key := team + ":" + e.Player
-			if last, ok := scanner.seen[key]; ok && time.Since(last) < 6*time.Hour {
+			k := scanner.seenKey(team, e.Player, e.Status)
+			if _, ok := scanner.seen[k]; ok {
 				continue
 			}
 			alerts = append(alerts, InjuryAlert{StarPlayer: e.Player})
@@ -137,8 +137,23 @@ func TestScanDedup(t *testing.T) {
 	}
 }
 
+func TestSeenPersistence(t *testing.T) {
+	dir := t.TempDir()
+	cfg := Config{Enabled: true, StarOnly: true}
+
+	s1 := NewScanner(cfg, dir)
+	key := s1.seenKey("Denver Nuggets", "Nikola Jokic", StatusOut)
+	s1.seen[key] = time.Now()
+	s1.saveSeen()
+
+	s2 := NewScanner(cfg, dir)
+	if _, ok := s2.seen[key]; !ok {
+		t.Error("seen state not persisted across restarts")
+	}
+}
+
 func TestDisabledScanReturnsNil(t *testing.T) {
-	scanner := NewScanner(DefaultConfig()) // Enabled=false by default
+	scanner := NewScanner(DefaultConfig(), t.TempDir())
 	alerts, err := scanner.Scan(context.Background())
 	if err != nil || alerts != nil {
 		t.Errorf("disabled scan should return nil, nil; got %v, %v", alerts, err)

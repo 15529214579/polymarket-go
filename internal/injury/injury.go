@@ -10,6 +10,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -106,23 +108,52 @@ func isStar(team, player string) bool {
 }
 
 type Scanner struct {
-	cfg    Config
-	client *http.Client
-	seen   map[string]time.Time // "team:player" → last alert time
+	cfg      Config
+	client   *http.Client
+	seen     map[string]time.Time // "2006-01-02:team:player:status" → alert time
+	seenPath string               // persistence file path
 
 	mu       sync.RWMutex
 	cache    map[string][]InjuryEntry // team → current star injuries (refreshed each Scan)
 	allCache map[string][]InjuryEntry // team → ALL injuries (stars + non-stars, OUT/Doubtful/Questionable)
 }
 
-func NewScanner(cfg Config) *Scanner {
-	return &Scanner{
+func NewScanner(cfg Config, dbDir string) *Scanner {
+	s := &Scanner{
 		cfg:      cfg,
 		client:   &http.Client{Timeout: 15 * time.Second},
 		seen:     make(map[string]time.Time),
+		seenPath: filepath.Join(dbDir, "injury_seen.json"),
 		cache:    make(map[string][]InjuryEntry),
 		allCache: make(map[string][]InjuryEntry),
 	}
+	s.loadSeen()
+	return s
+}
+
+func (s *Scanner) seenKey(team, player string, status PlayerStatus) string {
+	date := time.Now().Format("2006-01-02")
+	return date + ":" + team + ":" + player + ":" + string(status)
+}
+
+func (s *Scanner) loadSeen() {
+	data, err := os.ReadFile(s.seenPath)
+	if err != nil {
+		return
+	}
+	var m map[string]time.Time
+	if json.Unmarshal(data, &m) == nil {
+		s.seen = m
+	}
+}
+
+func (s *Scanner) saveSeen() {
+	data, err := json.Marshal(s.seen)
+	if err != nil {
+		return
+	}
+	_ = os.MkdirAll(filepath.Dir(s.seenPath), 0755)
+	_ = os.WriteFile(s.seenPath, data, 0644)
 }
 
 // InjuredStars returns OUT/Doubtful star players for the given team.
@@ -194,9 +225,9 @@ func (s *Scanner) Scan(ctx context.Context) ([]InjuryAlert, error) {
 				continue
 			}
 
-			key := team + ":" + e.Player
-			if last, ok := s.seen[key]; ok && now.Sub(last) < 6*time.Hour {
-				continue
+			key := s.seenKey(team, e.Player, e.Status)
+			if _, ok := s.seen[key]; ok {
+				continue // already pushed today for this player+status
 			}
 
 			impact := assessImpact(team, e)
@@ -214,11 +245,15 @@ func (s *Scanner) Scan(ctx context.Context) ([]InjuryAlert, error) {
 		}
 	}
 
-	// prune old seen entries
+	// prune entries older than 48h
 	for k, t := range s.seen {
-		if now.Sub(t) > 24*time.Hour {
+		if now.Sub(t) > 48*time.Hour {
 			delete(s.seen, k)
 		}
+	}
+
+	if len(alerts) > 0 {
+		s.saveSeen()
 	}
 
 	return alerts, nil
