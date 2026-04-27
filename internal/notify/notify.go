@@ -153,6 +153,8 @@ type InjuryAlertEvent struct {
 	MatchTitle     string       // "Lakers vs Rockets" — the game matchup
 	GameContext    string       // "Game 5 · 季后赛第一轮" etc.
 	GameTime      time.Time    // tipoff / market end time
+	TeamPrice      float64      // PM price for the injured team (0 if unknown)
+	OpponentPrice  float64      // PM price for the opponent team (0 if unknown)
 }
 
 type InjuryInfo struct {
@@ -361,17 +363,23 @@ func FormatSignalFilled(ev FillReceiptEvent) string {
 // and a side-by-side roster comparison with win probability shift.
 func FormatInjuryAlert(ev InjuryAlertEvent) string {
 	var b strings.Builder
+	sgt := time.FixedZone("SGT", 8*3600)
 
-	// Header: matchup + game info + time
+	// Header: matchup + game time
 	if ev.MatchTitle != "" {
 		fmt.Fprintf(&b, "🏀 %s\n", ev.MatchTitle)
+	}
+	if !ev.GameTime.IsZero() {
+		t := ev.GameTime.In(sgt)
+		fmt.Fprintf(&b, "⏰ %s（SGT）\n", t.Format("2006-01-02 15:04"))
 	}
 	if ev.GameContext != "" {
 		fmt.Fprintf(&b, "📅 %s\n", ev.GameContext)
 	}
-	if !ev.GameTime.IsZero() {
-		sgt := ev.GameTime.In(time.FixedZone("SGT", 8*3600))
-		fmt.Fprintf(&b, "⏰ %s SGT\n", sgt.Format("01/02 15:04"))
+
+	// PM prices
+	if ev.OpponentPrice > 0 {
+		fmt.Fprintf(&b, "⚡ %s ↑ @ %.4f\n", ev.OpponentName, ev.OpponentPrice)
 	}
 	b.WriteString("━━━━━━━━━━━━━━━━━━━\n\n")
 

@@ -1627,13 +1627,17 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					if !injuryTeamInMarkets(a.Team, meta, assetSport) {
 						continue
 					}
+					if injuryGameFinished(a.Team, injScanner) {
+						slog.Info("injury_skip_final", "team", a.Team, "player", a.StarPlayer)
+						continue
+					}
 					slog.Info("injury_alert",
 						"team", a.Team,
 						"player", a.StarPlayer,
 						"status", string(a.Status),
 						"impact", a.Impact,
 					)
-					ev := injuryBuildAlertEvent(a, injScanner, meta, assetSport)
+					ev := injuryBuildAlertEvent(a, injScanner, meta, assetSport, sampler)
 					notifier.InjuryAlert(ev)
 					if a.Status == injury.StatusOut || a.Status == injury.StatusDTD {
 						injuryPushOpponentPrompt(a, meta, assetSport, sampler, pending, notifier)
@@ -1655,13 +1659,17 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						if !injuryTeamInMarkets(a.Team, meta, assetSport) {
 							continue
 						}
+						if injuryGameFinished(a.Team, injScanner) {
+							slog.Info("injury_skip_final", "team", a.Team, "player", a.StarPlayer)
+							continue
+						}
 						slog.Info("injury_alert",
 							"team", a.Team,
 							"player", a.StarPlayer,
 							"status", string(a.Status),
 							"impact", a.Impact,
 						)
-						ev := injuryBuildAlertEvent(a, injScanner, meta, assetSport)
+						ev := injuryBuildAlertEvent(a, injScanner, meta, assetSport, sampler)
 						notifier.InjuryAlert(ev)
 						if a.Status == injury.StatusOut || a.Status == injury.StatusDTD {
 							injuryPushOpponentPrompt(a, meta, assetSport, sampler, pending, notifier)
@@ -2992,6 +3000,15 @@ func injuryBlocksLottery(sc *injury.Scanner, meta map[string]*assetMeta, assetID
 	return true, team, strings.Join(names, ", ")
 }
 
+func injuryGameFinished(team string, sc *injury.Scanner) bool {
+	gi, ok := sc.GameFor(team)
+	if !ok {
+		return false
+	}
+	ls := strings.ToLower(gi.Status)
+	return strings.Contains(ls, "final") || strings.Contains(ls, "complete")
+}
+
 func injuryTeamInMarkets(team string, meta map[string]*assetMeta, assetSport map[string]strategy.SportFamily) bool {
 	lt := strings.ToLower(team)
 	for assetID, me := range meta {
@@ -3031,7 +3048,7 @@ func injuryFindOpponentAndGame(team string, meta map[string]*assetMeta, assetSpo
 }
 
 // injuryBuildAlertEvent constructs a rich InjuryAlertEvent with both teams' injury context.
-func injuryBuildAlertEvent(a injury.InjuryAlert, injScanner *injury.Scanner, meta map[string]*assetMeta, assetSport map[string]strategy.SportFamily) notify.InjuryAlertEvent {
+func injuryBuildAlertEvent(a injury.InjuryAlert, injScanner *injury.Scanner, meta map[string]*assetMeta, assetSport map[string]strategy.SportFamily, sampler *feed.Sampler) notify.InjuryAlertEvent {
 	ev := notify.InjuryAlertEvent{
 		Team:       a.Team,
 		StarPlayer: a.StarPlayer,
@@ -3094,6 +3111,28 @@ func injuryBuildAlertEvent(a injury.InjuryAlert, injScanner *injury.Scanner, met
 			oppEntries := injScanner.AllInjuries(opponent)
 			for _, e := range oppEntries {
 				ev.OpponentInj = append(ev.OpponentInj, buildInfo(opponent, e))
+			}
+		}
+	}
+
+	// Populate PM prices from sampler
+	if sampler != nil {
+		lt := strings.ToLower(a.Team)
+		for assetID, me := range meta {
+			if assetSport[assetID] != strategy.SportBasketball {
+				continue
+			}
+			lo := strings.ToLower(me.Outcome)
+			if strings.Contains(lt, lo) || strings.Contains(lo, lt) {
+				if w, ok := sampler.Window(assetID); ok && w.Samples > 0 {
+					ev.TeamPrice = w.EndMid
+				}
+				if me.Sibling != "" {
+					if w, ok := sampler.Window(me.Sibling); ok && w.Samples > 0 {
+						ev.OpponentPrice = w.EndMid
+					}
+				}
+				break
 			}
 		}
 	}
