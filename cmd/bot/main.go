@@ -1616,6 +1616,36 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 		go func() {
 			tk := time.NewTicker(injCfg.ScanInterval)
 			defer tk.Stop()
+			// Immediate first scan on startup (don't wait for first tick).
+			scanOnce := func() {
+				alerts, err := injScanner.Scan(ctx)
+				if err != nil {
+					slog.Warn("injury_scan_fail", "err", err.Error())
+					return
+				}
+				for _, a := range alerts {
+					if !injuryTeamInMarkets(a.Team, meta, assetSport) {
+						continue
+					}
+					slog.Info("injury_alert",
+						"team", a.Team,
+						"player", a.StarPlayer,
+						"status", string(a.Status),
+						"impact", a.Impact,
+					)
+					notifier.InjuryAlert(notify.InjuryAlertEvent{
+						Team:       a.Team,
+						StarPlayer: a.StarPlayer,
+						Status:     string(a.Status),
+						Reason:     a.Reason,
+						Impact:     a.Impact,
+					})
+					if a.Status == injury.StatusOut {
+						injuryPushOpponentPrompt(a, meta, assetSport, sampler, pending, notifier)
+					}
+				}
+			}
+			scanOnce()
 			for {
 				select {
 				case <-ctx.Done():
