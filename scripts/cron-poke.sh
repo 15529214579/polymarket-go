@@ -113,6 +113,35 @@ cat > "$ROOT/state.json" <<EOF
 }
 EOF
 
+# ── P10 日志异常自动扫描（每 20min cron-poke 触发） ──
+anomaly_log="$ROOT/logs/anomaly-${day}.log"
+daemon_log="$ROOT/db/agent.log"
+if [ -f "$daemon_log" ]; then
+  cutoff=$(date -v-20M '+%Y-%m-%dT%H:%M' 2>/dev/null || date -d '20 minutes ago' '+%Y-%m-%dT%H:%M' 2>/dev/null || echo "")
+  if [ -n "$cutoff" ]; then
+    recent=$(awk -v t="$cutoff" '$0 ~ /"ts":"[0-9T:-]+"/ { if (index($0, t) > 0 || $0 > t) print }' "$daemon_log" | tail -200)
+
+    err_count=$(echo "$recent" | grep -c '"_err\|_failed\|_error\|panic\|FATAL' || true)
+    btc_leak=$(echo "$recent" | grep -c 'btc_strategy' || true)
+    injury_alert=$(echo "$recent" | grep -c 'injury_alert' || true)
+    injury_fetch=$(echo "$recent" | grep -c 'injury_fetch' || true)
+
+    anomalies=""
+    [ "$err_count" -gt 5 ] && anomalies="${anomalies}error_spike(${err_count}) "
+    [ "$btc_leak" -gt 0 ] && anomalies="${anomalies}btc_strategy_leak(${btc_leak}) "
+    if [ "$injury_fetch" -gt 0 ] && [ "$injury_alert" -eq 0 ]; then
+      anomalies="${anomalies}injury_fetch_no_alert "
+    fi
+
+    if [ -n "$anomalies" ]; then
+      echo "[${now_local}] ANOMALY: ${anomalies}" >> "$anomaly_log"
+      if [ "${quiet:-0}" = "0" ] && [ -z "$alert" ]; then
+        alert="log-anomaly: ${anomalies}"
+      fi
+    fi
+  fi
+fi
+
 # 告警投递（读 state.json，cooldown 2h，夜间静默）
 "$ROOT/scripts/alert-dispatch.sh" >> "$log" 2>&1 || true
 

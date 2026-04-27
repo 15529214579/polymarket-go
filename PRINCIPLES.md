@@ -120,3 +120,27 @@ Paper 阶段**不挂 SL/TP/timeout**。开仓后只等 market resolve，按 gamm
 **不要**：看到"总 PnL 为负"就把整个 DB 丢一边。
 
 ---
+
+## P10. 主动日志审计 — 异常不等老板指出（2026-04-27）
+
+**背景**：04-27 一天内出了 injury scanner 从未生效、BTC 长期盘反复推送、LCK Challengers 穿透过滤器、lottery 注额 $5→$1 不一致、仓位重启丢失等 5+ 个 bug，全部是老板先发现/指出才修。日志里其实都有明显异常信号（`injury_alert: 0`、`btc_strategy.signal_pushed` 不该出现、`lottery_open size_usd:5` 与配置不符），但没人看。
+
+**规则**：
+
+1. **每次心跳（cron-poke 20min）自动扫最近 20min 日志**，检查以下异常模式：
+   - 不该出现的 event（如 `btc_strategy` 在 `-btc_enabled=false` 时出现）
+   - 期望出现但缺失的 event（如 `injury_alert` 连续 1h 为 0）
+   - 数值异常（如 `size_usd` 与配置不符、`pnl` 突变）
+   - 错误率突增（`_err` / `_failed` event 密度）
+2. **发现异常立刻写 TODO**（`BTC_TODO.md` 或 `TODO.md`），标 P0/P1，不等下次对话
+3. **能自修的立刻修**（编译通过 + 测试通过 → commit + restart daemon），不能自修的推老板 DM
+4. **每次 daemon 重启后 5min 内做一次 smoke check**：关键 event 是否正常出现
+
+**频率**：
+- cron-poke 每 20min 做基础异常扫描（grep 错误模式）
+- 5号 session 每次醒来做完整日志审计（最近 1-2h）
+- daemon 重启后 5min smoke check
+
+**Why**：日志是 daemon 唯一的"嘴"——它不会主动喊人，只会默默记录。不看日志 = 聋了。老板 04-27 16:08 拍板"不应该等我指出去修复"。
+
+---
