@@ -169,14 +169,30 @@ func (t *Tracker) Run(ctx context.Context) error {
 
 	tk := time.NewTicker(t.cfg.PollInterval)
 	defer tk.Stop()
+	var pollCount int
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-tk.C:
+			pollCount++
 			for _, w := range wallets {
 				if err := t.poll(ctx, w); err != nil {
 					t.logger.Warn("whale_poll_fail", "wallet", w.Label, "err", err.Error())
+				}
+			}
+			if pollCount%10 == 0 {
+				for _, w := range wallets {
+					st := t.states[strings.ToLower(w.Address)]
+					st.mu.Lock()
+					ts := st.lastTS
+					st.mu.Unlock()
+					t.logger.Info("whale_poll_heartbeat",
+						"wallet", w.Label,
+						"polls", pollCount,
+						"last_ts", ts,
+						"last_age_sec", time.Now().Unix()-ts,
+					)
 				}
 			}
 		}

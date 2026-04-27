@@ -23,6 +23,9 @@ func TestIsLoLMarket(t *testing.T) {
 		{"lol no league blocked", Market{Question: "LoL: Gen.G vs T1", Slug: "lol-gen-g-vs-t1-2026-04-20"}, false},
 		{"lol slug only no league", Market{Question: "Who wins?", Slug: "lol-worlds-final-2026"}, false},
 		{"league of legends lck", Market{Question: "League of Legends LCK finals winner"}, true},
+		{"lck challengers blocked", Market{Question: "LoL: HANJIN BRION Challengers vs Hanwha Life Esports Challengers (BO3) - LCK Challengers League Rounds 1-2", Slug: "lol-lck-challengers-hanjin-2026"}, false},
+		{"lck academy blocked", Market{Question: "LoL: Gen.G Global Academy vs Nongshim Esports Academy (BO3) - LCK Challengers League Rounds 1-2", Slug: "lol-lck-academy-2026"}, false},
+		{"lpl developing blocked", Market{Question: "LoL: TES.A vs WBG.A (BO3) - LPL Developing League", Slug: "lol-lpl-developing-2026"}, false},
 		{"election false positive", Market{Question: "2026 election winner", Slug: "election-2026"}, false},
 	}
 	for _, c := range cases {

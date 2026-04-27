@@ -138,7 +138,16 @@ func IsLoLMarket(m Market) bool {
 	return isAllowedLoLLeague(q, slug)
 }
 
+// excludedLoLKeywords — academy / challengers leagues are minor-tier even
+// if they contain "lck" or "lpl" in the name. Filter them out.
+var excludedLoLKeywords = []string{"challengers", "academy", "amateur", "developing"}
+
 func isAllowedLoLLeague(q, slug string) bool {
+	for _, kw := range excludedLoLKeywords {
+		if strings.Contains(q, kw) || strings.Contains(slug, kw) {
+			return false
+		}
+	}
 	for _, league := range allowedLoLLeagues {
 		if strings.Contains(q, league) || strings.Contains(slug, league) {
 			return true

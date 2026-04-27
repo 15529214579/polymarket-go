@@ -497,6 +497,14 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 	ladder := strategy.NewLadderTracker(ladderCfg)
 	posCfg := strategy.DefaultPositionConfig()
 	pm := strategy.NewPositionManager(posCfg)
+	const posStatePath = "db/positions.json"
+	if err := pm.LoadState(posStatePath); err != nil {
+		slog.Warn("positions_load_err", "path", posStatePath, "err", err.Error())
+	} else {
+		stats := pm.Stats()
+		slog.Info("positions_loaded", "path", posStatePath, "open", stats.Open, "closed", stats.Closed, "exposure_usd", stats.TotalExposure)
+	}
+	savePositions := func() { _ = pm.SaveState(posStatePath) }
 	paper := order.NewPaperClientWithFee(slippageBp, feeBp)
 	riskCfg := risk.DefaultConfig()
 	riskCfg.FeedConnected = ws.Connected
@@ -595,6 +603,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				largeFillUSD:  largeFillUSD,
 				exitMode:      exitMode,
 				riskStatePath: riskStatePath,
+				savePositions: savePositions,
 			}
 			lp := notify.NewLongPoll(notify.LongPollConfig{
 				BotToken:       sidecarToken,
@@ -756,6 +765,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 							slog.Warn("paper_close_miss", "asset", short(sig.AssetID), "err", err.Error())
 							continue
 						}
+						savePositions()
 						if recorder != nil {
 							if rerr := recorder.Stop(closed.ID); rerr != nil {
 								slog.Warn("tickrec_stop_fail", "pos", closed.ID, "err", rerr.Error())
@@ -911,6 +921,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 								"err", cerr.Error())
 							continue
 						}
+						savePositions()
 						if ex.Final && recorder != nil {
 							if rerr := recorder.Stop(p.ID); rerr != nil {
 								slog.Warn("tickrec_stop_fail", "pos", p.ID, "err", rerr.Error())
@@ -1233,6 +1244,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					continue
 				}
 				_ = pm.SetOpenFee(pos.ID, res.FeeUSD)
+				savePositions()
 				switch exitMode {
 				case "auto":
 					exit.Open(sig.AssetID, sig.Market, entryTick)
@@ -1335,6 +1347,9 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 	// assets, open small paper positions, hold to settlement. Journal with
 	// source=lottery so PnL can be compared vs momentum strategy.
 	lotteryOpen := make(map[string]bool) // assetID → already has lottery position (guarded by single-writer goroutine)
+	for _, p := range pm.Snapshot() {
+		lotteryOpen[p.AssetID] = true
+	}
 	if lotteryEnabled {
 		go func() {
 			tk := time.NewTicker(lotteryCfg.ScanInterval)
@@ -1403,7 +1418,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 							AssetID: c.AssetID, Market: c.Market,
 							Time: c.Time, Mid: res.AvgPrice,
 						}
-						pos, err := pm.Open(c.AssetID, c.Market, entryTick)
+						pos, err := pm.OpenSized(c.AssetID, c.Market, entryTick, lotteryCfg.SizeUSD)
 						if err != nil {
 							slog.Info("lottery_open_skip",
 								"asset", short(c.AssetID),
@@ -1412,6 +1427,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 							continue
 						}
 						_ = pm.SetOpenFee(pos.ID, res.FeeUSD)
+						savePositions()
 						lotteryOpen[c.AssetID] = true
 						src.Mark(pos.ID, "lottery", res.OrderID)
 						stats := pm.Stats()
@@ -2143,6 +2159,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						slog.Warn("settlement_close_miss", "pos", p.ID, "asset", short(p.AssetID), "err", cerr.Error())
 						continue
 					}
+					savePositions()
 					// Drop any ladder state that was still tracking this
 					// position — settlement supersedes TP/SL/timeout.
 					ladder.Forget(p.ID)
@@ -2548,21 +2565,22 @@ func runPromptTest(ctx context.Context, _ float64) error {
 // Executes synchronously on the longpoll goroutine; Telegram dispatch of the
 // resulting DM is async via notifier.
 type buyHandler struct {
-	pm            *strategy.PositionManager
-	exit          *strategy.ExitTracker
-	ladder        *strategy.LadderTracker
-	paper         order.Client
-	rm            *risk.Manager
-	pending       *notify.PendingStore
-	closePending  *notify.CloseStore
-	notifier      notify.Notifier
-	meta          map[string]*assetMeta
-	src           *sourceTracker
-	recorder      *tickrec.Recorder
-	jrn           *journal.Journal
-	largeFillUSD  float64
-	exitMode      string
-	riskStatePath string
+	pm             *strategy.PositionManager
+	exit           *strategy.ExitTracker
+	ladder         *strategy.LadderTracker
+	paper          order.Client
+	rm             *risk.Manager
+	pending        *notify.PendingStore
+	closePending   *notify.CloseStore
+	notifier       notify.Notifier
+	meta           map[string]*assetMeta
+	src            *sourceTracker
+	recorder       *tickrec.Recorder
+	jrn            *journal.Journal
+	largeFillUSD   float64
+	exitMode       string
+	riskStatePath  string
+	savePositions  func()
 }
 
 func (h *buyHandler) OnBuy(ctx context.Context, nonce string, slot int, sizeUSD float64, mode string, messageID int64) (string, error) {
@@ -2603,6 +2621,9 @@ func (h *buyHandler) OnBuy(ctx context.Context, nonce string, slot int, sizeUSD 
 		return "", fmt.Errorf("开仓失败: %s", err.Error())
 	}
 	_ = h.pm.SetOpenFee(pos.ID, res.FeeUSD)
+	if h.savePositions != nil {
+		h.savePositions()
+	}
 
 	// Mode branching: "hold" = hold-to-settlement (no SL, no timeout);
 	// "ladder" = normal ladder with SL + 4h timeout.
@@ -2717,6 +2738,9 @@ func (h *buyHandler) OnClose(ctx context.Context, nonce string, messageID int64)
 		if cerr != nil {
 			slog.Warn("whale_close_miss", "pos", pos.ID, "err", cerr.Error())
 			continue
+		}
+		if h.savePositions != nil {
+			h.savePositions()
 		}
 		h.ladder.Forget(pos.ID)
 		if h.recorder != nil {

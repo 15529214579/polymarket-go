@@ -1,8 +1,10 @@
 package strategy
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"sync"
 	"time"
@@ -326,4 +328,75 @@ func (pm *PositionManager) totalExposureLocked() float64 {
 		s += p.SizeUSD
 	}
 	return s
+}
+
+// positionState is the JSON-serializable snapshot for persistence.
+type positionState struct {
+	NextID int         `json:"next_id"`
+	Open   []*Position `json:"open"`
+	Closed []*Position `json:"closed"`
+}
+
+// SaveState writes all open+closed positions to a JSON file so they survive
+// daemon restarts. Called after every Open/Close.
+func (pm *PositionManager) SaveState(path string) error {
+	pm.mu.Lock()
+	open := make([]*Position, 0, len(pm.open))
+	for _, p := range pm.open {
+		open = append(open, p)
+	}
+	closed := make([]*Position, len(pm.closed))
+	copy(closed, pm.closed)
+	nextID := pm.nextID
+	pm.mu.Unlock()
+
+	st := positionState{NextID: nextID, Open: open, Closed: closed}
+	data, err := json.MarshalIndent(st, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0644)
+}
+
+// LoadState restores positions from a JSON file written by SaveState.
+// Rebuilds the in-memory index maps. No-op if file doesn't exist.
+func (pm *PositionManager) LoadState(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	var st positionState
+	if err := json.Unmarshal(data, &st); err != nil {
+		return err
+	}
+
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	pm.nextID = st.NextID
+	pm.open = make(map[string]*Position)
+	pm.byAsset = make(map[string]map[string]*Position)
+	pm.byMarket = make(map[string]map[string]*Position)
+	pm.closed = st.Closed
+	if pm.closed == nil {
+		pm.closed = []*Position{}
+	}
+
+	for _, p := range st.Open {
+		pm.open[p.ID] = p
+		if pm.byAsset[p.AssetID] == nil {
+			pm.byAsset[p.AssetID] = map[string]*Position{}
+		}
+		pm.byAsset[p.AssetID][p.ID] = p
+		if p.Market != "" {
+			if pm.byMarket[p.Market] == nil {
+				pm.byMarket[p.Market] = map[string]*Position{}
+			}
+			pm.byMarket[p.Market][p.ID] = p
+		}
+	}
+	return nil
 }
