@@ -23,6 +23,7 @@ import (
 	"github.com/15529214579/polymarket-go/internal/elon"
 	"github.com/15529214579/polymarket-go/internal/eurovision"
 	"github.com/15529214579/polymarket-go/internal/feed"
+	"github.com/15529214579/polymarket-go/internal/iterate"
 	"github.com/15529214579/polymarket-go/internal/injury"
 	"github.com/15529214579/polymarket-go/internal/journal"
 	"github.com/15529214579/polymarket-go/internal/notify"
@@ -35,7 +36,8 @@ import (
 )
 
 func main() {
-	mode := flag.String("mode", "run", "run | discover | feed | sample | detect | prompt-test | daily-report | arb-scan")
+	mode := flag.String("mode", "run", "run | discover | feed | sample | detect | prompt-test | daily-report | daily-iterate | arb-scan")
+	iterateWindow := flag.Int("iterate_window", 7, "daily-iterate: rolling window days for analysis")
 	maxMarkets := flag.Int("markets", 20, "top-N sports markets (LoL + NBA daily/playoffs + EPL daily) by vol24h to subscribe")
 	windowSec := flag.Int("window", 60, "sampler window in seconds")
 	slippageBp := flag.Float64("slippage_bp", 0, "paper fill slippage in bp applied against you")
@@ -220,6 +222,11 @@ func main() {
 	case "daily-report":
 		if err := runDailyReport(ctx, *journalDir, *reportDay, *reportPush); err != nil {
 			slog.Error("daily-report failed", "err", err)
+			os.Exit(1)
+		}
+	case "daily-iterate":
+		if err := runDailyIterate(ctx, *journalDir, *iterateWindow, *reportPush); err != nil {
+			slog.Error("daily-iterate failed", "err", err)
 			os.Exit(1)
 		}
 	case "arb-scan":
@@ -3172,6 +3179,43 @@ func runDailyReport(ctx context.Context, dir, day string, push bool) error {
 		return fmt.Errorf("telegram push: %w", err)
 	}
 	slog.Info("daily_report.pushed", "day", day, "trades", summary.Trades, "pnl_usd", summary.RealizedPnLUSD)
+	return nil
+}
+
+func runDailyIterate(ctx context.Context, journalDir string, windowDays int, push bool) error {
+	report, err := iterate.Analyze(journalDir, windowDays)
+	if err != nil {
+		return fmt.Errorf("iterate analyze: %w", err)
+	}
+
+	md := iterate.FormatMarkdown(report)
+
+	reportsDir := "reports/daily"
+	if err := os.MkdirAll(reportsDir, 0o755); err != nil {
+		return fmt.Errorf("mkdir reports: %w", err)
+	}
+	mdPath := filepath.Join(reportsDir, report.Day+".md")
+	if err := os.WriteFile(mdPath, []byte(md), 0o644); err != nil {
+		return fmt.Errorf("write report: %w", err)
+	}
+	slog.Info("daily_iterate.report_written", "path", mdPath, "trades", report.TotalTrades, "pnl", report.CumulativePnL)
+	fmt.Print(md)
+
+	if push {
+		tok := os.Getenv("PUSH_BOT_TOKEN")
+		if tok == "" {
+			tok = os.Getenv("TELEGRAM_BOT_TOKEN")
+		}
+		chat := os.Getenv("TELEGRAM_CHAT_ID")
+		if tok != "" && chat != "" {
+			tgMsg := iterate.FormatTelegram(report)
+			if err := sendTelegram(ctx, tok, chat, tgMsg); err != nil {
+				slog.Warn("daily_iterate.push_fail", "err", err.Error())
+			} else {
+				slog.Info("daily_iterate.pushed", "day", report.Day, "suggestions", len(report.Suggestions))
+			}
+		}
+	}
 	return nil
 }
 
