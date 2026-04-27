@@ -150,21 +150,32 @@ func (s *Scanner) seenKey(team, player string, status PlayerStatus) string {
 func (s *Scanner) loadSeen() {
 	data, err := os.ReadFile(s.seenPath)
 	if err != nil {
+		if !os.IsNotExist(err) {
+			slog.Warn("injury_seen_load_err", "path", s.seenPath, "err", err)
+		}
 		return
 	}
 	var m map[string]time.Time
-	if json.Unmarshal(data, &m) == nil {
-		s.seen = m
+	if err := json.Unmarshal(data, &m); err != nil {
+		slog.Warn("injury_seen_parse_err", "path", s.seenPath, "err", err)
+		return
 	}
+	s.seen = m
 }
 
 func (s *Scanner) saveSeen() {
 	data, err := json.Marshal(s.seen)
 	if err != nil {
+		slog.Warn("injury_seen_marshal_err", "err", err)
 		return
 	}
-	_ = os.MkdirAll(filepath.Dir(s.seenPath), 0755)
-	_ = os.WriteFile(s.seenPath, data, 0644)
+	if err := os.MkdirAll(filepath.Dir(s.seenPath), 0755); err != nil {
+		slog.Warn("injury_seen_mkdir_err", "path", s.seenPath, "err", err)
+		return
+	}
+	if err := os.WriteFile(s.seenPath, data, 0644); err != nil {
+		slog.Warn("injury_seen_write_err", "path", s.seenPath, "err", err)
+	}
 }
 
 // InjuredStars returns OUT/Doubtful star players for the given team.
@@ -482,22 +493,26 @@ func (s *Scanner) fetchScoreboard(ctx context.Context) (map[string]GameInfo, err
 		url := "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=" + d
 		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 		if err != nil {
+			slog.Warn("scoreboard_req_err", "date", d, "err", err)
 			continue
 		}
 		req.Header.Set("User-Agent", "polymarket-go/1.0")
 
 		resp, err := s.client.Do(req)
 		if err != nil {
+			slog.Warn("scoreboard_http_err", "date", d, "err", err)
 			continue
 		}
 
 		if resp.StatusCode != 200 {
+			slog.Warn("scoreboard_bad_status", "date", d, "status", resp.StatusCode)
 			resp.Body.Close()
 			continue
 		}
 
 		var data espnScoreboard
 		if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+			slog.Warn("scoreboard_decode_err", "date", d, "err", err)
 			resp.Body.Close()
 			continue
 		}

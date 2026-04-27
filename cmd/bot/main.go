@@ -504,7 +504,11 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 		stats := pm.Stats()
 		slog.Info("positions_loaded", "path", posStatePath, "open", stats.Open, "closed", stats.Closed, "exposure_usd", stats.TotalExposure)
 	}
-	savePositions := func() { _ = pm.SaveState(posStatePath) }
+	savePositions := func() {
+		if err := pm.SaveState(posStatePath); err != nil {
+			slog.Warn("positions_save_err", "path", posStatePath, "err", err)
+		}
+	}
 	paper := order.NewPaperClientWithFee(slippageBp, feeBp)
 	riskCfg := risk.DefaultConfig()
 	riskCfg.FeedConnected = ws.Connected
@@ -693,7 +697,9 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				if _, err := os.Stat(adminResume); err == nil {
 					_ = os.Remove(adminResume)
 					rm.Resume()
-					_ = rm.SaveState(riskStatePath)
+					if err := rm.SaveState(riskStatePath); err != nil {
+							slog.Warn("risk_save_err", "err", err)
+						}
 					slog.Info("risk_admin_resume", "by", "trigger_file")
 					notifier.RiskResume(notify.RiskResumeEvent{})
 				}
@@ -793,7 +799,9 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 									OpenPositions: stats.Open,
 								})
 							}
-							_ = rm.SaveState(riskStatePath)
+							if err := rm.SaveState(riskStatePath); err != nil {
+							slog.Warn("risk_save_err", "err", err)
+						}
 						}
 						if netPnL <= -largeFillUSD || netPnL >= largeFillUSD {
 							notifier.LargeFill(notify.LargeFillEvent{
@@ -953,7 +961,9 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 									OpenPositions: stats.Open,
 								})
 							}
-							_ = rm.SaveState(riskStatePath)
+							if err := rm.SaveState(riskStatePath); err != nil {
+							slog.Warn("risk_save_err", "err", err)
+						}
 						}
 						if netPnL <= -largeFillUSD || netPnL >= largeFillUSD {
 							notifier.LargeFill(notify.LargeFillEvent{
@@ -1197,7 +1207,11 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						Slug:      slugVal,
 						ExpiresIn: 10 * time.Minute,
 						OnSent: func(msgID int64, err error) {
-							if err != nil || msgID == 0 {
+							if err != nil {
+								slog.Warn("prompt_send_err", "err", err)
+								return
+							}
+							if msgID == 0 {
 								return
 							}
 							pending.SetMessageID(nonceSnap, msgID)
@@ -1243,7 +1257,9 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					)
 					continue
 				}
-				_ = pm.SetOpenFee(pos.ID, res.FeeUSD)
+				if err := pm.SetOpenFee(pos.ID, res.FeeUSD); err != nil {
+					slog.Warn("set_open_fee_err", "pos", pos.ID, "err", err)
+				}
 				savePositions()
 				switch exitMode {
 				case "auto":
@@ -1327,7 +1343,11 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					Slug:      autoSlug,
 					ExpiresIn: 2 * time.Hour,
 					OnSent: func(msgID int64, err error) {
-						if err != nil || msgID == 0 {
+						if err != nil {
+							slog.Warn("notify_send_err", "err", err)
+							return
+						}
+						if msgID == 0 {
 							return
 						}
 						pending.SetMessageID(nonceSnap, msgID)
@@ -1426,7 +1446,9 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 								"reason", err.Error())
 							continue
 						}
-						_ = pm.SetOpenFee(pos.ID, res.FeeUSD)
+						if err := pm.SetOpenFee(pos.ID, res.FeeUSD); err != nil {
+					slog.Warn("set_open_fee_err", "pos", pos.ID, "err", err)
+				}
 						savePositions()
 						lotteryOpen[c.AssetID] = true
 						src.Mark(pos.ID, "lottery", res.OrderID)
@@ -1780,7 +1802,11 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					Choices:    sigChoices,
 					ExpiresIn:  10 * time.Minute,
 					OnSent: func(msgID int64, err error) {
-						if err != nil || msgID == 0 {
+						if err != nil {
+							slog.Warn("notify_send_err", "err", err)
+							return
+						}
+						if msgID == 0 {
 							return
 						}
 						pending.SetMessageID(nonceSnap, msgID)
@@ -1858,7 +1884,11 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					WhaleAvgPrice:    ev.AvgPrice,
 					WhalePctSold:     ev.PctSold,
 					OnSent: func(msgID int64, err error) {
-						if err != nil || msgID == 0 {
+						if err != nil {
+							slog.Warn("notify_send_err", "err", err)
+							return
+						}
+						if msgID == 0 {
 							return
 						}
 						closePending.SetMessageID(nonceSnap, msgID)
@@ -1947,7 +1977,11 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					Choices:    sigChoices,
 					ExpiresIn:  2 * time.Hour,
 					OnSent: func(msgID int64, err error) {
-						if err != nil || msgID == 0 {
+						if err != nil {
+							slog.Warn("notify_send_err", "err", err)
+							return
+						}
+						if msgID == 0 {
 							return
 						}
 						pending.SetMessageID(nonceSnap, msgID)
@@ -2194,7 +2228,9 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 								OpenPositions: stats.Open,
 							})
 						}
-						_ = rm.SaveState(riskStatePath)
+						if err := rm.SaveState(riskStatePath); err != nil {
+							slog.Warn("risk_save_err", "err", err)
+						}
 					}
 					if netPnL <= -largeFillUSD || netPnL >= largeFillUSD {
 						notifier.LargeFill(notify.LargeFillEvent{
@@ -2507,7 +2543,11 @@ func sendAdminPrompt(raw []byte, mkts []feed.Market, meta map[string]*assetMeta,
 		Choices:   sigChoices,
 		ExpiresIn: 10 * time.Minute,
 		OnSent: func(msgID int64, err error) {
-			if err != nil || msgID == 0 {
+			if err != nil {
+				slog.Warn("notify_send_err", "err", err)
+				return
+			}
+			if msgID == 0 {
 				return
 			}
 			pending.SetMessageID(nonceSnap, msgID)
@@ -2768,7 +2808,9 @@ func (h *buyHandler) OnClose(ctx context.Context, nonce string, messageID int64)
 					OpenPositions: stats.Open,
 				})
 			}
-			_ = h.rm.SaveState(h.riskStatePath)
+			if err := h.rm.SaveState(h.riskStatePath); err != nil {
+					slog.Warn("risk_save_err", "err", err)
+				}
 		}
 		if netPnL <= -h.largeFillUSD || netPnL >= h.largeFillUSD {
 			h.notifier.LargeFill(notify.LargeFillEvent{
@@ -3276,7 +3318,11 @@ func injuryPushOpponentPrompt(a injury.InjuryAlert, meta map[string]*assetMeta, 
 			Slug:    me.Slug,
 			Choices: sigChoices,
 			OnSent: func(msgID int64, err error) {
-				if err != nil || msgID == 0 {
+				if err != nil {
+					slog.Warn("notify_send_err", "err", err)
+					return
+				}
+				if msgID == 0 {
 					return
 				}
 				pending.SetMessageID(nonce, msgID)

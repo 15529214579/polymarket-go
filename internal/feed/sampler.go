@@ -2,7 +2,9 @@ package feed
 
 import (
 	"context"
+	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -43,6 +45,7 @@ type WindowStats struct {
 type Sampler struct {
 	windowSec int
 	out       chan Tick
+	tickDrops atomic.Int64
 
 	mu    sync.Mutex
 	state map[string]*assetState
@@ -185,7 +188,10 @@ func (s *Sampler) flushSecond(now time.Time) {
 		select {
 		case s.out <- t:
 		default:
-			// consumer stalled; drop oldest by draining one slot
+			n := s.tickDrops.Add(1)
+			if n == 1 || n%100 == 0 {
+				slog.Warn("sampler_tick_drop", "asset", t.AssetID, "total_drops", n)
+			}
 			select {
 			case <-s.out:
 			default:

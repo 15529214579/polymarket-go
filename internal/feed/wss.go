@@ -261,6 +261,7 @@ func (w *WSSClient) dispatchOne(data []byte) {
 			Hash    string     `json:"hash"`
 		}
 		if err := json.Unmarshal(data, &p); err != nil {
+			slog.Warn("wss_book_parse_err", "err", err)
 			return
 		}
 		w.applyBookSnapshot(p.AssetID, p.Market, p.Bids, p.Asks, p.Hash)
@@ -271,6 +272,7 @@ func (w *WSSClient) dispatchOne(data []byte) {
 			PriceChanges []rawPriceChange `json:"price_changes"`
 		}
 		if err := json.Unmarshal(data, &p); err != nil {
+			slog.Warn("wss_price_change_parse_err", "err", err)
 			return
 		}
 		// group changes by asset_id so we emit one book event per asset
@@ -294,6 +296,7 @@ func (w *WSSClient) dispatchOne(data []byte) {
 			Side    string `json:"side"`
 		}
 		if err := json.Unmarshal(data, &p); err != nil {
+			slog.Warn("wss_trade_parse_err", "err", err)
 			return
 		}
 		ev := TradeEvent{
