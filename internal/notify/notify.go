@@ -416,7 +416,9 @@ func FormatInjuryAlert(ev InjuryAlertEvent) string {
 	} else {
 		for _, inj := range ev.TeamInjuries {
 			statusIcon := "❌"
-			if inj.Status == "Doubtful" {
+			if inj.Status == "Day-To-Day" {
+				statusIcon = "🟡"
+			} else if inj.Status == "Doubtful" {
 				statusIcon = "⚠️"
 			} else if inj.Status == "Questionable" {
 				statusIcon = "❓"
@@ -426,7 +428,7 @@ func FormatInjuryAlert(ev InjuryAlertEvent) string {
 				roleLine = fmt.Sprintf(" — %s ~%d%%", inj.Role, inj.ImpactPct)
 			}
 			fmt.Fprintf(&b, "  %s %s %s%s\n", statusIcon, inj.Player, inj.Status, roleLine)
-			if inj.Status == "Out" || inj.Status == "Doubtful" {
+			if inj.Status == "Out" || inj.Status == "Doubtful" || inj.Status == "Day-To-Day" {
 				teamOutPct += inj.ImpactPct
 				teamOutCount++
 			}
@@ -454,7 +456,7 @@ func FormatInjuryAlert(ev InjuryAlertEvent) string {
 					roleLine = fmt.Sprintf(" — %s ~%d%%", inj.Role, inj.ImpactPct)
 				}
 				fmt.Fprintf(&b, "  %s %s %s%s\n", statusIcon, inj.Player, inj.Status, roleLine)
-				if inj.Status == "Out" || inj.Status == "Doubtful" {
+				if inj.Status == "Out" || inj.Status == "Doubtful" || inj.Status == "Day-To-Day" {
 					oppOutPct += inj.ImpactPct
 					oppOutCount++
 				}

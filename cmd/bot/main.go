@@ -1635,7 +1635,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					)
 					ev := injuryBuildAlertEvent(a, injScanner, meta, assetSport)
 					notifier.InjuryAlert(ev)
-					if a.Status == injury.StatusOut {
+					if a.Status == injury.StatusOut || a.Status == injury.StatusDTD {
 						injuryPushOpponentPrompt(a, meta, assetSport, sampler, pending, notifier)
 					}
 				}
@@ -1663,7 +1663,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						)
 						ev := injuryBuildAlertEvent(a, injScanner, meta, assetSport)
 						notifier.InjuryAlert(ev)
-						if a.Status == injury.StatusOut {
+						if a.Status == injury.StatusOut || a.Status == injury.StatusDTD {
 							injuryPushOpponentPrompt(a, meta, assetSport, sampler, pending, notifier)
 						}
 					}

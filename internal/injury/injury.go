@@ -21,6 +21,7 @@ type PlayerStatus string
 
 const (
 	StatusOut      PlayerStatus = "Out"
+	StatusDTD      PlayerStatus = "Day-To-Day"
 	StatusDoubtful PlayerStatus = "Doubtful"
 	StatusQuest    PlayerStatus = "Questionable"
 	StatusProb     PlayerStatus = "Probable"
@@ -240,7 +241,7 @@ func (s *Scanner) Scan(ctx context.Context) ([]InjuryAlert, error) {
 			if e.Status == StatusOut || e.Status == StatusDoubtful || e.Status == StatusQuest {
 				allInj[team] = append(allInj[team], e)
 			}
-			if (e.Status == StatusOut || e.Status == StatusDoubtful) && isStar(team, e.Player) {
+			if (e.Status == StatusOut || e.Status == StatusDoubtful || e.Status == StatusDTD) && isStar(team, e.Player) {
 				starOut[team] = append(starOut[team], e)
 			}
 		}
@@ -252,7 +253,7 @@ func (s *Scanner) Scan(ctx context.Context) ([]InjuryAlert, error) {
 
 	for team, teamEntries := range byTeam {
 		for _, e := range teamEntries {
-			if e.Status != StatusOut && e.Status != StatusDoubtful {
+			if e.Status != StatusOut && e.Status != StatusDoubtful && e.Status != StatusDTD {
 				continue
 			}
 			if s.cfg.StarOnly && !isStar(team, e.Player) {
@@ -416,6 +417,8 @@ func parseStatus(s string) PlayerStatus {
 	switch {
 	case strings.Contains(ls, "out"):
 		return StatusOut
+	case strings.Contains(ls, "day-to-day"), strings.Contains(ls, "day to day"):
+		return StatusDTD
 	case strings.Contains(ls, "doubtful"):
 		return StatusDoubtful
 	case strings.Contains(ls, "questionable"):
