@@ -485,6 +485,8 @@ func (s *Scanner) fetchScoreboard(ctx context.Context) (map[string]GameInfo, err
 		now.AddDate(0, 0, -1).Format("20060102"),
 		now.Format("20060102"),
 		now.AddDate(0, 0, 1).Format("20060102"),
+		now.AddDate(0, 0, 2).Format("20060102"),
+		now.AddDate(0, 0, 3).Format("20060102"),
 	}
 
 	games := make(map[string]GameInfo)
