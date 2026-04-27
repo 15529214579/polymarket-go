@@ -142,11 +142,20 @@ type LargeFillEvent struct {
 // -injury_enabled flag; to remove: delete this type + FormatInjuryAlert +
 // InjuryAlert method from Notifier.
 type InjuryAlertEvent struct {
-	Team       string
-	StarPlayer string
-	Status     string // "Out" / "Doubtful"
-	Reason     string
-	Impact     string // "franchise_player_out" / "co_star_out" / "rotation_star_out"
+	Team           string
+	StarPlayer     string
+	Status         string // "Out" / "Doubtful"
+	Reason         string
+	Impact         string // "franchise_player_out" / "co_star_out" / "rotation_star_out"
+	TeamInjuries   []InjuryInfo // all star injuries on the affected team
+	OpponentName   string
+	OpponentInj    []InjuryInfo // all star injuries on the opponent
+}
+
+type InjuryInfo struct {
+	Player string
+	Status string // "Out" / "Doubtful" / "Questionable"
+	Reason string
 }
 
 // WhaleAlertEvent carries a large trade from a tracked smart-money wallet.
@@ -343,23 +352,86 @@ func FormatSignalFilled(ev FillReceiptEvent) string {
 		ev.Outcome, ev.SizeUSD, ev.FillPx, ev.OrderID)
 }
 
-// FormatInjuryAlert renders a compact DM for a star-player injury report.
+// FormatInjuryAlert renders a rich DM showing who's out, team status, and opponent comparison.
 func FormatInjuryAlert(ev InjuryAlertEvent) string {
 	icon := "🏥"
 	if ev.Impact == "franchise_player_out" {
+		icon = "🚨🚨🚨"
+	} else if ev.Impact == "co_star_out" {
 		icon = "🚨"
 	}
-	status := ev.Status
-	if status == "" {
-		status = "Out"
-	}
+
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s %s · %s %s\n", icon, ev.Team, ev.StarPlayer, status)
+	fmt.Fprintf(&b, "%s %s %s OUT\n", icon, ev.StarPlayer, ev.Status)
 	if ev.Reason != "" {
-		fmt.Fprintf(&b, "原因: %s\n", ev.Reason)
+		fmt.Fprintf(&b, "伤因: %s\n", ev.Reason)
 	}
-	fmt.Fprintf(&b, "影响: %s\n", ev.Impact)
-	b.WriteString("对手 underdog 可能存在动量机会")
+	b.WriteString("\n")
+
+	// Team injury roster
+	fmt.Fprintf(&b, "📋 %s 伤病名单:\n", ev.Team)
+	outCount := 0
+	if len(ev.TeamInjuries) == 0 {
+		fmt.Fprintf(&b, "  仅 %s\n", ev.StarPlayer)
+		outCount = 1
+	} else {
+		for _, inj := range ev.TeamInjuries {
+			statusIcon := "❌"
+			if inj.Status == "Doubtful" {
+				statusIcon = "⚠️"
+			} else if inj.Status == "Questionable" {
+				statusIcon = "❓"
+			}
+			fmt.Fprintf(&b, "  %s %s %s", statusIcon, inj.Player, inj.Status)
+			if inj.Reason != "" {
+				fmt.Fprintf(&b, "（%s）", inj.Reason)
+			}
+			b.WriteString("\n")
+			if inj.Status == "Out" {
+				outCount++
+			}
+		}
+	}
+
+	// Opponent injury roster
+	b.WriteString("\n")
+	if ev.OpponentName != "" {
+		fmt.Fprintf(&b, "📋 %s 伤病名单:\n", ev.OpponentName)
+		oppOut := 0
+		if len(ev.OpponentInj) == 0 {
+			b.WriteString("  ✅ 全员健康\n")
+		} else {
+			for _, inj := range ev.OpponentInj {
+				statusIcon := "❌"
+				if inj.Status == "Doubtful" {
+					statusIcon = "⚠️"
+				} else if inj.Status == "Questionable" {
+					statusIcon = "❓"
+				}
+				fmt.Fprintf(&b, "  %s %s %s", statusIcon, inj.Player, inj.Status)
+				if inj.Reason != "" {
+					fmt.Fprintf(&b, "（%s）", inj.Reason)
+				}
+				b.WriteString("\n")
+				if inj.Status == "Out" {
+					oppOut++
+				}
+			}
+		}
+
+		// Comparison summary
+		b.WriteString("\n⚖️ ")
+		if outCount > oppOut {
+			fmt.Fprintf(&b, "%s 缺%d人 vs %s 缺%d人 → %s 优势", ev.Team, outCount, ev.OpponentName, oppOut, ev.OpponentName)
+		} else if oppOut > outCount {
+			fmt.Fprintf(&b, "%s 缺%d人 vs %s 缺%d人 → %s 优势", ev.Team, outCount, ev.OpponentName, oppOut, ev.Team)
+		} else if outCount == 0 && oppOut == 0 {
+			b.WriteString("双方全员健康")
+		} else {
+			fmt.Fprintf(&b, "双方各缺%d人 · 势均力敌", outCount)
+		}
+	}
+
 	return b.String()
 }
 

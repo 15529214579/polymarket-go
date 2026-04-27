@@ -110,16 +110,18 @@ type Scanner struct {
 	client *http.Client
 	seen   map[string]time.Time // "team:player" → last alert time
 
-	mu    sync.RWMutex
-	cache map[string][]InjuryEntry // team → current star injuries (refreshed each Scan)
+	mu       sync.RWMutex
+	cache    map[string][]InjuryEntry // team → current star injuries (refreshed each Scan)
+	allCache map[string][]InjuryEntry // team → ALL injuries (stars + non-stars, OUT/Doubtful/Questionable)
 }
 
 func NewScanner(cfg Config) *Scanner {
 	return &Scanner{
-		cfg:    cfg,
-		client: &http.Client{Timeout: 15 * time.Second},
-		seen:   make(map[string]time.Time),
-		cache:  make(map[string][]InjuryEntry),
+		cfg:      cfg,
+		client:   &http.Client{Timeout: 15 * time.Second},
+		seen:     make(map[string]time.Time),
+		cache:    make(map[string][]InjuryEntry),
+		allCache: make(map[string][]InjuryEntry),
 	}
 }
 
@@ -134,6 +136,13 @@ func (s *Scanner) InjuredStars(team string) []InjuryEntry {
 // HasInjuredStar reports whether the team has at least one star OUT or Doubtful.
 func (s *Scanner) HasInjuredStar(team string) bool {
 	return len(s.InjuredStars(team)) > 0
+}
+
+// AllInjuries returns all OUT/Doubtful/Questionable players (stars and non-stars) for the given team.
+func (s *Scanner) AllInjuries(team string) []InjuryEntry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.allCache[team]
 }
 
 func (s *Scanner) Enabled() bool { return s.cfg.Enabled }
@@ -160,8 +169,12 @@ func (s *Scanner) Scan(ctx context.Context) ([]InjuryAlert, error) {
 
 	// Rebuild the shared injury cache (read by momentum/lottery filters).
 	starOut := make(map[string][]InjuryEntry)
+	allInj := make(map[string][]InjuryEntry)
 	for team, teamEntries := range byTeam {
 		for _, e := range teamEntries {
+			if e.Status == StatusOut || e.Status == StatusDoubtful || e.Status == StatusQuest {
+				allInj[team] = append(allInj[team], e)
+			}
 			if (e.Status == StatusOut || e.Status == StatusDoubtful) && isStar(team, e.Player) {
 				starOut[team] = append(starOut[team], e)
 			}
@@ -169,6 +182,7 @@ func (s *Scanner) Scan(ctx context.Context) ([]InjuryAlert, error) {
 	}
 	s.mu.Lock()
 	s.cache = starOut
+	s.allCache = allInj
 	s.mu.Unlock()
 
 	for team, teamEntries := range byTeam {

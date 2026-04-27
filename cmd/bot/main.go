@@ -1633,13 +1633,8 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						"status", string(a.Status),
 						"impact", a.Impact,
 					)
-					notifier.InjuryAlert(notify.InjuryAlertEvent{
-						Team:       a.Team,
-						StarPlayer: a.StarPlayer,
-						Status:     string(a.Status),
-						Reason:     a.Reason,
-						Impact:     a.Impact,
-					})
+					ev := injuryBuildAlertEvent(a, injScanner, meta, assetSport)
+					notifier.InjuryAlert(ev)
 					if a.Status == injury.StatusOut {
 						injuryPushOpponentPrompt(a, meta, assetSport, sampler, pending, notifier)
 					}
@@ -1666,13 +1661,8 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 							"status", string(a.Status),
 							"impact", a.Impact,
 						)
-						notifier.InjuryAlert(notify.InjuryAlertEvent{
-							Team:       a.Team,
-							StarPlayer: a.StarPlayer,
-							Status:     string(a.Status),
-							Reason:     a.Reason,
-							Impact:     a.Impact,
-						})
+						ev := injuryBuildAlertEvent(a, injScanner, meta, assetSport)
+						notifier.InjuryAlert(ev)
 						if a.Status == injury.StatusOut {
 							injuryPushOpponentPrompt(a, meta, assetSport, sampler, pending, notifier)
 						}
@@ -3015,6 +3005,74 @@ func injuryTeamInMarkets(team string, meta map[string]*assetMeta, assetSport map
 	return false
 }
 
+// injuryFindOpponent returns the opponent team name for a given team by scanning PM markets.
+func injuryFindOpponent(team string, meta map[string]*assetMeta, assetSport map[string]strategy.SportFamily) string {
+	lt := strings.ToLower(team)
+	for assetID, me := range meta {
+		if assetSport[assetID] != strategy.SportBasketball {
+			continue
+		}
+		if !strings.Contains(lt, strings.ToLower(me.Outcome)) {
+			continue
+		}
+		if me.Sibling == "" {
+			continue
+		}
+		if sib := meta[me.Sibling]; sib != nil {
+			return sib.Outcome
+		}
+	}
+	return ""
+}
+
+// injuryBuildAlertEvent constructs a rich InjuryAlertEvent with both teams' injury context.
+func injuryBuildAlertEvent(a injury.InjuryAlert, injScanner *injury.Scanner, meta map[string]*assetMeta, assetSport map[string]strategy.SportFamily) notify.InjuryAlertEvent {
+	ev := notify.InjuryAlertEvent{
+		Team:       a.Team,
+		StarPlayer: a.StarPlayer,
+		Status:     string(a.Status),
+		Reason:     a.Reason,
+		Impact:     a.Impact,
+	}
+
+	// Populate team injuries from scanner cache (all injuries, not just stars)
+	teamEntries := injScanner.AllInjuries(a.Team)
+	if len(teamEntries) > 0 {
+		for _, e := range teamEntries {
+			ev.TeamInjuries = append(ev.TeamInjuries, notify.InjuryInfo{
+				Player: e.Player,
+				Status: string(e.Status),
+				Reason: e.Reason,
+			})
+		}
+	} else {
+		// Fallback to alert entries
+		for _, e := range a.Entries {
+			ev.TeamInjuries = append(ev.TeamInjuries, notify.InjuryInfo{
+				Player: e.Player,
+				Status: string(e.Status),
+				Reason: e.Reason,
+			})
+		}
+	}
+
+	// Find opponent and their injuries (all injuries, not just stars)
+	opponent := injuryFindOpponent(a.Team, meta, assetSport)
+	if opponent != "" {
+		ev.OpponentName = opponent
+		oppEntries := injScanner.AllInjuries(opponent)
+		for _, e := range oppEntries {
+			ev.OpponentInj = append(ev.OpponentInj, notify.InjuryInfo{
+				Player: e.Player,
+				Status: string(e.Status),
+				Reason: e.Reason,
+			})
+		}
+	}
+
+	return ev
+}
+
 // injuryPushOpponentPrompt finds the PM market for an injured team's game and
 // pushes a SignalPrompt with buy buttons for the opposing team.
 func injuryPushOpponentPrompt(a injury.InjuryAlert, meta map[string]*assetMeta, assetSport map[string]strategy.SportFamily, sampler *feed.Sampler, pending *notify.PendingStore, notifier notify.Notifier) {
@@ -3058,11 +3116,25 @@ func injuryPushOpponentPrompt(a injury.InjuryAlert, meta map[string]*assetMeta, 
 			Choices:  choices,
 		}, time.Now())
 
+		ctxLine := fmt.Sprintf("🚨 %s %s OUT", a.Team, a.StarPlayer)
+		if a.Reason != "" {
+			ctxLine += " · " + a.Reason
+		}
+		teamOut := 0
+		for _, e := range a.Entries {
+			if e.Status == injury.StatusOut {
+				teamOut++
+			}
+		}
+		if teamOut > 1 {
+			ctxLine += fmt.Sprintf("\n%s 共 %d 名球员缺阵", a.Team, teamOut)
+		}
+
 		nonce := p.Nonce
 		notifier.SignalPrompt(notify.SignalPromptEvent{
 			Nonce:   p.Nonce,
 			Match:   me.Match,
-			Context: fmt.Sprintf("🚨 %s %s OUT · %s", a.Team, a.StarPlayer, a.Reason),
+			Context: ctxLine,
 			EndIn:   notify.HumanizeEndIn(time.Now(), me.EndTime),
 			Slug:    me.Slug,
 			Choices: sigChoices,
