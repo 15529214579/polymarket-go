@@ -171,7 +171,16 @@ func (s *Scanner) saveSeen() {
 func (s *Scanner) InjuredStars(team string) []InjuryEntry {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.cache[team]
+	if v, ok := s.cache[team]; ok {
+		return v
+	}
+	lt := strings.ToLower(team)
+	for k, v := range s.cache {
+		if strings.Contains(strings.ToLower(k), lt) || strings.Contains(lt, strings.ToLower(k)) {
+			return v
+		}
+	}
+	return nil
 }
 
 // HasInjuredStar reports whether the team has at least one star OUT or Doubtful.
@@ -183,7 +192,16 @@ func (s *Scanner) HasInjuredStar(team string) bool {
 func (s *Scanner) AllInjuries(team string) []InjuryEntry {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.allCache[team]
+	if v, ok := s.allCache[team]; ok {
+		return v
+	}
+	lt := strings.ToLower(team)
+	for k, v := range s.allCache {
+		if strings.Contains(strings.ToLower(k), lt) || strings.Contains(lt, strings.ToLower(k)) {
+			return v
+		}
+	}
+	return nil
 }
 
 func (s *Scanner) Enabled() bool { return s.cfg.Enabled }
@@ -412,8 +430,16 @@ func parseStatus(s string) PlayerStatus {
 func (s *Scanner) GameFor(team string) (GameInfo, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	g, ok := s.games[team]
-	return g, ok
+	if g, ok := s.games[team]; ok {
+		return g, true
+	}
+	lt := strings.ToLower(team)
+	for k, g := range s.games {
+		if strings.Contains(strings.ToLower(k), lt) || strings.Contains(lt, strings.ToLower(k)) {
+			return g, true
+		}
+	}
+	return GameInfo{}, false
 }
 
 type espnScoreboard struct {
