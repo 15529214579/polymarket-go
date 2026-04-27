@@ -143,18 +143,19 @@ type LargeFillEvent struct {
 // InjuryAlert method from Notifier.
 type InjuryAlertEvent struct {
 	Team           string
-	StarPlayer     string
-	Status         string // "Out" / "Doubtful"
+	StarPlayer     string         // primary trigger (kept for backward compat)
+	Status         string         // "Out" / "Doubtful"
 	Reason         string
-	Impact         string // "franchise_player_out" / "co_star_out" / "rotation_star_out"
-	TeamInjuries   []InjuryInfo // all injuries on the affected team
+	Impact         string         // "franchise_player_out" / "co_star_out" / "rotation_star_out"
+	TriggerPlayers []InjuryInfo   // ALL newly-detected injured players (may be >1 per game)
+	TeamInjuries   []InjuryInfo   // all injuries on the affected team
 	OpponentName   string
-	OpponentInj    []InjuryInfo // all injuries on the opponent
-	MatchTitle     string       // "Lakers vs Rockets" — the game matchup
-	GameContext    string       // "Game 5 · 季后赛第一轮" etc.
-	GameTime      time.Time    // tipoff / market end time
-	TeamPrice      float64      // PM price for the injured team (0 if unknown)
-	OpponentPrice  float64      // PM price for the opponent team (0 if unknown)
+	OpponentInj    []InjuryInfo   // all injuries on the opponent
+	MatchTitle     string         // "Lakers vs Rockets" — the game matchup
+	GameContext    string         // "Game 5 · 季后赛第一轮" etc.
+	GameTime      time.Time      // tipoff / market end time
+	TeamPrice      float64        // PM price for the injured team (0 if unknown)
+	OpponentPrice  float64        // PM price for the opponent team (0 if unknown)
 }
 
 type InjuryInfo struct {
@@ -361,11 +362,37 @@ func FormatSignalFilled(ev FillReceiptEvent) string {
 
 // FormatInjuryAlert renders a rich DM showing the matchup, who's out, their role and impact,
 // and a side-by-side roster comparison with win probability shift.
+func injuryStatusIcon(status string) string {
+	switch status {
+	case "Out":
+		return "❌"
+	case "Day-To-Day":
+		return "🟡"
+	case "Doubtful":
+		return "⚠️"
+	case "Questionable":
+		return "❓"
+	default:
+		return "❌"
+	}
+}
+
+func injuryImpactIcon(impact string) string {
+	switch impact {
+	case "franchise_player_out":
+		return "🚨🚨🚨"
+	case "co_star_out":
+		return "🚨🚨"
+	default:
+		return "🚨"
+	}
+}
+
 func FormatInjuryAlert(ev InjuryAlertEvent) string {
 	var b strings.Builder
 	sgt := time.FixedZone("SGT", 8*3600)
 
-	// Header: matchup + game time
+	// Header: matchup + game time + PM price
 	if ev.MatchTitle != "" {
 		fmt.Fprintf(&b, "🏀 %s\n", ev.MatchTitle)
 	}
@@ -376,101 +403,40 @@ func FormatInjuryAlert(ev InjuryAlertEvent) string {
 	if ev.GameContext != "" {
 		fmt.Fprintf(&b, "📅 %s\n", ev.GameContext)
 	}
-
-	// PM prices
 	if ev.OpponentPrice > 0 {
 		fmt.Fprintf(&b, "⚡ %s ↑ @ %.4f\n", ev.OpponentName, ev.OpponentPrice)
 	}
 	b.WriteString("━━━━━━━━━━━━━━━━━━━\n\n")
 
-	// Trigger: who just went down
-	icon := "🏥"
-	if ev.Impact == "franchise_player_out" {
-		icon = "🚨🚨🚨"
-	} else if ev.Impact == "co_star_out" {
-		icon = "🚨🚨"
-	} else if ev.Impact == "rotation_star_out" {
-		icon = "🚨"
+	// Trigger section: list ALL newly-detected injured players
+	triggers := ev.TriggerPlayers
+	if len(triggers) == 0 && ev.StarPlayer != "" {
+		triggers = []InjuryInfo{{
+			Player:    ev.StarPlayer,
+			Status:    ev.Status,
+			Reason:    ev.Reason,
+			Role:      "球员",
+			ImpactPct: 0,
+		}}
 	}
-
-	triggerRole := ""
-	triggerImpact := 0
-	for _, inj := range ev.TeamInjuries {
-		if inj.Player == ev.StarPlayer {
-			triggerRole = inj.Role
-			triggerImpact = inj.ImpactPct
-			break
+	for _, tp := range triggers {
+		icon := injuryImpactIcon(tp.impactLevel())
+		fmt.Fprintf(&b, "%s %s %s\n", icon, tp.Player, tp.Status)
+		fmt.Fprintf(&b, "   角色: %s（实力占比 ~%d%%）\n", tp.Role, tp.ImpactPct)
+		if tp.Reason != "" {
+			fmt.Fprintf(&b, "   伤因: %s\n", tp.Reason)
 		}
-	}
-	if triggerRole == "" {
-		triggerRole = "球员"
+		b.WriteString("\n")
 	}
 
-	fmt.Fprintf(&b, "%s %s 缺阵\n", icon, ev.StarPlayer)
-	fmt.Fprintf(&b, "   角色: %s（实力占比 ~%d%%）\n", triggerRole, triggerImpact)
-	if ev.Reason != "" {
-		fmt.Fprintf(&b, "   伤因: %s\n", ev.Reason)
-	}
-	b.WriteString("\n")
-
-	// Team A injury roster
-	teamOutPct := 0
-	teamOutCount := 0
-	fmt.Fprintf(&b, "📋 %s 伤病:\n", ev.Team)
-	if len(ev.TeamInjuries) == 0 {
-		fmt.Fprintf(&b, "  ❌ %s Out — %s ~%d%%\n", ev.StarPlayer, triggerRole, triggerImpact)
-		teamOutPct = triggerImpact
-		teamOutCount = 1
-	} else {
-		for _, inj := range ev.TeamInjuries {
-			statusIcon := "❌"
-			if inj.Status == "Day-To-Day" {
-				statusIcon = "🟡"
-			} else if inj.Status == "Doubtful" {
-				statusIcon = "⚠️"
-			} else if inj.Status == "Questionable" {
-				statusIcon = "❓"
-			}
-			roleLine := ""
-			if inj.Role != "" {
-				roleLine = fmt.Sprintf(" — %s ~%d%%", inj.Role, inj.ImpactPct)
-			}
-			fmt.Fprintf(&b, "  %s %s %s%s\n", statusIcon, inj.Player, inj.Status, roleLine)
-			if inj.Status == "Out" || inj.Status == "Doubtful" || inj.Status == "Day-To-Day" {
-				teamOutPct += inj.ImpactPct
-				teamOutCount++
-			}
-		}
-	}
-	fmt.Fprintf(&b, "  💔 缺阵 %d 人 · 损失实力 ~%d%%\n", teamOutCount, teamOutPct)
+	// Team A full injury roster
+	teamOutPct, teamOutCount := injuryRoster(&b, ev.Team, ev.TeamInjuries)
 
 	b.WriteString("\n")
-	oppOutPct := 0
-	oppOutCount := 0
+	// Team B full injury roster
+	oppOutPct, oppOutCount := 0, 0
 	if ev.OpponentName != "" {
-		fmt.Fprintf(&b, "📋 %s 伤病:\n", ev.OpponentName)
-		if len(ev.OpponentInj) == 0 {
-			b.WriteString("  ✅ 全员健康\n")
-		} else {
-			for _, inj := range ev.OpponentInj {
-				statusIcon := "❌"
-				if inj.Status == "Doubtful" {
-					statusIcon = "⚠️"
-				} else if inj.Status == "Questionable" {
-					statusIcon = "❓"
-				}
-				roleLine := ""
-				if inj.Role != "" {
-					roleLine = fmt.Sprintf(" — %s ~%d%%", inj.Role, inj.ImpactPct)
-				}
-				fmt.Fprintf(&b, "  %s %s %s%s\n", statusIcon, inj.Player, inj.Status, roleLine)
-				if inj.Status == "Out" || inj.Status == "Doubtful" || inj.Status == "Day-To-Day" {
-					oppOutPct += inj.ImpactPct
-					oppOutCount++
-				}
-			}
-		}
-		fmt.Fprintf(&b, "  💔 缺阵 %d 人 · 损失实力 ~%d%%\n", oppOutCount, oppOutPct)
+		oppOutPct, oppOutCount = injuryRoster(&b, ev.OpponentName, ev.OpponentInj)
 	}
 
 	// Verdict
@@ -483,20 +449,53 @@ func FormatInjuryAlert(ev InjuryAlertEvent) string {
 
 	if ev.OpponentName != "" {
 		diff := teamOutPct - oppOutPct
-		if diff > 15 {
+		switch {
+		case diff > 15:
 			fmt.Fprintf(&b, "📈 %s 伤得更重 → %s 赢面大增", ev.Team, ev.OpponentName)
-		} else if diff > 5 {
+		case diff > 5:
 			fmt.Fprintf(&b, "📈 %s 略受伤更重 → %s 小幅利好", ev.Team, ev.OpponentName)
-		} else if diff < -15 {
+		case diff < -15:
 			fmt.Fprintf(&b, "📈 %s 伤得更重 → %s 赢面大增", ev.OpponentName, ev.Team)
-		} else if diff < -5 {
+		case diff < -5:
 			fmt.Fprintf(&b, "📈 %s 略受伤更重 → %s 小幅利好", ev.OpponentName, ev.Team)
-		} else {
+		default:
 			b.WriteString("🤝 双方伤情接近 · 影响基本抵消")
 		}
 	}
 
 	return b.String()
+}
+
+func injuryRoster(b *strings.Builder, team string, injuries []InjuryInfo) (outPct, outCount int) {
+	fmt.Fprintf(b, "📋 %s 伤病:\n", team)
+	if len(injuries) == 0 {
+		b.WriteString("  ✅ 全员健康\n")
+		return 0, 0
+	}
+	for _, inj := range injuries {
+		icon := injuryStatusIcon(inj.Status)
+		roleLine := ""
+		if inj.Role != "" {
+			roleLine = fmt.Sprintf(" — %s ~%d%%", inj.Role, inj.ImpactPct)
+		}
+		fmt.Fprintf(b, "  %s %s %s%s\n", icon, inj.Player, inj.Status, roleLine)
+		if inj.Status == "Out" || inj.Status == "Doubtful" || inj.Status == "Day-To-Day" {
+			outPct += inj.ImpactPct
+			outCount++
+		}
+	}
+	fmt.Fprintf(b, "  💔 缺阵 %d 人 · 损失实力 ~%d%%\n", outCount, outPct)
+	return
+}
+
+func (info InjuryInfo) impactLevel() string {
+	if info.ImpactPct >= 30 {
+		return "franchise_player_out"
+	}
+	if info.ImpactPct >= 20 {
+		return "co_star_out"
+	}
+	return "rotation_star_out"
 }
 
 func FormatLargeFill(ev LargeFillEvent) string {

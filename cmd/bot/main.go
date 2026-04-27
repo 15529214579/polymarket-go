@@ -1617,12 +1617,15 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 			tk := time.NewTicker(injCfg.ScanInterval)
 			defer tk.Stop()
 			// Immediate first scan on startup (don't wait for first tick).
-			scanOnce := func() {
-				alerts, err := injScanner.Scan(ctx)
-				if err != nil {
-					slog.Warn("injury_scan_fail", "err", err.Error())
-					return
+			processInjuryAlerts := func(alerts []injury.InjuryAlert) {
+				// Group alerts by game matchup so we push ONE notification per game.
+				type gameKey struct{ teamA, teamB string }
+				type gameGroup struct {
+					key    gameKey
+					alerts []injury.InjuryAlert
 				}
+				groups := make(map[gameKey]*gameGroup)
+				var order []gameKey
 				for _, a := range alerts {
 					if !injuryTeamInMarkets(a.Team, meta, assetSport) {
 						continue
@@ -1637,12 +1640,41 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						"status", string(a.Status),
 						"impact", a.Impact,
 					)
-					ev := injuryBuildAlertEvent(a, injScanner, meta, assetSport, sampler)
+					// Normalize key so both teams in a matchup collapse to the same group.
+					opp := injuryFindOpponentName(a.Team, injScanner, meta, assetSport)
+					k := gameKey{a.Team, opp}
+					// Ensure consistent ordering: if opponent already started a group, merge.
+					if opp != "" {
+						if _, ok := groups[gameKey{opp, a.Team}]; ok {
+							k = gameKey{opp, a.Team}
+						}
+					}
+					if _, ok := groups[k]; !ok {
+						groups[k] = &gameGroup{key: k}
+						order = append(order, k)
+					}
+					groups[k].alerts = append(groups[k].alerts, a)
+				}
+				for _, k := range order {
+					g := groups[k]
+					ev := injuryBuildGameEvent(g.alerts, injScanner, meta, assetSport, sampler)
 					notifier.InjuryAlert(ev)
-					if a.Status == injury.StatusOut || a.Status == injury.StatusDTD {
-						injuryPushOpponentPrompt(a, meta, assetSport, sampler, pending, notifier)
+					// Push opponent buy prompt once per game (use first alert with OUT/DTD).
+					for _, a := range g.alerts {
+						if a.Status == injury.StatusOut || a.Status == injury.StatusDTD {
+							injuryPushOpponentPrompt(a, meta, assetSport, sampler, pending, notifier)
+							break
+						}
 					}
 				}
+			}
+			scanOnce := func() {
+				alerts, err := injScanner.Scan(ctx)
+				if err != nil {
+					slog.Warn("injury_scan_fail", "err", err.Error())
+					return
+				}
+				processInjuryAlerts(alerts)
 			}
 			scanOnce()
 			for {
@@ -1655,26 +1687,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						slog.Warn("injury_scan_fail", "err", err.Error())
 						continue
 					}
-					for _, a := range alerts {
-						if !injuryTeamInMarkets(a.Team, meta, assetSport) {
-							continue
-						}
-						if injuryGameFinished(a.Team, injScanner) {
-							slog.Info("injury_skip_final", "team", a.Team, "player", a.StarPlayer)
-							continue
-						}
-						slog.Info("injury_alert",
-							"team", a.Team,
-							"player", a.StarPlayer,
-							"status", string(a.Status),
-							"impact", a.Impact,
-						)
-						ev := injuryBuildAlertEvent(a, injScanner, meta, assetSport, sampler)
-						notifier.InjuryAlert(ev)
-						if a.Status == injury.StatusOut || a.Status == injury.StatusDTD {
-							injuryPushOpponentPrompt(a, meta, assetSport, sampler, pending, notifier)
-						}
-					}
+					processInjuryAlerts(alerts)
 				}
 			}
 		}()
@@ -3045,6 +3058,39 @@ func injuryFindOpponentAndGame(team string, meta map[string]*assetMeta, assetSpo
 		}
 	}
 	return "", "", time.Time{}
+}
+
+// injuryFindOpponentName resolves the opponent team name for a given team (ESPN first, PM fallback).
+func injuryFindOpponentName(team string, injScanner *injury.Scanner, meta map[string]*assetMeta, assetSport map[string]strategy.SportFamily) string {
+	if gi, ok := injScanner.GameFor(team); ok {
+		if team == gi.HomeTeam || strings.Contains(strings.ToLower(team), strings.ToLower(gi.HomeTeam)) {
+			return gi.AwayTeam
+		}
+		return gi.HomeTeam
+	}
+	opp, _, _ := injuryFindOpponentAndGame(team, meta, assetSport)
+	return opp
+}
+
+// injuryBuildGameEvent builds a single InjuryAlertEvent for all alerts from the same game.
+func injuryBuildGameEvent(alerts []injury.InjuryAlert, injScanner *injury.Scanner, meta map[string]*assetMeta, assetSport map[string]strategy.SportFamily, sampler *feed.Sampler) notify.InjuryAlertEvent {
+	primary := alerts[0]
+	ev := injuryBuildAlertEvent(primary, injScanner, meta, assetSport, sampler)
+	// Populate TriggerPlayers from ALL alerts in this game group.
+	buildTrigger := func(a injury.InjuryAlert) notify.InjuryInfo {
+		return notify.InjuryInfo{
+			Player:    a.StarPlayer,
+			Status:    string(a.Status),
+			Reason:    a.Reason,
+			Role:      injury.PlayerRole(a.Team, a.StarPlayer),
+			ImpactPct: injury.PlayerImpactPct(a.Team, a.StarPlayer),
+		}
+	}
+	ev.TriggerPlayers = nil
+	for _, a := range alerts {
+		ev.TriggerPlayers = append(ev.TriggerPlayers, buildTrigger(a))
+	}
+	return ev
 }
 
 // injuryBuildAlertEvent constructs a rich InjuryAlertEvent with both teams' injury context.
