@@ -2,9 +2,6 @@ package injury
 
 import (
 	"context"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -64,68 +61,6 @@ func TestAssessImpact(t *testing.T) {
 }
 
 func TestScanFiltersCorrectly(t *testing.T) {
-	resp := espnResponse{
-		Injuries: []struct {
-			Team struct {
-				DisplayName string `json:"displayName"`
-			} `json:"team"`
-			Injuries []struct {
-				Athlete struct {
-					DisplayName string `json:"displayName"`
-				} `json:"athlete"`
-				Status  string `json:"status"`
-				Details struct {
-					Detail string `json:"detail"`
-				} `json:"details"`
-			} `json:"injuries"`
-		}{
-			{
-				Team: struct {
-					DisplayName string `json:"displayName"`
-				}{DisplayName: "Denver Nuggets"},
-				Injuries: []struct {
-					Athlete struct {
-						DisplayName string `json:"displayName"`
-					} `json:"athlete"`
-					Status  string `json:"status"`
-					Details struct {
-						Detail string `json:"detail"`
-					} `json:"details"`
-				}{
-					{
-						Athlete: struct {
-							DisplayName string `json:"displayName"`
-						}{DisplayName: "Nikola Jokic"},
-						Status: "Out",
-						Details: struct {
-							Detail string `json:"detail"`
-						}{Detail: "knee soreness"},
-					},
-					{
-						Athlete: struct {
-							DisplayName string `json:"displayName"`
-						}{DisplayName: "Random Bench Guy"},
-						Status: "Out",
-						Details: struct {
-							Detail string `json:"detail"`
-						}{Detail: "ankle"},
-					},
-				},
-			},
-		},
-	}
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(resp)
-	}))
-	defer srv.Close()
-
-	cfg := Config{Enabled: true, ScanInterval: 0, StarOnly: true}
-	scanner := NewScanner(cfg)
-	// override the URL by patching the client to use our test server
-	scanner.client = srv.Client()
-
-	// We can't easily override the URL, so test the parsing logic directly
 	entries := []InjuryEntry{
 		{Player: "Nikola Jokic", Team: "Denver Nuggets", Status: StatusOut, Reason: "knee soreness"},
 		{Player: "Random Bench Guy", Team: "Denver Nuggets", Status: StatusOut, Reason: "ankle"},
@@ -144,7 +79,7 @@ func TestScanFiltersCorrectly(t *testing.T) {
 			if e.Status != StatusOut && e.Status != StatusDoubtful {
 				continue
 			}
-			if cfg.StarOnly && !isStar(team, e.Player) {
+			if !isStar(team, e.Player) {
 				continue
 			}
 			alerts = append(alerts, InjuryAlert{
@@ -186,7 +121,7 @@ func TestScanDedup(t *testing.T) {
 			if e.Status != StatusOut && e.Status != StatusDoubtful {
 				continue
 			}
-			if cfg.StarOnly && !isStar(team, e.Player) {
+			if !isStar(team, e.Player) {
 				continue
 			}
 			key := team + ":" + e.Player

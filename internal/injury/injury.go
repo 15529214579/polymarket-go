@@ -59,36 +59,36 @@ func DefaultConfig() Config {
 }
 
 var nbaStars = map[string][]string{
-	"Atlanta Hawks":          {"Trae Young", "Dejounte Murray", "Jalen Johnson"},
+	"Atlanta Hawks":          {"Jalen Johnson", "De'Andre Hunter", "Clint Capela"},
 	"Boston Celtics":         {"Jayson Tatum", "Jaylen Brown", "Derrick White", "Kristaps Porzingis"},
-	"Brooklyn Nets":          {"Mikal Bridges", "Cameron Johnson", "Ben Simmons"},
+	"Brooklyn Nets":          {"Mikal Bridges", "Cameron Johnson", "Michael Porter Jr."},
 	"Charlotte Hornets":      {"LaMelo Ball", "Brandon Miller", "Miles Bridges"},
-	"Chicago Bulls":          {"Zach LaVine", "DeMar DeRozan", "Coby White"},
-	"Cleveland Cavaliers":    {"Donovan Mitchell", "Darius Garland", "Evan Mobley", "Jarrett Allen"},
-	"Dallas Mavericks":       {"Luka Doncic", "Kyrie Irving", "Daniel Gafford"},
-	"Denver Nuggets":         {"Nikola Jokic", "Jamal Murray", "Michael Porter Jr.", "Aaron Gordon"},
+	"Chicago Bulls":          {"Anfernee Simons", "Josh Giddey", "Coby White", "Rob Dillingham"},
+	"Cleveland Cavaliers":    {"Donovan Mitchell", "Darius Garland", "Evan Mobley", "Jarrett Allen", "James Harden"},
+	"Dallas Mavericks":       {"Kyrie Irving", "P.J. Washington", "Caleb Martin", "Cooper Flagg"},
+	"Denver Nuggets":         {"Nikola Jokic", "Jamal Murray", "Aaron Gordon"},
 	"Detroit Pistons":        {"Cade Cunningham", "Jaden Ivey", "Ausar Thompson"},
-	"Golden State Warriors":  {"Stephen Curry", "Klay Thompson", "Draymond Green", "Andrew Wiggins"},
-	"Houston Rockets":        {"Jalen Green", "Alperen Sengun", "Jabari Smith Jr."},
-	"Indiana Pacers":         {"Tyrese Haliburton", "Myles Turner", "Pascal Siakam"},
-	"LA Clippers":            {"Kawhi Leonard", "Paul George", "James Harden"},
-	"Los Angeles Lakers":     {"LeBron James", "Anthony Davis", "Austin Reaves"},
-	"Memphis Grizzlies":      {"Ja Morant", "Desmond Bane", "Marcus Smart"},
-	"Miami Heat":             {"Jimmy Butler", "Bam Adebayo", "Tyler Herro"},
-	"Milwaukee Bucks":        {"Giannis Antetokounmpo", "Damian Lillard", "Khris Middleton"},
-	"Minnesota Timberwolves": {"Anthony Edwards", "Karl-Anthony Towns", "Rudy Gobert"},
-	"New Orleans Pelicans":   {"Zion Williamson", "Brandon Ingram", "CJ McCollum"},
-	"New York Knicks":        {"Jalen Brunson", "Julius Randle", "OG Anunoby", "Donte DiVincenzo"},
+	"Golden State Warriors":  {"Stephen Curry", "Jimmy Butler III", "Draymond Green", "Andrew Wiggins"},
+	"Houston Rockets":        {"Kevin Durant", "Fred VanVleet", "Alperen Sengun", "Jabari Smith Jr.", "Amen Thompson", "Reed Sheppard"},
+	"Indiana Pacers":         {"Tyrese Haliburton", "Pascal Siakam", "Myles Turner", "Ivica Zubac"},
+	"LA Clippers":            {"Kawhi Leonard", "Bradley Beal", "Norman Powell"},
+	"Los Angeles Lakers":     {"LeBron James", "Luka Doncic", "Austin Reaves", "Deandre Ayton"},
+	"Memphis Grizzlies":      {"Ja Morant", "Desmond Bane", "Zach Edey"},
+	"Miami Heat":             {"Bam Adebayo", "Tyler Herro"},
+	"Milwaukee Bucks":        {"Giannis Antetokounmpo", "Kyle Kuzma", "Bobby Portis"},
+	"Minnesota Timberwolves": {"Anthony Edwards", "Julius Randle", "Rudy Gobert", "Donte DiVincenzo"},
+	"New Orleans Pelicans":   {"Zion Williamson", "Dejounte Murray", "CJ McCollum"},
+	"New York Knicks":        {"Jalen Brunson", "OG Anunoby", "Karl-Anthony Towns"},
 	"Oklahoma City Thunder":  {"Shai Gilgeous-Alexander", "Jalen Williams", "Chet Holmgren"},
 	"Orlando Magic":          {"Paolo Banchero", "Franz Wagner", "Jalen Suggs"},
-	"Philadelphia 76ers":     {"Joel Embiid", "Tyrese Maxey"},
-	"Phoenix Suns":           {"Kevin Durant", "Devin Booker", "Bradley Beal"},
-	"Portland Trail Blazers": {"Anfernee Simons", "Scoot Henderson", "Jerami Grant"},
-	"Sacramento Kings":       {"De'Aaron Fox", "Domantas Sabonis", "Keegan Murray"},
+	"Philadelphia 76ers":     {"Joel Embiid", "Tyrese Maxey", "Paul George"},
+	"Phoenix Suns":           {"Devin Booker", "Mark Williams"},
+	"Portland Trail Blazers": {"Damian Lillard", "Scoot Henderson", "Jerami Grant"},
+	"Sacramento Kings":       {"DeMar DeRozan", "Domantas Sabonis", "Zach LaVine", "Keegan Murray"},
 	"San Antonio Spurs":      {"Victor Wembanyama", "Keldon Johnson", "Tre Jones"},
 	"Toronto Raptors":        {"Scottie Barnes", "RJ Barrett", "Immanuel Quickley"},
-	"Utah Jazz":              {"Lauri Markkanen", "Collin Sexton", "Jordan Clarkson"},
-	"Washington Wizards":     {"Kyle Kuzma", "Jordan Poole", "Deni Avdija"},
+	"Utah Jazz":              {"Lauri Markkanen", "Collin Sexton", "Jaren Jackson Jr."},
+	"Washington Wizards":     {"Anthony Davis", "Trae Young", "Alex Sarr", "Bilal Coulibaly"},
 }
 
 func isStar(team, player string) bool {
@@ -232,10 +232,8 @@ func assessImpact(team string, e InjuryEntry) string {
 
 type espnResponse struct {
 	Injuries []struct {
-		Team struct {
-			DisplayName string `json:"displayName"`
-		} `json:"team"`
-		Injuries []struct {
+		DisplayName string `json:"displayName"`
+		Injuries    []struct {
 			Athlete struct {
 				DisplayName string `json:"displayName"`
 			} `json:"athlete"`
@@ -276,7 +274,7 @@ func (s *Scanner) fetchInjuries(ctx context.Context) ([]InjuryEntry, error) {
 		for _, inj := range team.Injuries {
 			entries = append(entries, InjuryEntry{
 				Player: inj.Athlete.DisplayName,
-				Team:   team.Team.DisplayName,
+				Team:   team.DisplayName,
 				Status: parseStatus(inj.Status),
 				Reason: inj.Details.Detail,
 			})
