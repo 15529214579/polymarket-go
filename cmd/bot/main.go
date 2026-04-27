@@ -1888,59 +1888,13 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 	if updownCfg.Enabled {
 		go func() {
 			if err := btc.RunUpDownStrategy(ctx, updownCfg, func(sig btc.UpDownSignal) {
-				dirEmoji := "🟢"
-				if sig.PredictedDirection == "Down" {
-					dirEmoji = "🔴"
-				}
-
-				outcome := "Up"
-				if sig.PredictedDirection == "Down" {
-					outcome = "Down"
-				}
-
-				choices := []notify.Choice{{
-					AssetID:  sig.ConditionID,
-					Outcome:  outcome,
-					Mid:      sig.PMPrice,
-					IsSignal: true,
-				}}
-				sigChoices := []notify.SignalChoice{{
-					Slot: 0, Outcome: outcome, Mid: sig.PMPrice, IsSignal: true,
-				}}
-
-				p := pending.Put(notify.PendingIntent{
-					Market:   sig.ConditionID,
-					Question: sig.Question,
-					Choices:  choices,
-				}, time.Now())
-
-				ctxLine := fmt.Sprintf(
-					"%s BTC %s · conf %.1f%% · PM %.1f¢\nSpot: $%.0f · Alignment: %s",
-					dirEmoji, sig.PredictedDirection, sig.Confidence*100, sig.PMPrice*100,
-					sig.Spot, sig.MarketSlug,
-				)
-
-				nonceSnap := p.Nonce
-				notifier.SignalPrompt(notify.SignalPromptEvent{
-					Nonce:      p.Nonce,
-					Match:      sig.Question,
-					Context:    ctxLine,
-					Slug:       sig.MarketSlug,
-					WhaleLabel: "₿ BTC短期预测",
-					Choices:    sigChoices,
-					ExpiresIn:  1 * time.Hour,
-					OnSent: func(msgID int64, err error) {
-						if err != nil || msgID == 0 {
-							return
-						}
-						pending.SetMessageID(nonceSnap, msgID)
-					},
-				})
-				slog.Info("updown_strategy.signal_pushed",
+				slog.Info("updown_strategy.auto_bet",
 					"slug", sig.MarketSlug,
 					"direction", sig.PredictedDirection,
 					"confidence", fmt.Sprintf("%.3f", sig.Confidence),
-					"nonce", p.Nonce,
+					"pm_price", fmt.Sprintf("%.3f", sig.PMPrice),
+					"size", fmt.Sprintf("%.2f", sig.SizeUSD),
+					"spot", fmt.Sprintf("%.0f", sig.Spot),
 				)
 			}); err != nil && ctx.Err() == nil {
 				slog.Warn("updown_strategy_exit", "err", err.Error())
