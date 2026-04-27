@@ -469,64 +469,82 @@ type espnScoreboard struct {
 }
 
 func (s *Scanner) fetchScoreboard(ctx context.Context) (map[string]GameInfo, error) {
-	url := "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard"
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("User-Agent", "polymarket-go/1.0")
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return nil, fmt.Errorf("espn scoreboard %d: %s", resp.StatusCode, body)
-	}
-
-	var data espnScoreboard
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		return nil, fmt.Errorf("espn scoreboard decode: %w", err)
+	now := time.Now()
+	dates := []string{
+		now.Format("20060102"),
+		now.AddDate(0, 0, 1).Format("20060102"),
 	}
 
 	games := make(map[string]GameInfo)
-	for _, ev := range data.Events {
-		if len(ev.Competitions) == 0 {
+	total := 0
+	for _, d := range dates {
+		url := "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=" + d
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		if err != nil {
 			continue
 		}
-		comp := ev.Competitions[0]
-		var home, away string
-		for _, c := range comp.Competitors {
-			if c.HomeAway == "home" {
-				home = c.Team.DisplayName
-			} else {
-				away = c.Team.DisplayName
-			}
-		}
-		tipoff, _ := time.Parse(time.RFC3339, ev.Date)
+		req.Header.Set("User-Agent", "polymarket-go/1.0")
 
-		seriesNote := ""
-		if comp.Series.Title != "" {
-			seriesNote = comp.Series.Title
-			if comp.Series.Summary != "" {
-				seriesNote += " · " + comp.Series.Summary
-			}
+		resp, err := s.client.Do(req)
+		if err != nil {
+			continue
 		}
 
-		gi := GameInfo{
-			HomeTeam:   home,
-			AwayTeam:   away,
-			Tipoff:     tipoff,
-			Status:     comp.Status.Type.Description,
-			SeriesNote: seriesNote,
+		if resp.StatusCode != 200 {
+			resp.Body.Close()
+			continue
 		}
-		games[home] = gi
-		games[away] = gi
+
+		var data espnScoreboard
+		if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+			resp.Body.Close()
+			continue
+		}
+		resp.Body.Close()
+
+		for _, ev := range data.Events {
+			if len(ev.Competitions) == 0 {
+				continue
+			}
+			comp := ev.Competitions[0]
+			var home, away string
+			for _, c := range comp.Competitors {
+				if c.HomeAway == "home" {
+					home = c.Team.DisplayName
+				} else {
+					away = c.Team.DisplayName
+				}
+			}
+			tipoff, err := time.Parse(time.RFC3339, ev.Date)
+			if err != nil {
+				tipoff, _ = time.Parse("2006-01-02T15:04Z", ev.Date)
+			}
+
+			seriesNote := ""
+			if comp.Series.Title != "" {
+				seriesNote = comp.Series.Title
+				if comp.Series.Summary != "" {
+					seriesNote += " · " + comp.Series.Summary
+				}
+			}
+
+			gi := GameInfo{
+				HomeTeam:   home,
+				AwayTeam:   away,
+				Tipoff:     tipoff,
+				Status:     comp.Status.Type.Description,
+				SeriesNote: seriesNote,
+			}
+			if _, exists := games[home]; !exists {
+				games[home] = gi
+			}
+			if _, exists := games[away]; !exists {
+				games[away] = gi
+			}
+			total++
+		}
 	}
 
-	slog.Info("scoreboard_fetch", "games", len(data.Events))
+	slog.Info("scoreboard_fetch", "games", total)
 	return games, nil
 }
