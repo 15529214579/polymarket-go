@@ -3047,11 +3047,17 @@ func buildNotifier() notify.Notifier {
 		slog.Info("notify.ready", "mode", "nop", "reason", "telegram_env_missing")
 		return notify.Nop{}
 	}
-	cfg := notify.TelegramConfig{BotToken: tok, ChatID: chat, PromptBotToken: os.Getenv("SIDECAR_BOT_TOKEN")}
+	cfg := notify.TelegramConfig{
+		BotToken:       tok,
+		ChatID:         chat,
+		PromptBotToken: os.Getenv("SIDECAR_BOT_TOKEN"),
+		PushBotToken:   os.Getenv("PUSH_BOT_TOKEN"),
+	}
 	slog.Info("notify.ready",
 		"mode", "telegram",
 		"chat_id", chat,
 		"prompt_via_sidecar", cfg.PromptBotToken != "",
+		"push_via_separate", cfg.PushBotToken != "",
 	)
 	return notify.NewTelegram(cfg)
 }

@@ -22,6 +22,10 @@ type TelegramConfig struct {
 	// watches. Leave empty to send prompts via BotToken (only correct if that bot
 	// is also the one being long-polled for callback_query).
 	PromptBotToken string
+	// PushBotToken, when set, is used for informational push notifications
+	// (injury alerts, text alerts, whale alerts, risk events, large fills)
+	// so they don't clutter the order bot's chat. Falls back to BotToken.
+	PushBotToken string
 	// BaseURL defaults to Telegram's production Bot API. Override for tests.
 	BaseURL string
 	// SendTimeout bounds each HTTP attempt. Default 5s.
@@ -69,16 +73,21 @@ func NewTelegram(cfg TelegramConfig) *Telegram {
 	return t
 }
 
-// RiskTrip formats and enqueues a risk-breaker trip. Drops silently if the
-// queue is saturated (a stuck Telegram pipe must not block the trading loop).
+func (t *Telegram) pushToken() string {
+	if t.cfg.PushBotToken != "" {
+		return t.cfg.PushBotToken
+	}
+	return t.cfg.BotToken
+}
+
 func (t *Telegram) RiskTrip(ev RiskTripEvent) {
-	t.enqueue(outgoing{text: FormatRiskTrip(ev), tag: "risk_trip"})
+	t.enqueue(outgoing{text: FormatRiskTrip(ev), tag: "risk_trip", sendToken: t.pushToken()})
 }
 func (t *Telegram) RiskResume(ev RiskResumeEvent) {
-	t.enqueue(outgoing{text: FormatRiskResume(ev), tag: "risk_resume"})
+	t.enqueue(outgoing{text: FormatRiskResume(ev), tag: "risk_resume", sendToken: t.pushToken()})
 }
 func (t *Telegram) LargeFill(ev LargeFillEvent) {
-	t.enqueue(outgoing{text: FormatLargeFill(ev), tag: "large_fill"})
+	t.enqueue(outgoing{text: FormatLargeFill(ev), tag: "large_fill", sendToken: t.pushToken()})
 }
 
 // SignalPrompt enqueues a DM with inline-keyboard rows for the signal side:
@@ -183,11 +192,11 @@ func (t *Telegram) FillReceipt(ev FillReceiptEvent) {
 // InjuryAlert enqueues a star-player injury DM. Guarded by -injury_enabled flag
 // at the call site; to remove: delete this method + InjuryAlertEvent + FormatInjuryAlert.
 func (t *Telegram) InjuryAlert(ev InjuryAlertEvent) {
-	t.enqueue(outgoing{text: FormatInjuryAlert(ev), tag: "injury_alert"})
+	t.enqueue(outgoing{text: FormatInjuryAlert(ev), tag: "injury_alert", sendToken: t.pushToken()})
 }
 
 func (t *Telegram) TextAlert(text string) {
-	t.enqueue(outgoing{text: text, tag: "text_alert"})
+	t.enqueue(outgoing{text: text, tag: "text_alert", sendToken: t.pushToken()})
 }
 
 // ClosePrompt enqueues a DM with a close button when a whale sells an asset
@@ -223,13 +232,9 @@ func (t *Telegram) EditCloseDone(text string, messageID int64) {
 	})
 }
 
-// WhaleAlert enqueues a smart-money whale trade DM via the sidecar/order bot.
+// WhaleAlert enqueues a smart-money whale trade DM via the push bot.
 func (t *Telegram) WhaleAlert(ev WhaleAlertEvent) {
-	tok := t.cfg.PromptBotToken
-	if tok == "" {
-		tok = t.cfg.BotToken
-	}
-	t.enqueue(outgoing{text: FormatWhaleAlert(ev), tag: "whale_alert", sendToken: tok})
+	t.enqueue(outgoing{text: FormatWhaleAlert(ev), tag: "whale_alert", sendToken: t.pushToken()})
 }
 
 // buttonLabel builds a short inline-button caption for ladder-mode buttons.
