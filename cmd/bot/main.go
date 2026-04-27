@@ -1606,6 +1606,9 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						continue
 					}
 					for _, a := range alerts {
+						if !injuryTeamInMarkets(a.Team, meta, assetSport) {
+							continue
+						}
 						slog.Info("injury_alert",
 							"team", a.Team,
 							"player", a.StarPlayer,
@@ -1619,7 +1622,6 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 							Reason:     a.Reason,
 							Impact:     a.Impact,
 						})
-						// Star OUT → push buy prompt for opposing team.
 						if a.Status == injury.StatusOut {
 							injuryPushOpponentPrompt(a, meta, assetSport, sampler, pending, notifier)
 						}
@@ -2944,6 +2946,19 @@ func injuryBlocksLottery(sc *injury.Scanner, meta map[string]*assetMeta, assetID
 		names[i] = e.Player + "(" + string(e.Status) + ")"
 	}
 	return true, team, strings.Join(names, ", ")
+}
+
+func injuryTeamInMarkets(team string, meta map[string]*assetMeta, assetSport map[string]strategy.SportFamily) bool {
+	lt := strings.ToLower(team)
+	for assetID, me := range meta {
+		if assetSport[assetID] != strategy.SportBasketball {
+			continue
+		}
+		if strings.Contains(strings.ToLower(me.Question), lt) || strings.Contains(lt, strings.ToLower(me.Outcome)) {
+			return true
+		}
+	}
+	return false
 }
 
 // injuryPushOpponentPrompt finds the PM market for an injured team's game and
