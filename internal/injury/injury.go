@@ -471,6 +471,7 @@ type espnScoreboard struct {
 func (s *Scanner) fetchScoreboard(ctx context.Context) (map[string]GameInfo, error) {
 	now := time.Now()
 	dates := []string{
+		now.AddDate(0, 0, -1).Format("20060102"),
 		now.Format("20060102"),
 		now.AddDate(0, 0, 1).Format("20060102"),
 	}
@@ -535,10 +536,12 @@ func (s *Scanner) fetchScoreboard(ctx context.Context) (map[string]GameInfo, err
 				Status:     comp.Status.Type.Description,
 				SeriesNote: seriesNote,
 			}
-			if _, exists := games[home]; !exists {
+			statusLower := strings.ToLower(gi.Status)
+			isFinal := strings.Contains(statusLower, "final") || strings.Contains(statusLower, "complete")
+			if prev, exists := games[home]; !exists || (!isFinal && (strings.Contains(strings.ToLower(prev.Status), "final") || strings.Contains(strings.ToLower(prev.Status), "complete"))) {
 				games[home] = gi
 			}
-			if _, exists := games[away]; !exists {
+			if prev, exists := games[away]; !exists || (!isFinal && (strings.Contains(strings.ToLower(prev.Status), "final") || strings.Contains(strings.ToLower(prev.Status), "complete"))) {
 				games[away] = gi
 			}
 			total++

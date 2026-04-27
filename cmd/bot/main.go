@@ -3018,8 +3018,8 @@ func injuryGameFinished(team string, sc *injury.Scanner) bool {
 	if !ok {
 		return false
 	}
-	ls := strings.ToLower(gi.Status)
-	return strings.Contains(ls, "final") || strings.Contains(ls, "complete")
+	s := strings.ToLower(gi.Status)
+	return strings.Contains(s, "final") || strings.Contains(s, "complete")
 }
 
 func injuryTeamInMarkets(team string, meta map[string]*assetMeta, assetSport map[string]strategy.SportFamily) bool {
