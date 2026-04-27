@@ -3035,38 +3035,38 @@ func injuryBuildAlertEvent(a injury.InjuryAlert, injScanner *injury.Scanner, met
 		Impact:     a.Impact,
 	}
 
+	// Build InjuryInfo with role and impact data
+	buildInfo := func(team string, e injury.InjuryEntry) notify.InjuryInfo {
+		return notify.InjuryInfo{
+			Player:    e.Player,
+			Status:    string(e.Status),
+			Reason:    e.Reason,
+			Role:      injury.PlayerRole(team, e.Player),
+			ImpactPct: injury.PlayerImpactPct(team, e.Player),
+		}
+	}
+
 	// Populate team injuries from scanner cache (all injuries, not just stars)
 	teamEntries := injScanner.AllInjuries(a.Team)
 	if len(teamEntries) > 0 {
 		for _, e := range teamEntries {
-			ev.TeamInjuries = append(ev.TeamInjuries, notify.InjuryInfo{
-				Player: e.Player,
-				Status: string(e.Status),
-				Reason: e.Reason,
-			})
+			ev.TeamInjuries = append(ev.TeamInjuries, buildInfo(a.Team, e))
 		}
 	} else {
-		// Fallback to alert entries
 		for _, e := range a.Entries {
-			ev.TeamInjuries = append(ev.TeamInjuries, notify.InjuryInfo{
-				Player: e.Player,
-				Status: string(e.Status),
-				Reason: e.Reason,
-			})
+			ev.TeamInjuries = append(ev.TeamInjuries, buildInfo(a.Team, e))
 		}
 	}
 
-	// Find opponent and their injuries (all injuries, not just stars)
+	// Find opponent and their injuries
 	opponent := injuryFindOpponent(a.Team, meta, assetSport)
 	if opponent != "" {
 		ev.OpponentName = opponent
+		ev.MatchTitle = a.Team + " vs " + opponent
+
 		oppEntries := injScanner.AllInjuries(opponent)
 		for _, e := range oppEntries {
-			ev.OpponentInj = append(ev.OpponentInj, notify.InjuryInfo{
-				Player: e.Player,
-				Status: string(e.Status),
-				Reason: e.Reason,
-			})
+			ev.OpponentInj = append(ev.OpponentInj, buildInfo(opponent, e))
 		}
 	}
 

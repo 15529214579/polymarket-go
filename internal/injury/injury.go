@@ -279,6 +279,49 @@ func assessImpact(team string, e InjuryEntry) string {
 	return "role_player_out"
 }
 
+// PlayerRole returns a human-readable role label for a player on a team.
+func PlayerRole(team, player string) string {
+	stars := nbaStars[team]
+	lp := strings.ToLower(player)
+	for i, s := range stars {
+		if strings.ToLower(s) == lp {
+			switch i {
+			case 0:
+				return "核心/当家球星"
+			case 1:
+				return "二当家"
+			case 2:
+				return "第三核心"
+			default:
+				return "主力轮换"
+			}
+		}
+	}
+	return "角色球员"
+}
+
+// PlayerImpactPct estimates a player's contribution to team strength (0-100).
+// Based on position in the nbaStars list: franchise ~35%, co-star ~25%, 3rd ~15%, rotation ~10%, role ~5%.
+func PlayerImpactPct(team, player string) int {
+	stars := nbaStars[team]
+	lp := strings.ToLower(player)
+	for i, s := range stars {
+		if strings.ToLower(s) == lp {
+			switch i {
+			case 0:
+				return 35
+			case 1:
+				return 25
+			case 2:
+				return 15
+			default:
+				return 10
+			}
+		}
+	}
+	return 5
+}
+
 type espnResponse struct {
 	Injuries []struct {
 		DisplayName string `json:"displayName"`
