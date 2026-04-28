@@ -22,10 +22,8 @@ const (
 	V2DomainName    = "Polymarket CTF Exchange"
 	V2DomainVersion = "2"
 
-	// V2ExchangeAddress — TODO(2026-04-28): replace with the final V2
-	// CTF Exchange address published at cutover. Until then, submission
-	// is guarded by RequireExchangeAddress.
-	V2ExchangeAddress = ""
+	V2ExchangeAddress        = "0xE111180000d2663C0091e4f400237545B87B996B"
+	V2NegRiskExchangeAddress = "0xe2222d279d744050d28e00520010520000310F59"
 )
 
 // SigSide matches the on-chain `enum Side { BUY, SELL }` encoding.
@@ -62,7 +60,8 @@ type V2Order struct {
 	Side          SigSide
 	SignatureType SigType
 	Timestamp     *big.Int
-	Metadata      []byte // nil → empty bytes
+	Metadata      [32]byte
+	Builder       [32]byte
 }
 
 // v2OrderTypes is the EIP-712 schema for V2Order. Keep in sync with the
@@ -84,7 +83,8 @@ var v2OrderTypes = apitypes.Types{
 		{Name: "side", Type: "uint8"},
 		{Name: "signatureType", Type: "uint8"},
 		{Name: "timestamp", Type: "uint256"},
-		{Name: "metadata", Type: "bytes"},
+		{Name: "metadata", Type: "bytes32"},
+		{Name: "builder", Type: "bytes32"},
 	},
 }
 
@@ -93,10 +93,6 @@ var v2OrderTypes = apitypes.Types{
 func EIP712HashV2Order(o V2Order, exchange common.Address) ([]byte, error) {
 	if o.Salt == nil || o.TokenID == nil || o.MakerAmount == nil || o.TakerAmount == nil || o.Timestamp == nil {
 		return nil, errors.New("order: V2Order has nil bigint field")
-	}
-	metadata := o.Metadata
-	if metadata == nil {
-		metadata = []byte{}
 	}
 	td := apitypes.TypedData{
 		Types:       v2OrderTypes,
@@ -117,7 +113,8 @@ func EIP712HashV2Order(o V2Order, exchange common.Address) ([]byte, error) {
 			"side":          fmt.Sprintf("%d", o.Side),
 			"signatureType": fmt.Sprintf("%d", o.SignatureType),
 			"timestamp":     o.Timestamp.String(),
-			"metadata":      "0x" + hex.EncodeToString(metadata),
+			"metadata":      "0x" + hex.EncodeToString(o.Metadata[:]),
+			"builder":       "0x" + hex.EncodeToString(o.Builder[:]),
 		},
 	}
 	return hashTypedData(td)

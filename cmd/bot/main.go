@@ -114,6 +114,7 @@ func main() {
 	eurovisionEnabled := flag.Bool("eurovision_enabled", false, "enable Eurovision odds scanner")
 	eurovisionInterval := flag.Duration("eurovision_interval", 6*time.Hour, "Eurovision scan interval")
 	eurovisionMinEdge := flag.Float64("eurovision_min_edge_pp", 5.0, "Eurovision minimum edge in pp to signal")
+	liveTrading := flag.Bool("live", false, "enable real V2 CLOB order submission (requires wallet mnemonic in Bitwarden)")
 	flag.Parse()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -215,7 +216,7 @@ func main() {
 				EurovisionInterval: *eurovisionInterval,
 				EurovisionMinEdge:  *eurovisionMinEdge,
 			}
-			if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, *arbEnabled, *arbInterval, *arbMinGapPP, *arbDBPath, injCfg, whaleCfg, oddsPapiCfg, *confirmDelay, btcCfg, updownCfg, p10); err != nil && ctx.Err() == nil {
+			if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, *arbEnabled, *arbInterval, *arbMinGapPP, *arbDBPath, injCfg, whaleCfg, oddsPapiCfg, *confirmDelay, btcCfg, updownCfg, p10, *liveTrading); err != nil && ctx.Err() == nil {
 			slog.Error("detect failed", "err", err)
 			os.Exit(1)
 		}
@@ -447,7 +448,7 @@ type phase10Config struct {
 	EurovisionMinEdge  float64
 }
 
-func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, arbEnabled bool, arbInterval time.Duration, arbMinGapPP float64, arbDBPath string, injCfg injury.Config, whaleCfg whale.Config, oddsPapiCfg odds.OddsPapiConfig, confirmDelay time.Duration, btcCfg btc.StrategyConfig, updownCfg btc.UpDownConfig, p10 phase10Config) error {
+func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, arbEnabled bool, arbInterval time.Duration, arbMinGapPP float64, arbDBPath string, injCfg injury.Config, whaleCfg whale.Config, oddsPapiCfg odds.OddsPapiConfig, confirmDelay time.Duration, btcCfg btc.StrategyConfig, updownCfg btc.UpDownConfig, p10 phase10Config, liveTrading bool) error {
 	if signalMode != "auto" && signalMode != "prompt" && signalMode != "whale" {
 		return fmt.Errorf("invalid signal_mode %q (want auto|prompt|whale)", signalMode)
 	}
@@ -551,7 +552,33 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 			slog.Warn("positions_save_err", "path", posStatePath, "err", err)
 		}
 	}
+	var orderClient order.Client
 	paper := order.NewPaperClientWithFee(slippageBp, feeBp)
+	orderClient = paper
+	if liveTrading {
+		slog.Info("v2_live_init", "msg", "loading wallet from Bitwarden")
+		mnemonic, err := order.LoadMnemonicFromBitwarden("polymarket-go-wallet", "mnemonic")
+		if err != nil {
+			slog.Error("v2_wallet_load_failed", "err", err)
+			os.Exit(1)
+		}
+		wallet, err := order.NewWalletFromMnemonic(mnemonic, "")
+		if err != nil {
+			slog.Error("v2_wallet_derive_failed", "err", err)
+			os.Exit(1)
+		}
+		slog.Info("v2_wallet_loaded", "address", wallet.Address().Hex())
+		creds, err := order.DeriveAPIKey(order.ClobBaseURL, wallet)
+		if err != nil {
+			slog.Error("v2_api_key_derive_failed", "err", err)
+			os.Exit(1)
+		}
+		slog.Info("v2_api_key_derived", "api_key", creds.APIKey)
+		v2Client := order.NewV2Client(wallet, creds, false)
+		orderClient = v2Client
+		slog.Info("v2_live_ready", "client", v2Client.Name(), "exchange", order.V2ExchangeAddress)
+	}
+	slog.Info("order_client_ready", "name", orderClient.Name())
 	riskCfg := risk.DefaultConfig()
 	riskCfg.FeedConnected = ws.Connected
 	rm := risk.New(riskCfg, time.Now())
@@ -637,7 +664,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				pm:            pm,
 				exit:          exit,
 				ladder:        ladder,
-				paper:         paper,
+				paper:         orderClient,
 				rm:            rm,
 				pending:       pending,
 				closePending:  closePending,
@@ -796,7 +823,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 							LimitPx: sig.ExitMid,
 							Type:    order.GTC,
 						}
-						res, err := paper.Submit(ctx, sellIntent)
+						res, err := orderClient.Submit(ctx, sellIntent)
 						if err != nil {
 							slog.Warn("paper_sell_reject",
 								"asset", short(sig.AssetID),
@@ -940,7 +967,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 							LimitPx: ex.ExitMid,
 							Type:    order.GTC,
 						}
-						res, err := paper.Submit(ctx, sellIntent)
+						res, err := orderClient.Submit(ctx, sellIntent)
 						if err != nil {
 							slog.Warn("paper_ladder_sell_reject",
 								"pos", p.ID,
@@ -1276,7 +1303,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					LimitPx: sig.Mid,
 					Type:    order.GTC,
 				}
-				res, err := paper.Submit(ctx, buyIntent)
+				res, err := orderClient.Submit(ctx, buyIntent)
 				if err != nil {
 					slog.Warn("paper_buy_reject",
 						"asset", short(sig.AssetID),
@@ -1467,7 +1494,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 							LimitPx: c.Mid,
 							Type:    order.GTC,
 						}
-						res, err := paper.Submit(ctx, buyIntent)
+						res, err := orderClient.Submit(ctx, buyIntent)
 						if err != nil {
 							slog.Warn("lottery_buy_reject",
 								"asset", short(c.AssetID),

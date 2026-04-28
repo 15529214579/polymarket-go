@@ -171,9 +171,13 @@ func TestEIP712HashV2Order_SignAndRecover(t *testing.T) {
 	}
 }
 
-func TestRequireExchangeAddress_EmptyErrors(t *testing.T) {
-	if _, err := RequireExchangeAddress(""); err == nil {
-		t.Fatal("expected error when exchange addr not set")
+func TestRequireExchangeAddress_DefaultV2(t *testing.T) {
+	addr, err := RequireExchangeAddress("")
+	if err != nil {
+		t.Fatalf("expected V2 address to be set: %v", err)
+	}
+	if addr.Hex() != common.HexToAddress(V2ExchangeAddress).Hex() {
+		t.Fatalf("got %s, want %s", addr.Hex(), V2ExchangeAddress)
 	}
 }
 
