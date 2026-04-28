@@ -831,8 +831,13 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 								"err", err.Error())
 							continue
 						}
-						// Override exit mid with the actual fill price so realized PnL
-						// reflects paper slippage.
+						if res.Status != order.StatusFilled {
+							slog.Warn("sell_not_filled",
+								"asset", short(sig.AssetID),
+								"order_id", res.OrderID,
+								"status", res.Status)
+							continue
+						}
 						sig.ExitMid = res.AvgPrice
 						sig.ChangePP = (res.AvgPrice - sig.EntryMid) * 100
 						closed, err := pm.CloseFirstByAsset(sig.AssetID, sig)
@@ -975,6 +980,13 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 								"tranche", ex.Tranche,
 								"limit", ex.ExitMid,
 								"err", err.Error())
+							continue
+						}
+						if res.Status != order.StatusFilled {
+							slog.Warn("ladder_sell_not_filled",
+								"pos", p.ID,
+								"order_id", res.OrderID,
+								"status", res.Status)
 							continue
 						}
 						ex.ExitMid = res.AvgPrice
@@ -1311,7 +1323,13 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						"err", err.Error())
 					continue
 				}
-				// Book the position at the actual fill price so slippage is priced in.
+				if res.Status != order.StatusFilled {
+					slog.Warn("buy_not_filled",
+						"asset", short(sig.AssetID),
+						"order_id", res.OrderID,
+						"status", res.Status)
+					continue
+				}
 				entryTick := feed.Tick{
 					AssetID: sig.AssetID, Market: sig.Market,
 					Time: sig.Time, Mid: res.AvgPrice,
@@ -1501,6 +1519,13 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 								"mid", c.Mid,
 								"sport", string(c.Sport),
 								"err", err.Error())
+							continue
+						}
+						if res.Status != order.StatusFilled {
+							slog.Warn("lottery_buy_not_filled",
+								"asset", short(c.AssetID),
+								"order_id", res.OrderID,
+								"status", res.Status)
 							continue
 						}
 						entryTick := feed.Tick{
