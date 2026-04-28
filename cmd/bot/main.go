@@ -86,6 +86,7 @@ func main() {
 	injuryInterval := flag.Duration("injury_interval", 30*time.Minute, "injury scan interval")
 	injuryStarOnly := flag.Bool("injury_star_only", true, "only alert on star players (top ~3-4 per team)")
 	whaleEnabled := flag.Bool("whale_enabled", false, "enable smart-money whale trade tracker")
+	fadeMode := flag.Bool("fade_mode", false, "fade (mean-reversion): buy the opposite outcome when momentum fires")
 	confirmDelay := flag.Duration("confirm_delay", 10*time.Second, "wait N seconds after signal trigger, re-check price before entry")
 	whaleWallets := flag.String("whale_wallets", "", "tracked wallets: addr|label|minUSD|profileURL,... (comma-separated)")
 	whaleWallet := flag.String("whale_wallet", "", "(legacy) single target wallet address (hex 0x…)")
@@ -216,7 +217,7 @@ func main() {
 				EurovisionInterval: *eurovisionInterval,
 				EurovisionMinEdge:  *eurovisionMinEdge,
 			}
-			if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, *arbEnabled, *arbInterval, *arbMinGapPP, *arbDBPath, injCfg, whaleCfg, oddsPapiCfg, *confirmDelay, btcCfg, updownCfg, p10, *liveTrading); err != nil && ctx.Err() == nil {
+			if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, *arbEnabled, *arbInterval, *arbMinGapPP, *arbDBPath, injCfg, whaleCfg, oddsPapiCfg, *confirmDelay, btcCfg, updownCfg, p10, *liveTrading, *fadeMode); err != nil && ctx.Err() == nil {
 			slog.Error("detect failed", "err", err)
 			os.Exit(1)
 		}
@@ -448,7 +449,7 @@ type phase10Config struct {
 	EurovisionMinEdge  float64
 }
 
-func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, arbEnabled bool, arbInterval time.Duration, arbMinGapPP float64, arbDBPath string, injCfg injury.Config, whaleCfg whale.Config, oddsPapiCfg odds.OddsPapiConfig, confirmDelay time.Duration, btcCfg btc.StrategyConfig, updownCfg btc.UpDownConfig, p10 phase10Config, liveTrading bool) error {
+func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, arbEnabled bool, arbInterval time.Duration, arbMinGapPP float64, arbDBPath string, injCfg injury.Config, whaleCfg whale.Config, oddsPapiCfg odds.OddsPapiConfig, confirmDelay time.Duration, btcCfg btc.StrategyConfig, updownCfg btc.UpDownConfig, p10 phase10Config, liveTrading bool, fadeMode bool) error {
 	if signalMode != "auto" && signalMode != "prompt" && signalMode != "whale" {
 		return fmt.Errorf("invalid signal_mode %q (want auto|prompt|whale)", signalMode)
 	}
@@ -511,6 +512,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 		"football", countBy(mkts, feed.IsFootballMarket),
 		"assets", len(assetIDs),
 		"window_sec", windowSec,
+		"fade_mode", fadeMode,
 	)
 
 	ws := feed.NewWSSClient(assetIDs)
@@ -1226,9 +1228,41 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						continue
 					}
 				}
-				// Paper stacking: no per-asset/per-market dedupe here. Auto mode
-				// still has a 5-min cooldown in detector.go so one asset can't
-				// spam opens, and pm enforces MaxOpenPositions + exposure caps.
+				// Fade mode: buy the opposite outcome (mean-reversion).
+				buyAssetID := sig.AssetID
+				buyMid := sig.Mid
+				if fadeMode {
+					me := meta[sig.AssetID]
+					if me == nil || me.Sibling == "" {
+						slog.Info("fade_skip_no_sibling",
+							"asset", short(sig.AssetID),
+							"q", metaQ(meta, sig.AssetID),
+						)
+						continue
+					}
+					buyAssetID = me.Sibling
+					buyMid = 1.0 - sig.Mid
+					if w, ok := sampler.Window(me.Sibling); ok && w.Samples > 0 {
+						buyMid = w.EndMid
+					}
+					if buyMid < minEntry || buyMid > maxEntry {
+						slog.Info("fade_filtered_price_band",
+							"asset", short(buyAssetID),
+							"q", metaQ(meta, buyAssetID),
+							"mid", buyMid,
+							"min", minEntry,
+							"max", maxEntry,
+						)
+						continue
+					}
+					slog.Info("fade_swap",
+						"orig_asset", short(sig.AssetID),
+						"fade_asset", short(buyAssetID),
+						"orig_mid", sig.Mid,
+						"fade_mid", buyMid,
+						"q", metaQ(meta, buyAssetID),
+					)
+				}
 
 				// Prompt mode: publish the signal as a DM with one button row per
 				// outcome (YES/NO or team-A/team-B) and stash the full Choices slice
@@ -1308,37 +1342,37 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				}
 
 				buyIntent := order.Intent{
-					AssetID: sig.AssetID,
+					AssetID: buyAssetID,
 					Market:  sig.Market,
 					Side:    order.Buy,
 					SizeUSD: posCfg.PerPositionUSD,
-					LimitPx: sig.Mid,
+					LimitPx: buyMid,
 					Type:    order.GTC,
 				}
 				res, err := orderClient.Submit(ctx, buyIntent)
 				if err != nil {
 					slog.Warn("paper_buy_reject",
-						"asset", short(sig.AssetID),
-						"limit", sig.Mid,
+						"asset", short(buyAssetID),
+						"limit", buyMid,
 						"err", err.Error())
 					continue
 				}
 				if res.Status != order.StatusFilled {
 					slog.Warn("buy_not_filled",
-						"asset", short(sig.AssetID),
+						"asset", short(buyAssetID),
 						"order_id", res.OrderID,
 						"status", res.Status)
 					continue
 				}
 				entryTick := feed.Tick{
-					AssetID: sig.AssetID, Market: sig.Market,
+					AssetID: buyAssetID, Market: sig.Market,
 					Time: sig.Time, Mid: res.AvgPrice,
 				}
-				pos, err := pm.Open(sig.AssetID, sig.Market, entryTick)
+				pos, err := pm.Open(buyAssetID, sig.Market, entryTick)
 				if err != nil {
 					slog.Info("paper_open_skip",
-						"asset", short(sig.AssetID),
-						"q", metaQ(meta, sig.AssetID),
+						"asset", short(buyAssetID),
+						"q", metaQ(meta, buyAssetID),
 						"order_id", res.OrderID,
 						"reason", err.Error(),
 					)
@@ -1350,12 +1384,12 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				savePositions()
 				switch exitMode {
 				case "auto":
-					exit.Open(sig.AssetID, sig.Market, entryTick)
+					exit.Open(buyAssetID, sig.Market, entryTick)
 				case "ladder":
-					ladder.Open(pos.ID, sig.Market, sig.AssetID, entryTick, pos.Units)
+					ladder.Open(pos.ID, sig.Market, buyAssetID, entryTick, pos.Units)
 				}
 				if recorder != nil {
-					if rerr := recorder.Start(pos.ID, sig.AssetID); rerr != nil {
+					if rerr := recorder.Start(pos.ID, buyAssetID); rerr != nil {
 						slog.Warn("tickrec_start_fail", "pos", pos.ID, "err", rerr.Error())
 					}
 				}
@@ -1364,8 +1398,8 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				slog.Info("paper_open",
 					"id", pos.ID,
 					"order_id", res.OrderID,
-					"asset", short(sig.AssetID),
-					"q", metaQ(meta, sig.AssetID),
+					"asset", short(buyAssetID),
+					"q", metaQ(meta, buyAssetID),
 					"signal_mid", sig.Mid,
 					"entry_fill", res.AvgPrice,
 					"size_usd", pos.SizeUSD,

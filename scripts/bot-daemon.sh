@@ -45,7 +45,7 @@ start() {
   # Uncomment -live to switch from paper to real V2 CLOB orders.
   # Requires: (1) pUSD balance in wallet (2) owner approval
   LIVE_FLAG="${POLYMARKET_LIVE:+"-live"}"
-  args=(-mode=detect -signal_mode=whale -exit_mode=ladder -markets=20 -window=60 -fee_bp=0 ${LIVE_FLAG} -injury_enabled -injury_interval=1m -whale_enabled "-whale_wallets=0xdb27bf2ac5d428a9c63dbc914611036855a6c56e|drpufferfish|1000|https://polymarket.com/@drpufferfish,0xbddf61af533ff524d27154e589d2d7a81510c684|countryside|1500|https://polymarket.com/@countryside,0xc2e7800b5af46e6093872b177b7a5e7f0563be51|beachboy4|5000|https://polymarket.com/@beachboy4" -oddspapi_enabled -oddspapi_interval=3h -oddspapi_bookmaker=pinnacle -oddspapi_sports=soccer_epl,soccer_spain_la_liga,soccer_uefa_champs_league -btc_daily_enabled -btc_daily_interval=15m -btc_daily_min_edge_pp=5 -eurovision_enabled -eurovision_interval=6h -eurovision_min_edge_pp=5)
+  args=(-mode=detect -signal_mode=whale -exit_mode=ladder -markets=20 -window=60 -fee_bp=0 -fade_mode ${LIVE_FLAG} -injury_enabled -injury_interval=1m -whale_enabled "-whale_wallets=0xdb27bf2ac5d428a9c63dbc914611036855a6c56e|drpufferfish|1000|https://polymarket.com/@drpufferfish,0xbddf61af533ff524d27154e589d2d7a81510c684|countryside|1500|https://polymarket.com/@countryside,0xc2e7800b5af46e6093872b177b7a5e7f0563be51|beachboy4|5000|https://polymarket.com/@beachboy4" -oddspapi_enabled -oddspapi_interval=3h -oddspapi_bookmaker=pinnacle -oddspapi_sports=soccer_epl,soccer_spain_la_liga,soccer_uefa_champs_league -btc_daily_enabled -btc_daily_interval=15m -btc_daily_min_edge_pp=5 -eurovision_enabled -eurovision_interval=6h -eurovision_min_edge_pp=5)
   if [ "${#shift_args[@]}" -gt 0 ]; then
     args=("${shift_args[@]}")
   fi
