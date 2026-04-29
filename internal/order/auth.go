@@ -63,9 +63,16 @@ func buildClobAuthDigest(addr common.Address, ts int64, nonce int) ([]byte, erro
 }
 
 func DeriveAPIKey(clobBase string, w *Wallet) (*APICredentials, error) {
+	creds, err := createAPIKey(clobBase, w)
+	if err == nil {
+		return creds, nil
+	}
+	return deriveAPIKey(clobBase, w)
+}
+
+func l1Headers(w *Wallet) (http.Header, error) {
 	ts := time.Now().Unix()
 	nonce := 0
-
 	digest, err := buildClobAuthDigest(w.Address(), ts, nonce)
 	if err != nil {
 		return nil, fmt.Errorf("order: clob auth digest: %w", err)
@@ -74,27 +81,63 @@ func DeriveAPIKey(clobBase string, w *Wallet) (*APICredentials, error) {
 	if err != nil {
 		return nil, fmt.Errorf("order: clob auth sign: %w", err)
 	}
+	h := http.Header{}
+	h.Set("POLY_ADDRESS", w.Address().Hex())
+	h.Set("POLY_SIGNATURE", "0x"+fmt.Sprintf("%x", sig))
+	h.Set("POLY_TIMESTAMP", strconv.FormatInt(ts, 10))
+	h.Set("POLY_NONCE", strconv.Itoa(nonce))
+	return h, nil
+}
 
+func createAPIKey(clobBase string, w *Wallet) (*APICredentials, error) {
+	headers, err := l1Headers(w)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest("POST", clobBase+"/auth/api-key", nil)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range headers {
+		req.Header[k] = v
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("order: create api key: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("order: create api key %d: %s", resp.StatusCode, body)
+	}
+	return parseAPICreds(body)
+}
+
+func deriveAPIKey(clobBase string, w *Wallet) (*APICredentials, error) {
+	headers, err := l1Headers(w)
+	if err != nil {
+		return nil, err
+	}
 	req, err := http.NewRequest("GET", clobBase+"/auth/derive-api-key", nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("POLY_ADDRESS", w.Address().Hex())
-	req.Header.Set("POLY_SIGNATURE", "0x"+fmt.Sprintf("%x", sig))
-	req.Header.Set("POLY_TIMESTAMP", strconv.FormatInt(ts, 10))
-	req.Header.Set("POLY_NONCE", strconv.Itoa(nonce))
-
+	for k, v := range headers {
+		req.Header[k] = v
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("order: derive api key: %w", err)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
-
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("order: derive api key %d: %s", resp.StatusCode, body)
 	}
+	return parseAPICreds(body)
+}
 
+func parseAPICreds(body []byte) (*APICredentials, error) {
 	var creds APICredentials
 	if err := json.Unmarshal(body, &creds); err != nil {
 		return nil, fmt.Errorf("order: parse api creds: %w", err)

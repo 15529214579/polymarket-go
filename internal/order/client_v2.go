@@ -54,13 +54,22 @@ func (c *V2Client) Submit(ctx context.Context, in Intent) (Result, error) {
 	}
 
 	now := time.Now()
-	makerAmt := toFixedPoint(in.SizeUSD)
-	takerAmt := toFixedPoint(in.SizeUSD / in.LimitPx)
+	priceCents := int64(in.LimitPx*100 + 0.5)
+	var makerAmt, takerAmt *big.Int
 	side := SigBuy
 	if in.Side == Sell {
 		side = SigSell
-		makerAmt = toFixedPoint(in.SizeUSD / in.LimitPx)
-		takerAmt = toFixedPoint(in.SizeUSD)
+	}
+	if side == SigBuy {
+		rawTaker := int64(in.SizeUSD / in.LimitPx * usdcScale)
+		rawTaker = rawTaker - (rawTaker % 10000)
+		takerAmt = big.NewInt(rawTaker)
+		makerAmt = big.NewInt(rawTaker * priceCents / 100)
+	} else {
+		rawMaker := int64(in.SizeUSD / in.LimitPx * usdcScale)
+		rawMaker = rawMaker - (rawMaker % 10000)
+		makerAmt = big.NewInt(rawMaker)
+		takerAmt = big.NewInt(rawMaker * priceCents / 100)
 	}
 
 	tokenID := new(big.Int)
@@ -354,6 +363,17 @@ type clobOrderResponse struct {
 func toFixedPoint(usd float64) *big.Int {
 	scaled := int64(usd * usdcScale)
 	return big.NewInt(scaled)
+}
+
+func roundTo(v *big.Int, granularity int64) *big.Int {
+	g := big.NewInt(granularity)
+	mod := new(big.Int).Mod(v, g)
+	rounded := new(big.Int).Sub(v, mod)
+	half := new(big.Int).Div(g, big.NewInt(2))
+	if mod.Cmp(half) >= 0 {
+		rounded.Add(rounded, g)
+	}
+	return rounded
 }
 
 type bytesReaderWrapper struct {

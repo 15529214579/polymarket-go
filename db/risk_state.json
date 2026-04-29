@@ -1,7 +1,8 @@
 {
-  "day": "2026-04-27",
-  "day_realized": -7.870366869048931,
-  "cumulative_pnl": -7.870366869048931,
+  "day": "2026-04-28",
+  "day_realized": -5.989449131038964,
+  "cumulative_pnl": -13.859816000087898,
   "peak_equity": 90.41,
-  "blocked": false
+  "blocked": true,
+  "block_reason": "drawdown"
 }

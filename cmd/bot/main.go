@@ -125,6 +125,8 @@ func main() {
 		slog.Warn("dotenv_load_warn", "path", *envFile, "err", err.Error())
 	}
 
+	order.InitProxy()
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
