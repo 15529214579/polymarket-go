@@ -66,7 +66,7 @@
 - [x] 2026-04-20 15:36 — Phase 3.5.g：超时作废视觉升级。`PendingStore.Reap` 返回 `[]PendingIntent`（原 int）→ reaper 循环对每条有 `MessageID` 的条目调 `notifier.EditSignalExpired`，正文改写成 "⌛ 已过期 · 未下单" + 清空 `reply_markup.inline_keyboard`。`PendingIntent.MessageID int64` 新字段，`PendingStore.SetMessageID(nonce, id)` 由 Telegram drain 回调异步填入。`SignalPromptEvent.OnSent func(messageID int64, err error)` 暴露 message_id 给主程序（runDetect + prompt-test 两处设置 OnSent → `pending.SetMessageID`）。Telegram.send 现在解析 `result.message_id`，支持 `editMessageText` 路径（`outgoing.editMessageID` + `stripKeyboard`）；edits 经 prompt bot 发（和原 DM 同一只）。Notifier 接口扩了 `EditSignalExpired(int64)`，Nop noop。新单测：`TestPendingStore_SetMessageID` + `TestTelegram_SignalPrompt_OnSent_ReportsMessageID` + `TestTelegram_EditSignalExpired_StripsKeyboard` + `TestTelegram_EditSignalExpired_ZeroIsNoOp` 全过。
 - [x] 2026-04-20 15:36 — Phase 3.5.h：成交凭据留档（C）。Notifier 接口扩了 `EditSignalFilled(FillReceiptEvent, int64)` + `FillReceipt(FillReceiptEvent)`（Nop noop）。`buyHandler.OnBuy` 在 `manual_open` 成功后调用两者：edit 原 prompt → "✅ 已下单 · `<outcome>` `<size>U` @ `<px>`" + 清空键盘（走 prompt bot）；并额外发一条 "🧾 成交凭据 · 手动" DM（走 alert bot，留档）。Telegram.FillReceipt / EditSignalFilled 实现 + `TestTelegram_EditSignalFilled_Renders` + `TestTelegram_FillReceipt_GoesToAlertBot` 全过。
 - [x] 2026-04-20 18:01 — Phase 3.5.j：点陈旧 prompt 按钮时也清键盘（老板反馈 "1U/5U 报已过期，点 10U 才成功"——那三次点击分落在旧 prompts 上）。`CallbackHandler.OnBuy` 新增 `messageID int64` 参数，`callback.dispatch` 把 `cq.Message.MessageID` 透传过去；`buyHandler.OnBuy` 在 Claim `!ok` 路径（旧 session / 已过期）调 `notifier.EditSignalExpired(messageID)` 把原 prompt 改成 "⌛ 已过期 · 未下单" + 清键盘——风控 / 同市场去重等恢复性错误**不**清键盘（让老板换 size 重试）。commit `0a1eeaa`。
-- [ ] Paper 期间：点了按钮走 paper 路径；Day 9 起自动走真下单（Phase 3 V2 签名 client 接同一 `order.Client` 接口）
+- [x] 2026-04-30 01:00 — Paper→Live 基础设施完成：auto-wrap USDC.e → pUSD + NegRisk exchange approve + CLOB POST /order（commit `1d73e7a`）。首笔实盘成交 Bayern UCL YES ~95.5 shares @0.32。`-live` flag + `POLYMARKET_LIVE=1` 环境变量切换。代理 48 个 Webshare IP 轮换解决地理封锁。
 
 ### Phase 4 — 风控 + 可观测（1 天）
 - [x] 2026-04-20 11:4x — Phase 4.a：`internal/risk/risk.go` 上线。日亏损熔断（15% × 90.41 = -13.56 USDC 上限）+ per-trade 单笔损失 ≥ 3 USDC 计数旗标 + WSS feed-silence watchdog（30s 无 book/trade → trip）+ 手动 Pause/Resume。SGT 日切滚动但不自动解除 breaker（SPEC §6 "等老板手动恢复"）。8 个单测全过。接进 detect 循环：开仓前 `AllowOpen` 门控，close 后 `OnClose` 累计，5s 心跳 `CheckFeed`，60s `risk_status` 日志。35s 实盘烟测：`risk.ready` + 无 trip（预期，LoL 市场平静）。
@@ -81,10 +81,10 @@
 - [x] 2026-04-20 16:03 — **heartbeat state.json 即时刷新**（老板 A：修 last_commit 20min 滞后 race）：`scripts/install-hooks.sh` + `.git/hooks/post-commit` 上线，每次 commit 后异步 disown `cron-poke.sh` 立刻重写 state.json，0s 滞后；`make hooks` 一键重装。不阻塞 commit UX（nohup + disown + 吞 error）。
 - [x] 2026-04-20 17:29 — **出场策略改 hold-to-settlement**（老板 17:21：不加 SL/TP，买了等最终结果）：新 `-exit_mode=hold|auto`（默认 hold）；hold 模式跳过 `exit.Open`，新增 settlement watcher goroutine 每 60s 查 gamma `GetByConditionIDs`，`closed=true` 即按 `OutcomePrices[SlotIdx]` 清算平仓（1.0 赢家 / 0.0 输家）；同样走 pm.Close → risk.OnClose → large-fill/risk-trip notify → journal。`assetMeta` 加 ConditionID + SlotIdx；新 `ExitSettlement` reason；两条新单测（httptest gamma mock + empty-input）。daemon 已切到 hold，`scripts/bot-daemon.sh` 默认 `-exit_mode=hold`。
 - [x] 2026-04-20 23:10 — **feed-silence 熔断调优 A+C**（老板 23:06 拍板）：① 阈值 30s → 120s（避开 23:00 SGT / 午夜淡季 60-120s 无成交的正常假阳）；② 新增 `WSSClient.Connected()` atomic probe + `risk.Config.FeedConnected` 回调，CheckFeed 仅在 WSS 实际断线且 silent ≥ 120s 时才 trip——健康 socket 的纯静默一概不熔断；auto-resume 条件也改成"WSS 重连上"而非"silent 减半"。加 2 个新单测（connected+quiet 不 trip / disconnected+silence trip），旧 legacy 路径（FeedConnected=nil）保留兼容。daemon 已用新 bin 重启 pid=97151，`feed_silence_sec=120` 已生效。
-- [ ] Day 1-3（Apr 20-22）：信号密度 + 假阳性观察（每 4-6h 看一次 db/agent.log，凑足 20+ 信号样本）
-- [ ] Day 4-7（Apr 23-26）：策略参数微调
-- [ ] Day 8（Apr 27-28）：出 paper 报表；28 日晚 cutover 烟测 + wrap USDC→pUSD
-- [ ] **Apr 29**：老板 review paper + V2 验证 → 实盘启用
+- [x] Day 1-8（Apr 20-28）：paper 跑完，累计 207 trades（62W 137L 31% WR -$45.44）。4 月 28 日 V2 cutover WSS 验证通过。
+- [x] Apr 28 — fade mode 上线（commit `bd09c48`）：追涨 → 反向买对手盘（均值回归策略）。实测 0W 8L，和追涨一样全 SL。
+- [x] Apr 30 — 首笔实盘（Bayern UCL YES ~95.5 shares @0.32）。V2 下单全链路通（wrap+approve+CLOB）。
+- [x] May 3 — tickpath sweep 48 路径真回测：**当前 SL=15%/timeout=6h 不是最优，SL=20%/timeout=10m/TP=100% 回测 +$41.20（当前仅 +$6.00）**。daemon 参数已更新。
 
 ### Phase 6 — 策略方向复盘（阻塞向前，待讨论）
 > 老板 20:19 提出方向性质疑（纯追涨 edge 不明）。20:58 开方向讨论 → 21:01 决定先用 python 历史数据做**零 API 离线回测**，再决定 Phase 6 是否落地。
@@ -113,7 +113,7 @@
     - 底部 5 配置全是 SL=0 任意 TP → sum -47~-48 → **SL 是主导杠杆，TP 次要**
     - 费率敏感：100bp/leg (2% round-trip) 让最佳从 -0.23 → -3.89，仍近平手
     - 样本限制：端点近似**低估** TP 命中率（mid-hold 触达后回落的没计入）；path-aware 只有 n=9 不足以下结论
-- [ ] **Phase 7.e tick 路径持久化**（真回放前置）：daemon 把 sampler 1Hz tick 写盘，paper open→close 窗内 tick 序列入 SQLite/JSONL。跑 3-7 天后用自家 momentum entry 的真路径重跑 sweep，替代端点近似。没有 7.e 的情况下，7.d 结论只能作方向，不能作实盘参数。
+- [x] 2026-04-27 — **Phase 7.e tick 路径持久化**：`internal/tickrec/recorder.go` 上线（append-only JSONL per position，1Hz 去重），`cmd/bot/main.go` 接入独立 1s goroutine。48 个仓位文件 151K ticks 持久化在 `db/tickpath/`。`cmd/backtest -mode=tickpath-sweep` 用真路径替代端点近似回测。May 3 跑出真回测结论：**最优 TP=100% SL=20% timeout=600s（+$41.20 vs 当前 +$6.00）**。
 
 ### Phase 8 — Odds/Arb 跨场所价差扫描（对齐 Python odds_fetcher + arb_scanner）
 > 04-24 老板指令："把那部分代码拷贝到 go 项目自己跑，做缓存啥的对齐 python 项目的频率和策略"
@@ -126,7 +126,7 @@
 - [x] 2026-04-24 14:0x — ODDS_API_KEY 入 .env.local（同 python 项目 key）
 - [x] 2026-04-24 14:10 — 端到端烟测：947 PM sports markets × 11530 raw odds → 404 consensus → **77 matched**（NBA Finals/NHL Stanley Cup/FIFA World Cup/EPL）→ 48 DB rows stored。当前无 >5pp gap（outright futures 市场价格高度一致，预期）。
 
-当前所有 >Phase 7 的计划（3.0 wrap / 3 V2 签名 / 实盘）**暂停**，cutover 还是到，但实盘 go-live 视 7.d 结果。
+V2 下单全链路已通（wrap + approve + CLOB order）。首笔实盘 Bayern UCL YES 已成交。daemon 仍跑 paper 模式积累数据。May 3 tickpath sweep 确认最优参数并更新 daemon。
 
 ## ✅ 已完成
 
