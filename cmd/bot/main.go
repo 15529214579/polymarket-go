@@ -2058,6 +2058,11 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					result, err := orderClient.Submit(ctx, intent)
 					if err != nil {
 						slog.Warn("copytrade_submit_err", "wallet", ev.Label, "err", err.Error())
+						errMsg := fmt.Sprintf("❌ 跟单失败\n%s · %s\n💰 $%.0f @ %.4f · Tier %s\n🐋 %s\n⚠️ %s",
+							ev.Question, ev.Outcome,
+							sizeUSD, ev.Price, tier,
+							ev.Label, err.Error())
+						notifier.SidecarAlert(errMsg)
 					} else {
 						if err := pm.SetOpenFee(pos.ID, result.FeeUSD); err != nil {
 							slog.Warn("copytrade_set_open_fee_fail", "pos", pos.ID, "err", err.Error())
@@ -2073,6 +2078,12 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 							"order_id", result.OrderID,
 							"fee_usd", result.FeeUSD,
 						)
+						fillMsg := fmt.Sprintf("✅ 跟单成功\n%s · %s\n💰 $%.0f @ %.4f · Tier %s\n🐋 %s 买入 $%.0f\n🆔 %s",
+							ev.Question, ev.Outcome,
+							sizeUSD, ev.Price, tier,
+							ev.Label, ev.Notional,
+							result.OrderID)
+						notifier.SidecarAlert(fillMsg)
 					}
 					src.Mark(pos.ID, "copytrade_"+ev.Label, result.OrderID)
 					savePositions()
@@ -2175,6 +2186,20 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 							"remaining", pos.Units-closeUnits,
 							"pnl", closedPos.PnLUSD,
 						)
+						pnlIcon := "🟢"
+						if closedPos.PnLUSD < 0 {
+							pnlIcon = "🔴"
+						}
+						sellType := "全部平仓"
+						if sellPct < 0.95 {
+							sellType = fmt.Sprintf("部分平仓 %.0f%%", ev.PctSold)
+						}
+						sellMsg := fmt.Sprintf("%s 跟卖 · %s\n%s · %s\n💰 PnL $%+.2f · %.0f shares\n🐋 %s 卖出 %.0f%%",
+							pnlIcon, sellType,
+							ev.Question, ev.Outcome,
+							closedPos.PnLUSD, closeUnits,
+							ev.Label, ev.PctSold)
+						notifier.SidecarAlert(sellMsg)
 					}
 					if closed > 0 {
 						savePositions()
