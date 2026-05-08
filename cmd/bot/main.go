@@ -9,6 +9,7 @@ import (
 	nethttp "net/http"
 	neturl "net/url"
 	"os"
+	"sort"
 	"os/signal"
 	"path/filepath"
 	"strconv"
@@ -2010,15 +2011,42 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					return
 				}
 
+				isSportsMarket := func(q string) bool {
+					lower := strings.ToLower(q)
+					keywords := []string{
+						"nba", "nfl", "mlb", "nhl", "mls", "wnba",
+						"epl", "la liga", "bundesliga", "serie a", "ligue 1",
+						"premier league", "champions league", "ucl", "uefa", "fifa",
+						"copa ", "concacaf", "conmebol", "eredivisie", "liga mx",
+						"ufc", "mma", "boxing", "bellator", "pfl", "one championship",
+						"atp", "wta", "grand slam", "roland garros", "wimbledon",
+						"lol", "lck", "lpl", "lec", "dota", "cs2", "csgo", "valorant", "esport",
+						"f1", "formula 1", "nascar", "motogp", "indycar",
+						"cricket", "ipl", "rugby", "golf", "pga",
+						"world series", "super bowl", "stanley cup", "world cup",
+						"spread:", "total points",
+						"fútbol", "futbol", "football", "soccer",
+					}
+					for _, k := range keywords {
+						if strings.Contains(lower, k) {
+							return true
+						}
+					}
+					// "Will X win on YYYY-MM-DD?" — common PM daily sports format
+					if strings.Contains(lower, " win on 2") {
+						return true
+					}
+					return false
+				}
+
 				switch side {
 				case "BUY":
+					if !isSportsMarket(ev.Question) {
+						appendWhaleTrade(ev, "skip", "non_sports_filtered")
+						slog.Info("copytrade_non_sports_filtered", "wallet", ev.Label, "market", ev.Question)
+						return
+					}
 					if meta, ok := lookupMarketMeta(ev.ConditionID); ok {
-						cat := strings.ToLower(meta.Category)
-						if cat == "politics" || cat == "political" {
-							appendWhaleTrade(ev, "skip", "politics_filtered")
-							slog.Info("copytrade_politics_filtered", "wallet", ev.Label, "market", ev.Question, "category", meta.Category)
-							return
-						}
 						if time.Until(meta.EndDate) > 30*24*time.Hour {
 							appendWhaleTrade(ev, "skip", fmt.Sprintf("settlement_too_far:%s", meta.EndDate.Format("2006-01-02")))
 							slog.Info("copytrade_settlement_filtered", "wallet", ev.Label, "market", ev.Question, "end_date", meta.EndDate.Format("2006-01-02"))
@@ -2951,6 +2979,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				entry, cur, pnl, pct  float64
 				size                  float64
 				wallet                string
+				buyTime               time.Time
 			}
 			var lines []posLine
 			for _, p := range snap {
@@ -2977,8 +3006,9 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				if wallet == "" {
 					wallet = p.Source
 				}
-				lines = append(lines, posLine{emoji: emoji, title: title, outcome: p.Outcome, entry: p.EntryMid, cur: cur, pnl: pnl, pct: pct, size: p.SizeUSD, wallet: wallet})
+				lines = append(lines, posLine{emoji: emoji, title: title, outcome: p.Outcome, entry: p.EntryMid, cur: cur, pnl: pnl, pct: pct, size: p.SizeUSD, wallet: wallet, buyTime: p.EntryTime})
 			}
+			sort.Slice(lines, func(i, j int) bool { return lines[i].buyTime.After(lines[j].buyTime) })
 
 			for _, c := range closed {
 				pnl := c.PnLUSD
@@ -3018,9 +3048,13 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					if l.wallet != "" {
 						walletTag = " [" + l.wallet + "]"
 					}
-					sb.WriteString(fmt.Sprintf("%s %s %s\n   $%.0f · %.2f→%.2f · $%+.2f (%+.1f%%)%s\n",
+					buyTimeStr := ""
+					if !l.buyTime.IsZero() {
+						buyTimeStr = l.buyTime.In(sgt).Format("01/02 15:04")
+					}
+					sb.WriteString(fmt.Sprintf("%s %s %s\n   $%.0f · %.3f→%.3f · $%+.2f (%+.1f%%) · %s%s\n",
 						l.emoji, title, direction,
-						l.size, l.entry, l.cur, l.pnl, l.pct, walletTag))
+						l.size, l.entry, l.cur, l.pnl, l.pct, buyTimeStr, walletTag))
 					if i >= 19 {
 						sb.WriteString(fmt.Sprintf("... +%d more\n", len(lines)-20))
 						break
