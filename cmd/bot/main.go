@@ -90,7 +90,8 @@ func main() {
 	confirmDelay := flag.Duration("confirm_delay", 10*time.Second, "wait N seconds after signal trigger, re-check price before entry")
 	whaleWallets := flag.String("whale_wallets", "", "tracked wallets: addr|label|minUSD|profileURL,... (comma-separated)")
 	walletsFile := flag.String("wallets_file", "", "path to wallets file (one address per line) for copytrade mode")
-	copytradeSize := flag.Float64("copytrade_size", 5.0, "per-trade paper size in USDC for copytrade mode")
+	copytradeSize := flag.Float64("copytrade_size", 5.0, "default per-trade paper size in USDC for copytrade mode")
+	walletTiersFile := flag.String("wallet_tiers", "", "path to copytrade_backtest_results.json for tiered sizing (A=$20, B=$10, C/D=default)")
 	whaleWallet := flag.String("whale_wallet", "", "(legacy) single target wallet address (hex 0x…)")
 	whaleProfile := flag.String("whale_profile", "", "(legacy) whale's Polymarket profile URL")
 	whaleMinUSD := flag.Float64("whale_min_usd", 1000, "(legacy) minimum notional USD to trigger alert")
@@ -231,7 +232,7 @@ func main() {
 				EurovisionInterval: *eurovisionInterval,
 				EurovisionMinEdge:  *eurovisionMinEdge,
 			}
-			if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, *arbEnabled, *arbInterval, *arbMinGapPP, *arbDBPath, injCfg, whaleCfg, oddsPapiCfg, *confirmDelay, btcCfg, updownCfg, p10, *liveTrading, *fadeMode, *walletsFile, *copytradeSize); err != nil && ctx.Err() == nil {
+			if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, *arbEnabled, *arbInterval, *arbMinGapPP, *arbDBPath, injCfg, whaleCfg, oddsPapiCfg, *confirmDelay, btcCfg, updownCfg, p10, *liveTrading, *fadeMode, *walletsFile, *copytradeSize, *walletTiersFile); err != nil && ctx.Err() == nil {
 			slog.Error("detect failed", "err", err)
 			os.Exit(1)
 		}
@@ -463,13 +464,47 @@ type phase10Config struct {
 	EurovisionMinEdge  float64
 }
 
-func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, arbEnabled bool, arbInterval time.Duration, arbMinGapPP float64, arbDBPath string, injCfg injury.Config, whaleCfg whale.Config, oddsPapiCfg odds.OddsPapiConfig, confirmDelay time.Duration, btcCfg btc.StrategyConfig, updownCfg btc.UpDownConfig, p10 phase10Config, liveTrading bool, fadeMode bool, walletsFile string, copytradeSize float64) error {
+func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, arbEnabled bool, arbInterval time.Duration, arbMinGapPP float64, arbDBPath string, injCfg injury.Config, whaleCfg whale.Config, oddsPapiCfg odds.OddsPapiConfig, confirmDelay time.Duration, btcCfg btc.StrategyConfig, updownCfg btc.UpDownConfig, p10 phase10Config, liveTrading bool, fadeMode bool, walletsFile string, copytradeSize float64, walletTiersFile string) error {
 	if signalMode != "auto" && signalMode != "prompt" && signalMode != "whale" && signalMode != "copytrade" {
 		return fmt.Errorf("invalid signal_mode %q (want auto|prompt|whale|copytrade)", signalMode)
 	}
 	if exitMode != "hold" && exitMode != "auto" && exitMode != "ladder" {
 		return fmt.Errorf("invalid exit_mode %q (want hold|auto|ladder)", exitMode)
 	}
+	// Load wallet tiers for copytrade gradient sizing
+	walletTiers := map[string]string{}
+	if walletTiersFile != "" {
+		raw, err := os.ReadFile(walletTiersFile)
+		if err != nil {
+			slog.Warn("wallet_tiers_load_fail", "file", walletTiersFile, "err", err)
+		} else {
+			var parsed map[string]struct{ Tier string `json:"tier"` }
+			if err := json.Unmarshal(raw, &parsed); err != nil {
+				slog.Warn("wallet_tiers_parse_fail", "err", err)
+			} else {
+				for addr, info := range parsed {
+					walletTiers[strings.ToLower(addr)] = info.Tier
+				}
+				tierCounts := map[string]int{}
+				for _, t := range walletTiers {
+					tierCounts[t]++
+				}
+				slog.Info("wallet_tiers_loaded", "file", walletTiersFile, "A", tierCounts["A"], "B", tierCounts["B"], "C", tierCounts["C"], "D", tierCounts["D"])
+			}
+		}
+	}
+	copytradeForWallet := func(wallet string) float64 {
+		tier := walletTiers[strings.ToLower(wallet)]
+		switch tier {
+		case "A":
+			return 20.0
+		case "B":
+			return 10.0
+		default:
+			return copytradeSize
+		}
+	}
+
 	// hold & ladder both want the settlement watcher on — hold as primary,
 	// ladder as safety net (a market resolving mid-tranche clears remainder).
 	wantSettlement := exitMode == "hold" || exitMode == "ladder"
@@ -1950,7 +1985,12 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						return
 					}
 					tick := feed.Tick{Mid: ev.Price, Time: ev.Timestamp}
-					pos, err := pm.OpenSized(ev.AssetID, ev.ConditionID, tick, copytradeSize)
+					sizeUSD := copytradeForWallet(ev.Wallet)
+					tier := walletTiers[strings.ToLower(ev.Wallet)]
+					if tier == "" {
+						tier = "?"
+					}
+					pos, err := pm.OpenSized(ev.AssetID, ev.ConditionID, tick, sizeUSD)
 					if err != nil {
 						appendWhaleTrade(ev, "skip", "open_rejected:"+err.Error())
 						slog.Warn("copytrade_open_rejected", "wallet", ev.Label, "asset", short(ev.AssetID), "err", err.Error())
@@ -1960,7 +2000,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						AssetID: ev.AssetID,
 						Market:  ev.ConditionID,
 						Side:    order.Buy,
-						SizeUSD: copytradeSize,
+						SizeUSD: sizeUSD,
 						LimitPx: ev.Price,
 						Type:    order.GTC,
 					}
@@ -1974,10 +2014,11 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						slog.Info("copytrade_filled",
 							"pos", pos.ID,
 							"wallet", ev.Label,
+							"tier", tier,
 							"asset", short(ev.AssetID),
 							"outcome", ev.Outcome,
 							"price", ev.Price,
-							"size_usd", copytradeSize,
+							"size_usd", sizeUSD,
 							"order_id", result.OrderID,
 							"fee_usd", result.FeeUSD,
 						)
