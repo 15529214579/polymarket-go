@@ -1191,6 +1191,10 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				if !ok {
 					return
 				}
+				if signalMode == "copytrade" {
+					slog.Debug("momentum_skip_copytrade", "asset", short(sig.AssetID))
+					continue
+				}
 				slog.Info("signal",
 					"asset", short(sig.AssetID),
 					"q", metaQ(meta, sig.AssetID),
@@ -1505,7 +1509,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 	for _, p := range pm.Snapshot() {
 		lotteryOpen[p.AssetID] = true
 	}
-	if lotteryEnabled {
+	if lotteryEnabled && signalMode != "copytrade" {
 		go func() {
 			tk := time.NewTicker(lotteryCfg.ScanInterval)
 			defer tk.Stop()
