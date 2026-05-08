@@ -1881,6 +1881,34 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 		}()
 	}
 
+	// Whale trades JSONL log — records every detected trade for analysis.
+	var whaleLogMu sync.Mutex
+	whaleLogPath := filepath.Join(journalDir, "whale_trades.jsonl")
+	appendWhaleTrade := func(ev whale.AlertEvent, action, reason string) {
+		rec := map[string]interface{}{
+			"ts":       ev.Timestamp.In(journal.SGT).Format(time.RFC3339),
+			"wallet":   ev.Wallet,
+			"label":    ev.Label,
+			"side":     ev.Side,
+			"market":   ev.Question,
+			"outcome":  ev.Outcome,
+			"price":    ev.Price,
+			"size":     ev.Notional,
+			"units":    ev.SizeUnits,
+			"asset_id": ev.AssetID,
+			"trade_id": ev.TradeID,
+			"action":   action,
+			"reason":   reason,
+		}
+		line, _ := json.Marshal(rec)
+		whaleLogMu.Lock()
+		defer whaleLogMu.Unlock()
+		if f, err := os.OpenFile(whaleLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+			_, _ = f.Write(append(line, '\n'))
+			_ = f.Close()
+		}
+	}
+
 	// Smart-money whale tracker: polls target wallet's CLOB trades and
 	// pushes DM for large orders. Feature-flagged via -whale_enabled.
 	// In whale signal_mode: BUY → SignalPrompt with buttons (boss clicks to follow);
@@ -1909,6 +1937,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				}
 
 				if ev.Price < 0.05 || ev.Price > 0.95 {
+					appendWhaleTrade(ev, "skip", "price_filtered")
 					slog.Info("copytrade_price_filtered", "wallet", ev.Label, "price", ev.Price, "market", ev.Question)
 					return
 				}
@@ -1916,12 +1945,14 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				switch side {
 				case "BUY":
 					if err := rm.AllowOpen(time.Now()); err != nil {
+						appendWhaleTrade(ev, "skip", "risk_blocked:"+err.Error())
 						slog.Info("copytrade_blocked", "reason", err.Error(), "wallet", ev.Label, "market", ev.Question)
 						return
 					}
 					tick := feed.Tick{Mid: ev.Price, Time: ev.Timestamp}
 					pos, err := pm.OpenSized(ev.AssetID, ev.ConditionID, tick, copytradeSize)
 					if err != nil {
+						appendWhaleTrade(ev, "skip", "open_rejected:"+err.Error())
 						slog.Warn("copytrade_open_rejected", "wallet", ev.Label, "asset", short(ev.AssetID), "err", err.Error())
 						return
 					}
@@ -1953,6 +1984,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					}
 					src.Mark(pos.ID, "copytrade_"+ev.Label, result.OrderID)
 					savePositions()
+					appendWhaleTrade(ev, "followed", "")
 					notifier.WhaleAlert(baseAlert)
 					return
 
@@ -1964,6 +1996,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						}
 					}
 					if len(matches) == 0 {
+						appendWhaleTrade(ev, "sell_no_pos", "")
 						notifier.WhaleAlert(baseAlert)
 						return
 					}
@@ -2031,16 +2064,22 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					}
 					if closed > 0 {
 						savePositions()
+						appendWhaleTrade(ev, "closed", fmt.Sprintf("matched=%d", closed))
 						slog.Info("copytrade_closed", "wallet", ev.Label, "asset", short(ev.AssetID), "count", closed)
+					} else {
+						appendWhaleTrade(ev, "sell_close_fail", "")
 					}
 					notifier.WhaleAlert(baseAlert)
 					return
 
 				default:
+					appendWhaleTrade(ev, "other", side)
 					notifier.WhaleAlert(baseAlert)
 					return
 				}
 			}
+
+			appendWhaleTrade(ev, "alert", signalMode)
 
 			if signalMode != "whale" {
 				notifier.WhaleAlert(notify.WhaleAlertEvent{
