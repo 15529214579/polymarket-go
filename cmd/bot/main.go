@@ -1944,34 +1944,37 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 		}
 	}
 
-	// endDateCache caches market conditionID → end date to avoid repeated
-	// Gamma API lookups when the same market triggers multiple whale trades.
+	type marketMeta struct {
+		EndDate  time.Time
+		Category string
+	}
 	var endDateMu sync.Mutex
-	endDateCache := make(map[string]time.Time)
-	lookupEndDate := func(conditionID string) (time.Time, bool) {
+	metaCache := make(map[string]marketMeta)
+	lookupMarketMeta := func(conditionID string) (marketMeta, bool) {
 		endDateMu.Lock()
-		if t, ok := endDateCache[conditionID]; ok {
+		if m, ok := metaCache[conditionID]; ok {
 			endDateMu.Unlock()
-			return t, true
+			return m, true
 		}
 		endDateMu.Unlock()
 		qctx, qcancel := context.WithTimeout(ctx, 10*time.Second)
 		defer qcancel()
 		mkts, err := gc.GetByConditionIDs(qctx, []string{conditionID})
 		if err != nil || len(mkts) == 0 {
-			return time.Time{}, false
+			return marketMeta{}, false
 		}
 		ed, err := time.Parse(time.RFC3339, mkts[0].EndDate)
 		if err != nil {
 			ed, err = time.Parse("2006-01-02T15:04:05Z", mkts[0].EndDate)
 			if err != nil {
-				return time.Time{}, false
+				return marketMeta{}, false
 			}
 		}
+		m := marketMeta{EndDate: ed, Category: mkts[0].Category}
 		endDateMu.Lock()
-		endDateCache[conditionID] = ed
+		metaCache[conditionID] = m
 		endDateMu.Unlock()
-		return ed, true
+		return m, true
 	}
 
 	// Smart-money whale tracker: polls target wallet's CLOB trades and
@@ -2009,10 +2012,16 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 
 				switch side {
 				case "BUY":
-					if endDate, ok := lookupEndDate(ev.ConditionID); ok {
-						if time.Until(endDate) > 30*24*time.Hour {
-							appendWhaleTrade(ev, "skip", fmt.Sprintf("settlement_too_far:%s", endDate.Format("2006-01-02")))
-							slog.Info("copytrade_settlement_filtered", "wallet", ev.Label, "market", ev.Question, "end_date", endDate.Format("2006-01-02"))
+					if meta, ok := lookupMarketMeta(ev.ConditionID); ok {
+						cat := strings.ToLower(meta.Category)
+						if cat == "politics" || cat == "political" {
+							appendWhaleTrade(ev, "skip", "politics_filtered")
+							slog.Info("copytrade_politics_filtered", "wallet", ev.Label, "market", ev.Question, "category", meta.Category)
+							return
+						}
+						if time.Until(meta.EndDate) > 30*24*time.Hour {
+							appendWhaleTrade(ev, "skip", fmt.Sprintf("settlement_too_far:%s", meta.EndDate.Format("2006-01-02")))
+							slog.Info("copytrade_settlement_filtered", "wallet", ev.Label, "market", ev.Question, "end_date", meta.EndDate.Format("2006-01-02"))
 							notifier.WhaleAlert(baseAlert)
 							return
 						}
