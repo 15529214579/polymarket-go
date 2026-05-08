@@ -3007,12 +3007,6 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				return
 			}
 
-			trackedAssets := make(map[string]bool)
-			snap := pm.Snapshot()
-			for _, pos := range snap {
-				trackedAssets[pos.AssetID] = true
-			}
-
 			var totalCost, totalValue, totalPnL, totalRealized float64
 			type posLine struct {
 				emoji, title, outcome string
@@ -3030,7 +3024,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				if p.Size < 0.01 {
 					continue
 				}
-				if !trackedAssets[p.Asset] {
+				if _, tracked := buyTimesMap[p.Asset]; !tracked {
 					continue
 				}
 				emoji := "🟢"
