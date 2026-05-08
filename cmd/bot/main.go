@@ -605,6 +605,18 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 			slog.Warn("positions_save_err", "path", posStatePath, "err", err)
 		}
 	}
+
+	const buyTimesPath = "db/buy_times.json"
+	buyTimesMap := make(map[string]time.Time)
+	if raw, err := os.ReadFile(buyTimesPath); err == nil {
+		_ = json.Unmarshal(raw, &buyTimesMap)
+		slog.Info("buy_times_loaded", "count", len(buyTimesMap))
+	}
+	saveBuyTimes := func() {
+		raw, _ := json.MarshalIndent(buyTimesMap, "", "  ")
+		_ = os.WriteFile(buyTimesPath, raw, 0644)
+	}
+
 	var orderClient order.Client
 	var walletAddress string
 	paper := order.NewPaperClientWithFee(slippageBp, feeBp)
@@ -2139,6 +2151,8 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					}
 					src.Mark(pos.ID, "copytrade_"+ev.Label, result.OrderID)
 					savePositions()
+					buyTimesMap[ev.AssetID] = time.Now()
+					saveBuyTimes()
 					appendWhaleTrade(ev, "followed", "")
 					notifier.WhaleAlert(baseAlert)
 					return
@@ -3009,6 +3023,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				realizedPnl           float64
 				endDate               string
 				redeemable            bool
+				buyTime               time.Time
 			}
 			var lines []posLine
 			for _, p := range positions {
@@ -3036,6 +3051,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				totalValue += p.CurrentValue
 				totalPnL += p.CashPnL
 				totalRealized += p.RealizedPnL
+				bt := buyTimesMap[p.Asset]
 				lines = append(lines, posLine{
 					emoji: emoji, title: title, outcome: p.Outcome,
 					avgPrice: p.AvgPrice, curPrice: p.CurPrice,
@@ -3043,18 +3059,32 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					pnl: p.CashPnL, pct: p.PercentPnL,
 					realizedPnl: p.RealizedPnL,
 					endDate: p.EndDate, redeemable: p.Redeemable,
+					buyTime: bt,
 				})
 			}
-			sort.Slice(lines, func(i, j int) bool { return lines[i].cost > lines[j].cost })
+			sort.Slice(lines, func(i, j int) bool { return lines[i].buyTime.After(lines[j].buyTime) })
 
 			sb.WriteString(fmt.Sprintf("持仓: %d 笔 · $%.2f 成本 · $%.2f 市值\n", len(lines), totalCost, totalValue))
 			sb.WriteString(fmt.Sprintf("浮盈: $%+.2f\n", totalPnL))
 			sb.WriteString(fmt.Sprintf("已实现: $%+.2f\n", totalRealized))
 			sb.WriteString(fmt.Sprintf("总 P&L: $%+.2f\n", totalPnL+totalRealized))
 
-			if len(lines) > 0 {
-				sb.WriteString(fmt.Sprintf("\n--- 持仓明细 (%d) ---\n", len(lines)))
-				for i, l := range lines {
+			var activeLines []posLine
+			zeroCount := 0
+			zeroPnL := 0.0
+			for _, l := range lines {
+				if l.curPrice < 0.001 && l.value < 0.01 {
+					zeroCount++
+					zeroPnL += l.pnl
+				} else {
+					activeLines = append(activeLines, l)
+				}
+			}
+
+			if len(activeLines) > 0 {
+				sb.WriteString(fmt.Sprintf("\n--- 持仓明细 (%d) ---\n", len(activeLines)))
+				shown := 0
+				for _, l := range activeLines {
 					title := l.title
 					if len(title) > 40 {
 						title = title[:40] + "…"
@@ -3067,20 +3097,28 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					if l.redeemable {
 						redeemTag = " [可赎回]"
 					}
-					sb.WriteString(fmt.Sprintf("%s %s · %s\n   %.1f份 · $%.2f成本 · 入%.3f→现%.3f · $%+.2f (%+.1f%%)%s\n",
-						l.emoji, title, direction,
+					timeTag := ""
+					if !l.buyTime.IsZero() {
+						timeTag = fmt.Sprintf(" · %s", l.buyTime.In(sgt).Format("01/02 15:04"))
+					}
+					sb.WriteString(fmt.Sprintf("%s %s · %s%s\n   %.1f份 · $%.2f成本 · 入%.3f→现%.3f · $%+.2f (%+.1f%%)%s\n",
+						l.emoji, title, direction, timeTag,
 						l.size, l.cost, l.avgPrice, l.curPrice, l.pnl, l.pct, redeemTag))
-					if i >= 19 {
-						sb.WriteString(fmt.Sprintf("... +%d more\n", len(lines)-20))
+					shown++
+					if shown >= 20 {
+						sb.WriteString(fmt.Sprintf("... +%d more\n", len(activeLines)-20))
 						break
 					}
 				}
 			} else {
-				sb.WriteString("\n无持仓\n")
+				sb.WriteString("\n无活跃持仓\n")
+			}
+			if zeroCount > 0 {
+				sb.WriteString(fmt.Sprintf("\n⚫ 已归零: %d 笔 · $%+.2f\n", zeroCount, zeroPnL))
 			}
 
 			notifier.SidecarAlert(sb.String())
-			slog.Info("hourly_pnl_pushed", "positions", len(lines), "cost", totalCost, "value", totalValue, "pnl", totalPnL)
+			slog.Info("hourly_pnl_pushed", "positions", len(lines), "active", len(activeLines), "zeroed", zeroCount, "cost", totalCost, "value", totalValue, "pnl", totalPnL)
 		}
 		time.Sleep(5 * time.Second)
 		pushPnL()
