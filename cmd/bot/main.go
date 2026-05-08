@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	nethttp "net/http"
 	neturl "net/url"
@@ -605,6 +606,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 		}
 	}
 	var orderClient order.Client
+	var walletAddress string
 	paper := order.NewPaperClientWithFee(slippageBp, feeBp)
 	orderClient = paper
 	if liveTrading {
@@ -619,7 +621,8 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 			slog.Error("v2_wallet_derive_failed", "err", err)
 			os.Exit(1)
 		}
-		slog.Info("v2_wallet_loaded", "address", wallet.Address().Hex())
+		walletAddress = wallet.Address().Hex()
+		slog.Info("v2_wallet_loaded", "address", walletAddress)
 		creds, err := order.DeriveAPIKey(order.ClobBaseURL, wallet)
 		if err != nil {
 			slog.Error("v2_api_key_derive_failed", "err", err)
@@ -2967,115 +2970,97 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 	}()
 
 	// Hourly P&L summary push — every 1h via sidecar bot (@Murphyoderbot).
-	// Fires immediately on startup, then every 1h.
+	// Uses Polymarket data-api /positions for real on-chain positions.
 	go func() {
 		tk := time.NewTicker(1 * time.Hour)
 		defer tk.Stop()
 		pushPnL := func() {
-			snap := pm.Snapshot()
-			closed := pm.Closed()
-
-			midCache := map[string]float64{}
-			wsSS := sampler.Snapshot()
-			for _, ws := range wsSS {
-				if ws.EndMid > 0 {
-					midCache[ws.AssetID] = ws.EndMid
-				}
-			}
-			for _, p := range snap {
-				if _, ok := midCache[p.AssetID]; !ok {
-					if mid := fetchCLOBMidpoint(p.AssetID); mid > 0 {
-						midCache[p.AssetID] = mid
-					}
-				}
-			}
-
-			var totalUnrealized, todayRealized float64
-			var totalWins, totalLosses int
 			sgt := time.FixedZone("SGT", 8*3600)
-			today := time.Now().In(sgt).Format("2006-01-02")
+			var sb strings.Builder
+			sb.WriteString(fmt.Sprintf("📊 P&L · %s SGT\n\n", time.Now().In(sgt).Format("15:04")))
 
+			if walletAddress == "" {
+				sb.WriteString("⚠️ 非实盘模式，无链上仓位\n")
+				notifier.SidecarAlert(sb.String())
+				return
+			}
+
+			positions, err := fetchDataAPIPositions(walletAddress)
+			if err != nil {
+				sb.WriteString(fmt.Sprintf("⚠️ 拉取仓位失败: %s\n", err))
+				notifier.SidecarAlert(sb.String())
+				slog.Warn("pnl_push_fetch_err", "err", err)
+				return
+			}
+
+			var totalCost, totalValue, totalPnL, totalRealized float64
 			type posLine struct {
 				emoji, title, outcome string
-				entry, cur, pnl, pct  float64
+				avgPrice, curPrice    float64
 				size                  float64
-				wallet                string
-				buyTime               time.Time
+				cost, value           float64
+				pnl, pct              float64
+				realizedPnl           float64
+				endDate               string
+				redeemable            bool
 			}
 			var lines []posLine
-			for _, p := range snap {
-				cur := midCache[p.AssetID]
-				pnl := 0.0
-				pct := 0.0
-				if p.EntryMid > 0 && cur > 0 {
-					pnl = (cur - p.EntryMid) * p.Units
-					pct = (cur - p.EntryMid) / p.EntryMid * 100
+			for _, p := range positions {
+				if p.Size < 0.01 {
+					continue
 				}
-				totalUnrealized += pnl
 				emoji := "🟢"
-				if pnl < 0 {
+				if p.CashPnL < 0 {
 					emoji = "🔴"
 				}
-				title := p.Question
+				if p.Redeemable {
+					emoji = "💰"
+				}
+				title := p.Title
 				if title == "" {
-					title = p.AssetID
+					title = p.Asset
 					if len(title) > 20 {
 						title = title[:8] + ".." + title[len(title)-4:]
 					}
 				}
-				wallet := p.WalletLabel
-				if wallet == "" {
-					wallet = p.Source
-				}
-				lines = append(lines, posLine{emoji: emoji, title: title, outcome: p.Outcome, entry: p.EntryMid, cur: cur, pnl: pnl, pct: pct, size: p.SizeUSD, wallet: wallet, buyTime: p.EntryTime})
+				totalCost += p.InitialValue
+				totalValue += p.CurrentValue
+				totalPnL += p.CashPnL
+				totalRealized += p.RealizedPnL
+				lines = append(lines, posLine{
+					emoji: emoji, title: title, outcome: p.Outcome,
+					avgPrice: p.AvgPrice, curPrice: p.CurPrice,
+					size: p.Size, cost: p.InitialValue, value: p.CurrentValue,
+					pnl: p.CashPnL, pct: p.PercentPnL,
+					realizedPnl: p.RealizedPnL,
+					endDate: p.EndDate, redeemable: p.Redeemable,
+				})
 			}
-			sort.Slice(lines, func(i, j int) bool { return lines[i].buyTime.After(lines[j].buyTime) })
+			sort.Slice(lines, func(i, j int) bool { return lines[i].cost > lines[j].cost })
 
-			for _, c := range closed {
-				pnl := c.PnLUSD
-				if pnl == 0 && c.EntryMid > 0 {
-					pnl = (c.ExitMid - c.EntryMid) * c.Units
-				}
-				if c.ExitTime.In(sgt).Format("2006-01-02") == today {
-					todayRealized += pnl
-				}
-				if pnl > 0 {
-					totalWins++
-				} else {
-					totalLosses++
-				}
-			}
-
-			var sb strings.Builder
-			sb.WriteString(fmt.Sprintf("📊 P&L · %s SGT\n\n", time.Now().In(sgt).Format("15:04")))
-			sb.WriteString(fmt.Sprintf("持仓: %d 笔 · $%.2f 敞口\n", len(snap), func() float64 { var s float64; for _, p := range snap { s += p.SizeUSD }; return s }()))
-			sb.WriteString(fmt.Sprintf("浮盈: $%+.2f\n", totalUnrealized))
-			sb.WriteString(fmt.Sprintf("已实现: $%+.2f (%dW/%dL)\n", todayRealized, totalWins, totalLosses))
-			sb.WriteString(fmt.Sprintf("总计: $%+.2f\n", totalUnrealized+todayRealized))
-			sb.WriteString(fmt.Sprintf("当日: $%+.2f\n", todayRealized))
+			sb.WriteString(fmt.Sprintf("持仓: %d 笔 · $%.2f 成本 · $%.2f 市值\n", len(lines), totalCost, totalValue))
+			sb.WriteString(fmt.Sprintf("浮盈: $%+.2f\n", totalPnL))
+			sb.WriteString(fmt.Sprintf("已实现: $%+.2f\n", totalRealized))
+			sb.WriteString(fmt.Sprintf("总 P&L: $%+.2f\n", totalPnL+totalRealized))
 
 			if len(lines) > 0 {
 				sb.WriteString(fmt.Sprintf("\n--- 持仓明细 (%d) ---\n", len(lines)))
 				for i, l := range lines {
 					title := l.title
-					if len(title) > 35 {
-						title = title[:35] + "…"
+					if len(title) > 40 {
+						title = title[:40] + "…"
 					}
 					direction := l.outcome
 					if direction == "" {
 						direction = "YES"
 					}
-					walletTag := ""
-					if l.wallet != "" {
-						walletTag = " [" + l.wallet + "]"
+					redeemTag := ""
+					if l.redeemable {
+						redeemTag = " [可赎回]"
 					}
-					buyTimeStr := ""
-					if !l.buyTime.IsZero() {
-						buyTimeStr = l.buyTime.In(sgt).Format("01/02 15:04")
-					}
-					sb.WriteString(fmt.Sprintf("%s %s %s\n   $%.0f · %.3f→%.3f · $%+.2f (%+.1f%%) · %s%s\n",
+					sb.WriteString(fmt.Sprintf("%s %s · %s\n   %.1f份 · $%.2f成本 · 入%.3f→现%.3f · $%+.2f (%+.1f%%)%s\n",
 						l.emoji, title, direction,
-						l.size, l.entry, l.cur, l.pnl, l.pct, buyTimeStr, walletTag))
+						l.size, l.cost, l.avgPrice, l.curPrice, l.pnl, l.pct, redeemTag))
 					if i >= 19 {
 						sb.WriteString(fmt.Sprintf("... +%d more\n", len(lines)-20))
 						break
@@ -3086,7 +3071,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 			}
 
 			notifier.SidecarAlert(sb.String())
-			slog.Info("hourly_pnl_pushed", "open", len(snap), "unrealized", totalUnrealized, "today_realized", todayRealized)
+			slog.Info("hourly_pnl_pushed", "positions", len(lines), "cost", totalCost, "value", totalValue, "pnl", totalPnL)
 		}
 		time.Sleep(5 * time.Second)
 		pushPnL()
@@ -3165,6 +3150,42 @@ func fetchCLOBMidpoint(tokenID string) float64 {
 	}
 	mid, _ := strconv.ParseFloat(result.Mid, 64)
 	return mid
+}
+
+type dataAPIPosition struct {
+	Size         float64 `json:"size"`
+	AvgPrice     float64 `json:"avgPrice"`
+	InitialValue float64 `json:"initialValue"`
+	CurrentValue float64 `json:"currentValue"`
+	CashPnL      float64 `json:"cashPnl"`
+	PercentPnL   float64 `json:"percentPnl"`
+	TotalBought  float64 `json:"totalBought"`
+	RealizedPnL  float64 `json:"realizedPnl"`
+	CurPrice     float64 `json:"curPrice"`
+	Title        string  `json:"title"`
+	Outcome      string  `json:"outcome"`
+	Asset        string  `json:"asset"`
+	ConditionID  string  `json:"conditionId"`
+	EndDate      string  `json:"endDate"`
+	Redeemable   bool    `json:"redeemable"`
+}
+
+func fetchDataAPIPositions(walletAddr string) ([]dataAPIPosition, error) {
+	reqURL := "https://data-api.polymarket.com/positions?user=" + strings.ToLower(walletAddr) + "&sizeThreshold=0.01&limit=200"
+	resp, err := nethttp.Get(reqURL)
+	if err != nil {
+		return nil, fmt.Errorf("data-api positions: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("data-api %d: %s", resp.StatusCode, string(body[:min(len(body), 200)]))
+	}
+	var positions []dataAPIPosition
+	if err := json.Unmarshal(body, &positions); err != nil {
+		return nil, fmt.Errorf("data-api decode: %w", err)
+	}
+	return positions, nil
 }
 
 // assetMeta carries per-asset context used by signal prompts and log lines.
