@@ -1,0 +1,992 @@
+{
+  "0xd1c769317bd15de7768a70d0214cf0bbcc531d2b": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": null,
+    "total_trades_raw": 974
+  },
+  "0x07bdcabf60da99be8fad11092bf4e8412cffe993": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": null,
+    "total_trades_raw": 1216
+  },
+  "0x1bc0d88ca86b9049cf05d642e634836d5ddf4429": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": null,
+    "total_trades_raw": 1851
+  },
+  "0x818f214c7f3e479cce1d964d53fe3db7297558cb": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": null,
+    "total_trades_raw": 672
+  },
+  "0x506bce138df20695c03cd5a59a937499fb00b0fe": {
+    "tier": "A",
+    "reason": "high ROI + high WR",
+    "stats": {
+      "trades": 132,
+      "wins": 132,
+      "losses": 0,
+      "win_rate": 100.0,
+      "total_pnl": 1469.62270746,
+      "avg_win": 11.133505359545454,
+      "avg_loss": 0,
+      "roi": 38.74923791359083,
+      "sharpe": 0.3393435645156587,
+      "open_positions": 9,
+      "open_cost": 16990.198661
+    },
+    "total_trades_raw": 635
+  },
+  "0x7f3c8979d0afa00007bae4747d5347122af05613": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": null,
+    "total_trades_raw": 1008
+  },
+  "0x5bffcf561bcae83af680ad600cb99f1184d6ffbe": {
+    "tier": "B",
+    "reason": "profitable",
+    "stats": {
+      "trades": 86,
+      "wins": 67,
+      "losses": 19,
+      "win_rate": 77.90697674418605,
+      "total_pnl": 5771.161244091027,
+      "avg_win": 90.41412318502495,
+      "avg_loss": -15.083421542402434,
+      "roi": 1.5878545051162936,
+      "sharpe": 0.3020153540252967,
+      "open_positions": 24,
+      "open_cost": 725479.6157220209
+    },
+    "total_trades_raw": 498
+  },
+  "0x8278252ebbf354eca8ce316e680a0eaf02859464": {
+    "tier": "B",
+    "reason": "profitable",
+    "stats": {
+      "trades": 41,
+      "wins": 41,
+      "losses": 0,
+      "win_rate": 100.0,
+      "total_pnl": 175.01126928048276,
+      "avg_win": 4.268567543426409,
+      "avg_loss": 0,
+      "roi": 18.31592934783755,
+      "sharpe": 0.2331967691278698,
+      "open_positions": 8,
+      "open_cost": 1610.2746992804828
+    },
+    "total_trades_raw": 255
+  },
+  "0x805a922574d7d6b158b7bbb49a6fa8925eb60635": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": {
+      "trades": 4,
+      "wins": 4,
+      "losses": 0,
+      "win_rate": 100.0,
+      "total_pnl": 391.8610004546169,
+      "avg_win": 97.96525011365422,
+      "avg_loss": 0,
+      "roi": 330.0435788938125,
+      "sharpe": 0.5023920006336752,
+      "open_positions": 7,
+      "open_cost": 11472.113203454615
+    },
+    "total_trades_raw": 203
+  },
+  "0xf2f6af4f27ec2dcf4072095ab804016e14cd5817": {
+    "tier": "B",
+    "reason": "profitable",
+    "stats": {
+      "trades": 352,
+      "wins": 197,
+      "losses": 155,
+      "win_rate": 55.96590909090909,
+      "total_pnl": 12367.357460941403,
+      "avg_win": 91.30653836987146,
+      "avg_loss": -36.258261922085694,
+      "roi": 10.514800641239862,
+      "sharpe": 0.15073643925350483,
+      "open_positions": 30,
+      "open_cost": 294850.9956877354
+    },
+    "total_trades_raw": 3487
+  },
+  "0x3b7ed1242417f4b8f6992b5dd53aa9415a2c23eb": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": null,
+    "total_trades_raw": 371
+  },
+  "0x1b6022ae41ad7a0b387a88c17885c754436ca55b": {
+    "tier": "D",
+    "reason": "unprofitable",
+    "stats": {
+      "trades": 44,
+      "wins": 36,
+      "losses": 8,
+      "win_rate": 81.81818181818183,
+      "total_pnl": -654.3425052530018,
+      "avg_win": 10.285312716688304,
+      "avg_loss": -128.07672038172262,
+      "roi": -6.440711779272876,
+      "sharpe": -0.1117167218750657,
+      "open_positions": 10,
+      "open_cost": 11492.801078598237
+    },
+    "total_trades_raw": 243
+  },
+  "0xdd225a03cd7ed89e3931906c67c75ab31cf89ef1": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": null,
+    "total_trades_raw": 66
+  },
+  "0xdb27bf2ac5d428a9c63dbc914611036855a6c56e": {
+    "tier": "B",
+    "reason": "profitable",
+    "stats": {
+      "trades": 56,
+      "wins": 56,
+      "losses": 0,
+      "win_rate": 100.0,
+      "total_pnl": 1643.862466330002,
+      "avg_win": 29.354686898750035,
+      "avg_loss": 0,
+      "roi": 2.927161823430581,
+      "sharpe": 0.2116557722132835,
+      "open_positions": 19,
+      "open_cost": 776913.5532683299
+    },
+    "total_trades_raw": 3488
+  },
+  "0xbdbbf6301dcdb644ccbb91784a6b29365ab8084e": {
+    "tier": "B",
+    "reason": "profitable",
+    "stats": {
+      "trades": 175,
+      "wins": 105,
+      "losses": 70,
+      "win_rate": 60.0,
+      "total_pnl": 2203.0992606994796,
+      "avg_win": 46.0990349037513,
+      "avg_loss": -37.675705774205845,
+      "roi": 4.814617713561539,
+      "sharpe": 0.1503663041855648,
+      "open_positions": 11,
+      "open_cost": 3031.4990610515524
+    },
+    "total_trades_raw": 596
+  },
+  "0x2785e7022dc20757108204b13c08cea8613b70ae": {
+    "tier": "B",
+    "reason": "profitable",
+    "stats": {
+      "trades": 27,
+      "wins": 20,
+      "losses": 7,
+      "win_rate": 74.07407407407408,
+      "total_pnl": 444.9233227729248,
+      "avg_win": 66.54377613864624,
+      "avg_loss": -126.56460000000001,
+      "roi": 1.4203239444565428,
+      "sharpe": 0.0935136430179404,
+      "open_positions": 2,
+      "open_cost": 67646.62750177292
+    },
+    "total_trades_raw": 2414
+  },
+  "0x1e1f17412069c0736adfaadf8ee7f46e5612c855": {
+    "tier": "D",
+    "reason": "unprofitable",
+    "stats": {
+      "trades": 21,
+      "wins": 3,
+      "losses": 18,
+      "win_rate": 14.285714285714285,
+      "total_pnl": -930.7501836858646,
+      "avg_win": 239.40287627163096,
+      "avg_loss": -91.60882291670872,
+      "roi": -4.598204219648536,
+      "sharpe": -0.17533220819016362,
+      "open_positions": 35,
+      "open_cost": 172629.48985082415
+    },
+    "total_trades_raw": 675
+  },
+  "0x0f863d92dd2b960e3eb6a23a35fd92a91981404e": {
+    "tier": "D",
+    "reason": "unprofitable",
+    "stats": {
+      "trades": 20,
+      "wins": 0,
+      "losses": 20,
+      "win_rate": 0.0,
+      "total_pnl": -3230.795202555999,
+      "avg_win": 0,
+      "avg_loss": -161.53976012779995,
+      "roi": -30.636985804674143,
+      "sharpe": -0.6081288032491452,
+      "open_positions": 10,
+      "open_cost": 27009.007034000002
+    },
+    "total_trades_raw": 235
+  },
+  "0x1a475c96573121a913ae61cbc57005c6c0e4846f": {
+    "tier": "D",
+    "reason": "unprofitable",
+    "stats": {
+      "trades": 24,
+      "wins": 10,
+      "losses": 14,
+      "win_rate": 41.66666666666667,
+      "total_pnl": -2072.2444420016895,
+      "avg_win": 100.11570263251902,
+      "avg_loss": -219.52867630906277,
+      "roi": -30.636432848633,
+      "sharpe": -0.25155579731021943,
+      "open_positions": 4,
+      "open_cost": 717.8611552112736
+    },
+    "total_trades_raw": 120
+  },
+  "0x4cc3522b689a6bf1fb4a2444c523e7776db47552": {
+    "tier": "B",
+    "reason": "profitable",
+    "stats": {
+      "trades": 107,
+      "wins": 54,
+      "losses": 53,
+      "win_rate": 50.467289719626166,
+      "total_pnl": 70.93805578999962,
+      "avg_win": 1.3136677320370305,
+      "avg_loss": -3.28301886359441e-08,
+      "roi": 1.7520774364529024,
+      "sharpe": 0.18792659420311353,
+      "open_positions": 6,
+      "open_cost": 13442.59552222
+    },
+    "total_trades_raw": 535
+  },
+  "0xeb6f0a13ea8c5a7a0514c25495adbe815c1025f0": {
+    "tier": "D",
+    "reason": "unprofitable",
+    "stats": {
+      "trades": 22,
+      "wins": 5,
+      "losses": 17,
+      "win_rate": 22.727272727272727,
+      "total_pnl": 5.34388249975828,
+      "avg_win": 26.899376659951656,
+      "avg_loss": -7.597235341176472,
+      "roi": 0.0698184678363315,
+      "sharpe": 0.009728025310113216,
+      "open_positions": 8,
+      "open_cost": 10406.106689299759
+    },
+    "total_trades_raw": 698
+  },
+  "0xf9151529abce6aa8357b99707ec06607cf238720": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": {
+      "trades": 4,
+      "wins": 3,
+      "losses": 1,
+      "win_rate": 75.0,
+      "total_pnl": 436.34495999999916,
+      "avg_win": 145.65612666666638,
+      "avg_loss": -0.6234199999999993,
+      "roi": 10.092310213319395,
+      "sharpe": 1.0352727011553748,
+      "open_positions": 2,
+      "open_cost": 3942.9950799999997
+    },
+    "total_trades_raw": 1535
+  },
+  "0xcc3e87226912d35893b678eaa8a39d57b6fe37ef": {
+    "tier": "A",
+    "reason": "high ROI + high WR",
+    "stats": {
+      "trades": 120,
+      "wins": 103,
+      "losses": 17,
+      "win_rate": 85.83333333333333,
+      "total_pnl": 22054.26306247621,
+      "avg_win": 224.0069773498215,
+      "avg_loss": -59.90915320914137,
+      "roi": 74.22715196825483,
+      "sharpe": 0.2197481504918454,
+      "open_positions": 36,
+      "open_cost": 24027.5314063462
+    },
+    "total_trades_raw": 514
+  },
+  "0x9dfe2f73d3c988a9d69df8fa0beb85651340b3dd": {
+    "tier": "D",
+    "reason": "unprofitable",
+    "stats": {
+      "trades": 224,
+      "wins": 126,
+      "losses": 98,
+      "win_rate": 56.25,
+      "total_pnl": -3222.655884996462,
+      "avg_win": 21.807280167882876,
+      "avg_loss": -60.9221753688745,
+      "roi": -8.17368056778156,
+      "sharpe": -0.14640306207377424,
+      "open_positions": 31,
+      "open_cost": 90322.91454686935
+    },
+    "total_trades_raw": 1026
+  },
+  "0x033dc6e3e3e0a3ae55402576990392ae910aaf05": {
+    "tier": "D",
+    "reason": "unprofitable",
+    "stats": {
+      "trades": 9,
+      "wins": 1,
+      "losses": 8,
+      "win_rate": 11.11111111111111,
+      "total_pnl": 18.378616816655324,
+      "avg_win": 39.27885567617534,
+      "avg_loss": -2.612529857440002,
+      "roi": 1.2569891707370202,
+      "sharpe": 0.13715647142198986,
+      "open_positions": 14,
+      "open_cost": 8501.44557114048
+    },
+    "total_trades_raw": 444
+  },
+  "0x2e4d05beafd81a6e85bc0c6a94820d61ef34f703": {
+    "tier": "B",
+    "reason": "profitable",
+    "stats": {
+      "trades": 65,
+      "wins": 49,
+      "losses": 16,
+      "win_rate": 75.38461538461539,
+      "total_pnl": 339.60860958920574,
+      "avg_win": 9.190282685571603,
+      "avg_loss": -6.919702625237683,
+      "roi": 4.308352503143156,
+      "sharpe": 0.314878502290979,
+      "open_positions": 23,
+      "open_cost": 89566.20987190923
+    },
+    "total_trades_raw": 1167
+  },
+  "0x482bf5accdecfaffa67c14d4d4fbb59f428a3266": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": {
+      "trades": 1,
+      "wins": 0,
+      "losses": 1,
+      "win_rate": 0.0,
+      "total_pnl": -8.559800000000006,
+      "avg_win": 0,
+      "avg_loss": -8.559800000000006,
+      "roi": -7.46164051835206,
+      "sharpe": 0,
+      "open_positions": 5,
+      "open_cost": 3096.976254
+    },
+    "total_trades_raw": 120
+  },
+  "0x36a3f17401e395ef4cb1b7f42bcdb8ab8e15fafb": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": null,
+    "total_trades_raw": 1964
+  },
+  "0x8f037a2e4fd49d11267f4ab874ab7ba745ac64d6": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": null,
+    "total_trades_raw": 407
+  },
+  "0x54ac09857c3e76d50a2e7da064b0293d9a9e7c14": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": null,
+    "total_trades_raw": 182
+  },
+  "0x0eb568f307e9a48af2c3e688ad6074236712c494": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": null,
+    "total_trades_raw": 1541
+  },
+  "0x8c80d213c0cbad777d06ee3f58f6ca4bc03102c3": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": null,
+    "total_trades_raw": 2438
+  },
+  "0xe934f2d7d6358c6c86bfdd5848f1e90412e9640b": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": null,
+    "total_trades_raw": 1690
+  },
+  "0x8a3ab8120807bd64a3de48695110e390fa2ceb9a": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": {
+      "trades": 2,
+      "wins": 2,
+      "losses": 0,
+      "win_rate": 100.0,
+      "total_pnl": 11483.866929295182,
+      "avg_win": 5741.933464647591,
+      "avg_loss": 0,
+      "roi": 12.152413110924998,
+      "sharpe": 1.1452373190733538,
+      "open_positions": 37,
+      "open_cost": 431862.65535499976
+    },
+    "total_trades_raw": 520
+  },
+  "0xf28e42d20e4826f2b10a24bc952001697947cab2": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": null,
+    "total_trades_raw": 712
+  },
+  "0x61efd00829dbf08e4e80578aab589cb41bf05a75": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": null,
+    "total_trades_raw": 234
+  },
+  "0x959afc4649fb9ed03c0205070fa114eec4f97b64": {
+    "tier": "A",
+    "reason": "high ROI + high WR",
+    "stats": {
+      "trades": 35,
+      "wins": 32,
+      "losses": 3,
+      "win_rate": 91.42857142857143,
+      "total_pnl": 818893.2717002984,
+      "avg_win": 25633.388817111452,
+      "avg_loss": -458.39014908934695,
+      "roi": 88.93008574891954,
+      "sharpe": 0.4996963566908745,
+      "open_positions": 17,
+      "open_cost": 717916.6029450806
+    },
+    "total_trades_raw": 803
+  },
+  "0xc6587b11a2209e46dfe3928b31c5514a8e33b784": {
+    "tier": "B",
+    "reason": "profitable",
+    "stats": {
+      "trades": 114,
+      "wins": 96,
+      "losses": 18,
+      "win_rate": 84.21052631578947,
+      "total_pnl": 31115.467372741223,
+      "avg_win": 452.3361381159882,
+      "avg_loss": -683.8223270218698,
+      "roi": 10.284780361292682,
+      "sharpe": 0.10553025924384479,
+      "open_positions": 36,
+      "open_cost": 947088.8769427412
+    },
+    "total_trades_raw": 405
+  },
+  "0x0b9cae2b0dfe7a71c413e0604eaac1c352f87e44": {
+    "tier": "A",
+    "reason": "high ROI + high WR",
+    "stats": {
+      "trades": 15,
+      "wins": 15,
+      "losses": 0,
+      "win_rate": 100.0,
+      "total_pnl": 1079.558963931967,
+      "avg_win": 71.97059759546445,
+      "avg_loss": 0,
+      "roi": 40.93900708197853,
+      "sharpe": 0.5574512364842765,
+      "open_positions": 1,
+      "open_cost": 18045.521379931975
+    },
+    "total_trades_raw": 151
+  },
+  "0x1cc16713196d456f86fa9c7387dd326a7f73b8df": {
+    "tier": "B",
+    "reason": "profitable",
+    "stats": {
+      "trades": 113,
+      "wins": 14,
+      "losses": 99,
+      "win_rate": 12.389380530973451,
+      "total_pnl": 6035.959812650479,
+      "avg_win": 941.5559150464632,
+      "avg_loss": -72.18003028282831,
+      "roi": 11.55546433282531,
+      "sharpe": 0.07491126335579242,
+      "open_positions": 11,
+      "open_cost": 114670.20796761048
+    },
+    "total_trades_raw": 1248
+  },
+  "0xf0d9af9effd0b4a039899901ba19a05ea1a3e4ee": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": null,
+    "total_trades_raw": 192
+  },
+  "0xc65ca4755436f82d8eb461e65781584b8cadea39": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": null,
+    "total_trades_raw": 2435
+  },
+  "0xd5196bdf50199e195c58a6aff2114cc0e455932c": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": null,
+    "total_trades_raw": 1671
+  },
+  "0xa4eb52229991c074bc560f825bf2776d77acd010": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": null,
+    "total_trades_raw": 0
+  },
+  "0x7f9e2d1df78614564a70becc7fa14aa9a6623a0e": {
+    "tier": "A",
+    "reason": "high ROI + high WR",
+    "stats": {
+      "trades": 95,
+      "wins": 89,
+      "losses": 6,
+      "win_rate": 93.6842105263158,
+      "total_pnl": 91695.43878103355,
+      "avg_win": 1074.905861614478,
+      "avg_loss": -661.8638171091656,
+      "roi": 27.721595135630405,
+      "sharpe": 0.5081877499918279,
+      "open_positions": 27,
+      "open_cost": 622805.8036871608
+    },
+    "total_trades_raw": 712
+  },
+  "0x7e3a1f95c558f39a51ff334d789e3e039b553246": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": null,
+    "total_trades_raw": 54
+  },
+  "0xf1649daae29c44bdb406a4dbb7f1748eac398fa4": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": null,
+    "total_trades_raw": 1164
+  },
+  "0x2759769cd371bee44ec5bfc5e72c7f1f092b2b38": {
+    "tier": "D",
+    "reason": "unprofitable",
+    "stats": {
+      "trades": 106,
+      "wins": 67,
+      "losses": 39,
+      "win_rate": 63.20754716981132,
+      "total_pnl": -109.64726003494204,
+      "avg_win": 21.376425670726654,
+      "avg_loss": -39.53507128137502,
+      "roi": -0.2846922908310414,
+      "sharpe": -0.009759431638688783,
+      "open_positions": 60,
+      "open_cost": 749543.6877899651
+    },
+    "total_trades_raw": 3089
+  },
+  "0x05f6027ceb5b8db472bb716d3ed574c199118cec": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": {
+      "trades": 1,
+      "wins": 1,
+      "losses": 0,
+      "win_rate": 100.0,
+      "total_pnl": 14922.114155840003,
+      "avg_win": 14922.114155840003,
+      "avg_loss": 0,
+      "roi": 92.11538459403764,
+      "sharpe": 0,
+      "open_positions": 15,
+      "open_cost": 402496.93369599996
+    },
+    "total_trades_raw": 521
+  },
+  "0xee67f4f549180f564dd5910b1024b8c6729cef38": {
+    "tier": "D",
+    "reason": "unprofitable",
+    "stats": {
+      "trades": 31,
+      "wins": 0,
+      "losses": 31,
+      "win_rate": 0.0,
+      "total_pnl": -1137.041544136001,
+      "avg_win": 0,
+      "avg_loss": -36.678759488258095,
+      "roi": -7.100591840922199,
+      "sharpe": -0.22502673044646526,
+      "open_positions": 14,
+      "open_cost": 142622.439535864
+    },
+    "total_trades_raw": 3463
+  },
+  "0x32b484581fc5606de9c1e43af4636b6be9bc8b21": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": {
+      "trades": 4,
+      "wins": 0,
+      "losses": 4,
+      "win_rate": 0.0,
+      "total_pnl": -1068.1583965457285,
+      "avg_win": 0,
+      "avg_loss": -267.0395991364321,
+      "roi": -27.97701702650823,
+      "sharpe": -3.6646530192620146,
+      "open_positions": 46,
+      "open_cost": 166003.34045123437
+    },
+    "total_trades_raw": 3247
+  },
+  "0x178dedcbe5f082b7344f233871e8cb9d3f9843fc": {
+    "tier": "D",
+    "reason": "unprofitable",
+    "stats": {
+      "trades": 178,
+      "wins": 96,
+      "losses": 82,
+      "win_rate": 53.93258426966292,
+      "total_pnl": -1374.0329266099004,
+      "avg_win": 1.537808854482094,
+      "avg_loss": -18.556860690733927,
+      "roi": -1.3094733968645336,
+      "sharpe": -0.1646993490876036,
+      "open_positions": 10,
+      "open_cost": 327012.7917244801
+    },
+    "total_trades_raw": 2016
+  },
+  "0x903221b1098263779ae19486028c844e8c338717": {
+    "tier": "C",
+    "reason": "marginal",
+    "stats": {
+      "trades": 80,
+      "wins": 79,
+      "losses": 1,
+      "win_rate": 98.75,
+      "total_pnl": -0.44687499999721686,
+      "avg_win": 3.4893369839098145e-14,
+      "avg_loss": -0.44687499999997343,
+      "roi": -0.0027996038110147115,
+      "sharpe": -0.1118033988742911,
+      "open_positions": 5,
+      "open_cost": 16803.527172000002
+    },
+    "total_trades_raw": 156
+  },
+  "0xe30e74595517de48f1fb19f4553dd3d9f1e96b87": {
+    "tier": "A",
+    "reason": "high ROI + high WR",
+    "stats": {
+      "trades": 210,
+      "wins": 192,
+      "losses": 18,
+      "win_rate": 91.42857142857143,
+      "total_pnl": 154282.52564614906,
+      "avg_win": 823.9296952824569,
+      "avg_loss": -217.3319915601446,
+      "roi": 41.08387657628918,
+      "sharpe": 0.17788759177729208,
+      "open_positions": 27,
+      "open_cost": 1579050.2417670107
+    },
+    "total_trades_raw": 1957
+  },
+  "0xd2678dc3b152a54900f28b0e849afe2049df9dc6": {
+    "tier": "B",
+    "reason": "profitable",
+    "stats": {
+      "trades": 73,
+      "wins": 8,
+      "losses": 65,
+      "win_rate": 10.95890410958904,
+      "total_pnl": 58097.85868165901,
+      "avg_win": 7296.989954961126,
+      "avg_loss": -4.277860892769218,
+      "roi": 147.76079307343778,
+      "sharpe": 0.1851795521485151,
+      "open_positions": 40,
+      "open_cost": 133005.99293340495
+    },
+    "total_trades_raw": 850
+  },
+  "0x19e27eeb3641ae664e77dbb80c86021f048ece3c": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": null,
+    "total_trades_raw": 3074
+  },
+  "0x160db9bb5bf012f21251a74737093bcdc36f5295": {
+    "tier": "D",
+    "reason": "unprofitable",
+    "stats": {
+      "trades": 77,
+      "wins": 42,
+      "losses": 35,
+      "win_rate": 54.54545454545454,
+      "total_pnl": -9296.464107615446,
+      "avg_win": 3.863911375303401,
+      "avg_loss": -270.24995386794825,
+      "roi": -8.545029200532891,
+      "sharpe": -0.2781912288710096,
+      "open_positions": 14,
+      "open_cost": 50208.975438050154
+    },
+    "total_trades_raw": 2557
+  },
+  "0x6c743aafd813475986dcd930f380a1f50901bd4e": {
+    "tier": "D",
+    "reason": "unprofitable",
+    "stats": {
+      "trades": 32,
+      "wins": 0,
+      "losses": 32,
+      "win_rate": 0.0,
+      "total_pnl": -1785.1709606417833,
+      "avg_win": 0,
+      "avg_loss": -55.78659252005573,
+      "roi": -5.805316943384268,
+      "sharpe": -0.38634160752063207,
+      "open_positions": 26,
+      "open_cost": 772764.8552273253
+    },
+    "total_trades_raw": 858
+  },
+  "0xfffadf38a520cd5a0035ff52d7fceb436a08864b": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": {
+      "trades": 3,
+      "wins": 0,
+      "losses": 3,
+      "win_rate": 0.0,
+      "total_pnl": -861.4177399768444,
+      "avg_win": 0,
+      "avg_loss": -287.13924665894814,
+      "roi": -2.975419363785956,
+      "sharpe": -0.90026892976938,
+      "open_positions": 11,
+      "open_cost": 321051.3197905754
+    },
+    "total_trades_raw": 406
+  },
+  "0xd7375270e4769d3cc31885773070a5f12d5bbe95": {
+    "tier": "D",
+    "reason": "unprofitable",
+    "stats": {
+      "trades": 46,
+      "wins": 22,
+      "losses": 24,
+      "win_rate": 47.82608695652174,
+      "total_pnl": -213323.95116932824,
+      "avg_win": 1668.7254789407018,
+      "avg_loss": -10418.162987750986,
+      "roi": -46.008377252112766,
+      "sharpe": -0.32682994875655424,
+      "open_positions": 13,
+      "open_cost": 14510.268915075727
+    },
+    "total_trades_raw": 216
+  },
+  "0x1fa1be3eab546e06e4290839bf4c1d7abfbf1fa9": {
+    "tier": "D",
+    "reason": "unprofitable",
+    "stats": {
+      "trades": 150,
+      "wins": 103,
+      "losses": 47,
+      "win_rate": 68.66666666666667,
+      "total_pnl": -1518.085368233677,
+      "avg_win": 52.41976894106449,
+      "avg_loss": -147.17705466304943,
+      "roi": -6.7773299223232675,
+      "sharpe": -0.03278984804025854,
+      "open_positions": 28,
+      "open_cost": 6886.587463260309
+    },
+    "total_trades_raw": 1222
+  },
+  "0x0dcf5b49627c5194805bd1af846fd0bd3388c556": {
+    "tier": "A",
+    "reason": "high ROI + high WR",
+    "stats": {
+      "trades": 17,
+      "wins": 17,
+      "losses": 0,
+      "win_rate": 100.0,
+      "total_pnl": 257134.03883307317,
+      "avg_win": 15125.531696063128,
+      "avg_loss": 0,
+      "roi": 103.49775174828639,
+      "sharpe": 1.1948301860323274,
+      "open_positions": 182,
+      "open_cost": 2298629.475944463
+    },
+    "total_trades_raw": 1463
+  },
+  "0x5c3a1a602848565bb16165fcd460b00c3d43020b": {
+    "tier": "D",
+    "reason": "unprofitable",
+    "stats": {
+      "trades": 107,
+      "wins": 41,
+      "losses": 66,
+      "win_rate": 38.31775700934579,
+      "total_pnl": 1530.0047380050223,
+      "avg_win": 37.317189116585304,
+      "avg_loss": -2.390147592270095e-07,
+      "roi": 1.7319373966422815,
+      "sharpe": 0.24652870565128332,
+      "open_positions": 52,
+      "open_cost": 852239.0194702252
+    },
+    "total_trades_raw": 3475
+  },
+  "0xd9adcbd32369f4335885d6b8ffafdd2522a3a55c": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": {
+      "trades": 1,
+      "wins": 1,
+      "losses": 0,
+      "win_rate": 100.0,
+      "total_pnl": 34896.81265,
+      "avg_win": 34896.81265,
+      "avg_loss": 0,
+      "roi": 88.49056603773583,
+      "sharpe": 0,
+      "open_positions": 17,
+      "open_cost": 353354.50826999993
+    },
+    "total_trades_raw": 249
+  },
+  "0x162f6fff88a52864f2ecc9833e58089d5254798d": {
+    "tier": "D",
+    "reason": "unprofitable",
+    "stats": {
+      "trades": 653,
+      "wins": 54,
+      "losses": 599,
+      "win_rate": 8.269525267993874,
+      "total_pnl": -65255.834659485154,
+      "avg_win": 391.5893511698492,
+      "avg_loss": -144.24317132330043,
+      "roi": -24.00589572855198,
+      "sharpe": -0.16821404960972372,
+      "open_positions": 46,
+      "open_cost": 400462.69414780475
+    },
+    "total_trades_raw": 3462
+  },
+  "0xa3d48312c4c35c66752b19670fefbd2f18419969": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": null,
+    "total_trades_raw": 8
+  },
+  "0x44de2a52d8d2d3ddcf39d58e315a10df53ba9c08": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": null,
+    "total_trades_raw": 0
+  },
+  "0x335592400e402c26583ce8b56d12605e9548a126": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": {
+      "trades": 2,
+      "wins": 2,
+      "losses": 0,
+      "win_rate": 100.0,
+      "total_pnl": 1499.1137369037863,
+      "avg_win": 749.5568684518931,
+      "avg_loss": 0,
+      "roi": 9.976428025489232,
+      "sharpe": 0.7071076172725546,
+      "open_positions": 7,
+      "open_cost": 260112.91128690378
+    },
+    "total_trades_raw": 376
+  },
+  "0x6f26a33ddfc2f52a5cf12f6eb3c89a8a48e51b86": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": null,
+    "total_trades_raw": 207
+  },
+  "0xeb6789ca6b1425ff908a69a2a5469c38532cd696": {
+    "tier": "A",
+    "reason": "high ROI + high WR",
+    "stats": {
+      "trades": 225,
+      "wins": 214,
+      "losses": 11,
+      "win_rate": 95.11111111111111,
+      "total_pnl": 159347.5467098947,
+      "avg_win": 754.1927454367742,
+      "avg_loss": -186.33643759772397,
+      "roi": 83.45085840657347,
+      "sharpe": 0.3548138469250003,
+      "open_positions": 25,
+      "open_cost": 75220.39928305487
+    },
+    "total_trades_raw": 822
+  },
+  "0x88c4919de76e526d55a32c1f8afb439dd1f1129a": {
+    "tier": "B",
+    "reason": "profitable",
+    "stats": {
+      "trades": 264,
+      "wins": 232,
+      "losses": 32,
+      "win_rate": 87.87878787878788,
+      "total_pnl": 130786.99179230508,
+      "avg_win": 617.0551427408443,
+      "avg_loss": -386.55629136158575,
+      "roi": 15.186674705411644,
+      "sharpe": 0.3571572864825506,
+      "open_positions": 72,
+      "open_cost": 983694.4053808154
+    },
+    "total_trades_raw": 1659
+  },
+  "0x861ae65ad67b06b5cdabe24ba6de052269221f15": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": null,
+    "total_trades_raw": 1770
+  },
+  "0x91583ceb1ebec79951a068e1d7d02c1ea590fa7b": {
+    "tier": "D",
+    "reason": "insufficient data",
+    "stats": null,
+    "total_trades_raw": 1084
+  }
+}

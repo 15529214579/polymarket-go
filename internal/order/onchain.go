@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	PolygonRPC            = "https://polygon-rpc.com"
+	PolygonRPC            = "https://polygon-bor-rpc.publicnode.com"
 	USDCeAddress          = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"
 	PUSDAddress           = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB"
 	CollateralOnrampAddr  = "0x93070a847efEf7F70739046A929D47a521F5B8ee"

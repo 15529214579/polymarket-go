@@ -2879,6 +2879,79 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 		}
 	}()
 
+	// Hourly P&L summary push — every 1h, send position snapshot to boss via Telegram.
+	go func() {
+		tk := time.NewTicker(1 * time.Hour)
+		defer tk.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-tk.C:
+				snap := pm.Snapshot()
+				stats := pm.Stats()
+				closed := pm.Closed()
+
+				var totalUnrealized float64
+				var lines []string
+				for _, p := range snap {
+					pnl := 0.0
+					pctPnl := 0.0
+					if p.EntryMid > 0 {
+						pnl = (p.ExitMid - p.EntryMid) * p.SizeUSD / p.EntryMid
+						pctPnl = (p.ExitMid - p.EntryMid) / p.EntryMid * 100
+					}
+					totalUnrealized += pnl
+					mkt := p.Market
+					if len(mkt) > 30 {
+						mkt = mkt[:30]
+					}
+					emoji := "🟢"
+					if pnl < 0 {
+						emoji = "🔴"
+					}
+					lines = append(lines, fmt.Sprintf("%s %s · $%.2f · entry=%.3f · cur=%.3f · %+.1f%%",
+						emoji, mkt, p.SizeUSD, p.EntryMid, p.ExitMid, pctPnl))
+				}
+
+				var realizedPnL float64
+				var wins, losses int
+				for _, c := range closed {
+					pnl := 0.0
+					if c.EntryMid > 0 {
+						pnl = (c.ExitMid - c.EntryMid) * c.SizeUSD / c.EntryMid
+					}
+					realizedPnL += pnl
+					if pnl > 0 {
+						wins++
+					} else {
+						losses++
+					}
+				}
+
+				sgt := time.FixedZone("SGT", 8*3600)
+				var sb strings.Builder
+				sb.WriteString(fmt.Sprintf("📊 Hourly P&L · %s SGT\n\n", time.Now().In(sgt).Format("15:04")))
+				sb.WriteString(fmt.Sprintf("Open: %d pos · $%.2f exposure\n", stats.Open, stats.TotalExposure))
+				sb.WriteString(fmt.Sprintf("Unrealized: $%+.2f\n", totalUnrealized))
+				sb.WriteString(fmt.Sprintf("Realized: $%+.2f (%dW/%dL)\n", realizedPnL, wins, losses))
+				sb.WriteString(fmt.Sprintf("Total: $%+.2f\n", totalUnrealized+realizedPnL))
+
+				if len(lines) > 0 {
+					sb.WriteString("\nPositions:\n")
+					for _, l := range lines {
+						sb.WriteString(l + "\n")
+					}
+				} else {
+					sb.WriteString("\nNo open positions.\n")
+				}
+
+				notifier.TextAlert(sb.String())
+				slog.Info("hourly_pnl_pushed", "open", stats.Open, "unrealized", totalUnrealized, "realized", realizedPnL)
+			}
+		}
+	}()
+
 	return ws.Run(ctx)
 }
 
