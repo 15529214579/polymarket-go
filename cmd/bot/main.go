@@ -2879,15 +2879,12 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 		}
 	}()
 
-	// Hourly P&L summary push — every 1h, send position snapshot to boss via Telegram.
+	// Hourly P&L summary push — every 1h via sidecar bot (@Murphyoderbot).
+	// Fires immediately on startup, then every 1h.
 	go func() {
 		tk := time.NewTicker(1 * time.Hour)
 		defer tk.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-tk.C:
+		pushPnL := func() {
 				snap := pm.Snapshot()
 				stats := pm.Stats()
 				closed := pm.Closed()
@@ -2938,16 +2935,32 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				sb.WriteString(fmt.Sprintf("Total: $%+.2f\n", totalUnrealized+realizedPnL))
 
 				if len(lines) > 0 {
-					sb.WriteString("\nPositions:\n")
-					for _, l := range lines {
+					sb.WriteString(fmt.Sprintf("\nTop positions (%d total):\n", len(lines)))
+					show := lines
+					if len(show) > 10 {
+						show = show[:10]
+					}
+					for _, l := range show {
 						sb.WriteString(l + "\n")
+					}
+					if len(lines) > 10 {
+						sb.WriteString(fmt.Sprintf("... +%d more\n", len(lines)-10))
 					}
 				} else {
 					sb.WriteString("\nNo open positions.\n")
 				}
 
-				notifier.TextAlert(sb.String())
+				notifier.SidecarAlert(sb.String())
 				slog.Info("hourly_pnl_pushed", "open", stats.Open, "unrealized", totalUnrealized, "realized", realizedPnL)
+		}
+		time.Sleep(5 * time.Second)
+		pushPnL()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-tk.C:
+				pushPnL()
 			}
 		}
 	}()

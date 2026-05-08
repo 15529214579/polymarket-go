@@ -40,6 +40,8 @@ type Notifier interface {
 	InjuryAlert(ev InjuryAlertEvent)
 	// TextAlert pushes a pre-formatted text alert (used by new strategy scanners).
 	TextAlert(text string)
+	// SidecarAlert sends via the sidecar/prompt bot (@Murphyoderbot).
+	SidecarAlert(text string)
 	// WhaleAlert pushes a smart-money whale trade notification. Guarded by
 	// -whale_enabled flag; to remove: delete this method + WhaleAlertEvent +
 	// FormatWhaleAlert.

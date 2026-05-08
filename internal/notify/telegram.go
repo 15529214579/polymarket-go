@@ -199,6 +199,14 @@ func (t *Telegram) TextAlert(text string) {
 	t.enqueue(outgoing{text: text, tag: "text_alert", sendToken: t.pushToken()})
 }
 
+func (t *Telegram) SidecarAlert(text string) {
+	tok := t.cfg.PromptBotToken
+	if tok == "" {
+		tok = t.cfg.BotToken
+	}
+	t.enqueue(outgoing{text: text, tag: "sidecar_alert", sendToken: tok})
+}
+
 // ClosePrompt enqueues a DM with a close button when a whale sells an asset
 // we hold. The boss clicks "✅ 平仓" to confirm or ignores.
 func (t *Telegram) ClosePrompt(ev ClosePromptEvent) {
