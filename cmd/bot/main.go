@@ -608,7 +608,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 	orderClient = paper
 	if liveTrading {
 		slog.Info("v2_live_init", "msg", "loading wallet from Bitwarden")
-		mnemonic, err := order.LoadMnemonicFromBitwarden("polymarket-go-wallet", "mnemonic")
+		mnemonic, err := order.LoadMnemonicFromBitwarden("Polymarket-Go Wallet", "mnemonic")
 		if err != nil {
 			slog.Error("v2_wallet_load_failed", "err", err)
 			os.Exit(1)
@@ -2034,6 +2034,10 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						slog.Warn("copytrade_open_rejected", "wallet", ev.Label, "asset", short(ev.AssetID), "err", err.Error())
 						return
 					}
+					pos.Question = ev.Question
+					pos.Outcome = ev.Outcome
+					pos.Source = "copytrade"
+					pos.WalletLabel = ev.Label
 					intent := order.Intent{
 						AssetID: ev.AssetID,
 						Market:  ev.ConditionID,
@@ -2885,73 +2889,115 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 		tk := time.NewTicker(1 * time.Hour)
 		defer tk.Stop()
 		pushPnL := func() {
-				snap := pm.Snapshot()
-				stats := pm.Stats()
-				closed := pm.Closed()
+			snap := pm.Snapshot()
+			closed := pm.Closed()
 
-				var totalUnrealized float64
-				var lines []string
-				for _, p := range snap {
-					pnl := 0.0
-					pctPnl := 0.0
-					if p.EntryMid > 0 {
-						pnl = (p.ExitMid - p.EntryMid) * p.SizeUSD / p.EntryMid
-						pctPnl = (p.ExitMid - p.EntryMid) / p.EntryMid * 100
-					}
-					totalUnrealized += pnl
-					mkt := p.Market
-					if len(mkt) > 30 {
-						mkt = mkt[:30]
-					}
-					emoji := "🟢"
-					if pnl < 0 {
-						emoji = "🔴"
-					}
-					lines = append(lines, fmt.Sprintf("%s %s · $%.2f · entry=%.3f · cur=%.3f · %+.1f%%",
-						emoji, mkt, p.SizeUSD, p.EntryMid, p.ExitMid, pctPnl))
+			midCache := map[string]float64{}
+			wsSS := sampler.Snapshot()
+			for _, ws := range wsSS {
+				if ws.EndMid > 0 {
+					midCache[ws.AssetID] = ws.EndMid
 				}
-
-				var realizedPnL float64
-				var wins, losses int
-				for _, c := range closed {
-					pnl := 0.0
-					if c.EntryMid > 0 {
-						pnl = (c.ExitMid - c.EntryMid) * c.SizeUSD / c.EntryMid
-					}
-					realizedPnL += pnl
-					if pnl > 0 {
-						wins++
-					} else {
-						losses++
+			}
+			for _, p := range snap {
+				if _, ok := midCache[p.AssetID]; !ok {
+					if mid := fetchCLOBMidpoint(p.AssetID); mid > 0 {
+						midCache[p.AssetID] = mid
 					}
 				}
+			}
 
-				sgt := time.FixedZone("SGT", 8*3600)
-				var sb strings.Builder
-				sb.WriteString(fmt.Sprintf("📊 Hourly P&L · %s SGT\n\n", time.Now().In(sgt).Format("15:04")))
-				sb.WriteString(fmt.Sprintf("Open: %d pos · $%.2f exposure\n", stats.Open, stats.TotalExposure))
-				sb.WriteString(fmt.Sprintf("Unrealized: $%+.2f\n", totalUnrealized))
-				sb.WriteString(fmt.Sprintf("Realized: $%+.2f (%dW/%dL)\n", realizedPnL, wins, losses))
-				sb.WriteString(fmt.Sprintf("Total: $%+.2f\n", totalUnrealized+realizedPnL))
+			var totalUnrealized, todayRealized float64
+			var totalWins, totalLosses int
+			sgt := time.FixedZone("SGT", 8*3600)
+			today := time.Now().In(sgt).Format("2006-01-02")
 
-				if len(lines) > 0 {
-					sb.WriteString(fmt.Sprintf("\nTop positions (%d total):\n", len(lines)))
-					show := lines
-					if len(show) > 10 {
-						show = show[:10]
+			type posLine struct {
+				emoji, title, outcome string
+				entry, cur, pnl, pct  float64
+				size                  float64
+				wallet                string
+			}
+			var lines []posLine
+			for _, p := range snap {
+				cur := midCache[p.AssetID]
+				pnl := 0.0
+				pct := 0.0
+				if p.EntryMid > 0 && cur > 0 {
+					pnl = (cur - p.EntryMid) * p.Units
+					pct = (cur - p.EntryMid) / p.EntryMid * 100
+				}
+				totalUnrealized += pnl
+				emoji := "🟢"
+				if pnl < 0 {
+					emoji = "🔴"
+				}
+				title := p.Question
+				if title == "" {
+					title = p.AssetID
+					if len(title) > 20 {
+						title = title[:8] + ".." + title[len(title)-4:]
 					}
-					for _, l := range show {
-						sb.WriteString(l + "\n")
-					}
-					if len(lines) > 10 {
-						sb.WriteString(fmt.Sprintf("... +%d more\n", len(lines)-10))
-					}
+				}
+				wallet := p.WalletLabel
+				if wallet == "" {
+					wallet = p.Source
+				}
+				lines = append(lines, posLine{emoji: emoji, title: title, outcome: p.Outcome, entry: p.EntryMid, cur: cur, pnl: pnl, pct: pct, size: p.SizeUSD, wallet: wallet})
+			}
+
+			for _, c := range closed {
+				pnl := c.PnLUSD
+				if pnl == 0 && c.EntryMid > 0 {
+					pnl = (c.ExitMid - c.EntryMid) * c.Units
+				}
+				if c.ExitTime.In(sgt).Format("2006-01-02") == today {
+					todayRealized += pnl
+				}
+				if pnl > 0 {
+					totalWins++
 				} else {
-					sb.WriteString("\nNo open positions.\n")
+					totalLosses++
 				}
+			}
 
-				notifier.SidecarAlert(sb.String())
-				slog.Info("hourly_pnl_pushed", "open", stats.Open, "unrealized", totalUnrealized, "realized", realizedPnL)
+			var sb strings.Builder
+			sb.WriteString(fmt.Sprintf("📊 P&L · %s SGT\n\n", time.Now().In(sgt).Format("15:04")))
+			sb.WriteString(fmt.Sprintf("持仓: %d 笔 · $%.2f 敞口\n", len(snap), func() float64 { var s float64; for _, p := range snap { s += p.SizeUSD }; return s }()))
+			sb.WriteString(fmt.Sprintf("浮盈: $%+.2f\n", totalUnrealized))
+			sb.WriteString(fmt.Sprintf("已实现: $%+.2f (%dW/%dL)\n", todayRealized, totalWins, totalLosses))
+			sb.WriteString(fmt.Sprintf("总计: $%+.2f\n", totalUnrealized+todayRealized))
+			sb.WriteString(fmt.Sprintf("当日: $%+.2f\n", todayRealized))
+
+			if len(lines) > 0 {
+				sb.WriteString(fmt.Sprintf("\n--- 持仓明细 (%d) ---\n", len(lines)))
+				for i, l := range lines {
+					title := l.title
+					if len(title) > 35 {
+						title = title[:35] + "…"
+					}
+					direction := l.outcome
+					if direction == "" {
+						direction = "YES"
+					}
+					walletTag := ""
+					if l.wallet != "" {
+						walletTag = " [" + l.wallet + "]"
+					}
+					sb.WriteString(fmt.Sprintf("%s %s %s\n   $%.0f · %.2f→%.2f · $%+.2f (%+.1f%%)%s\n",
+						l.emoji, title, direction,
+						l.size, l.entry, l.cur, l.pnl, l.pct, walletTag))
+					if i >= 19 {
+						sb.WriteString(fmt.Sprintf("... +%d more\n", len(lines)-20))
+						break
+					}
+				}
+			} else {
+				sb.WriteString("\n无持仓\n")
+			}
+
+			notifier.SidecarAlert(sb.String())
+			slog.Info("hourly_pnl_pushed", "open", len(snap), "unrealized", totalUnrealized, "today_realized", todayRealized)
 		}
 		time.Sleep(5 * time.Second)
 		pushPnL()
@@ -3011,6 +3057,25 @@ func short(id string) string {
 		return id
 	}
 	return id[:6] + ".." + id[len(id)-4:]
+}
+
+func fetchCLOBMidpoint(tokenID string) float64 {
+	resp, err := nethttp.Get("https://clob.polymarket.com/midpoint?token_id=" + tokenID)
+	if err != nil {
+		return 0
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return 0
+	}
+	var result struct {
+		Mid string `json:"mid"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return 0
+	}
+	mid, _ := strconv.ParseFloat(result.Mid, 64)
+	return mid
 }
 
 // assetMeta carries per-asset context used by signal prompts and log lines.

@@ -27,20 +27,24 @@ const (
 // open time — keep it around so fee apportionment (entry fee × tranche share)
 // stays consistent after a partial close.
 type Position struct {
-	ID         string
-	AssetID    string
-	Market     string // Polymarket conditionID
-	SizeUSD    float64
-	Units      float64 // current remaining units
-	InitUnits  float64 // units at open — invariant after partial closes
-	OpenFeeUSD float64 // fee paid on the buy; apportioned across tranches
-	EntryMid   float64
-	EntryTime  time.Time
-	ExitMid    float64
-	ExitTime   time.Time
-	ExitReason ExitReason
-	PnLUSD     float64
-	Status     PositionStatus
+	ID          string
+	AssetID     string
+	Market      string // Polymarket conditionID
+	SizeUSD     float64
+	Units       float64 // current remaining units
+	InitUnits   float64 // units at open — invariant after partial closes
+	OpenFeeUSD  float64 // fee paid on the buy; apportioned across tranches
+	EntryMid    float64
+	EntryTime   time.Time
+	ExitMid     float64
+	ExitTime    time.Time
+	ExitReason  ExitReason
+	PnLUSD      float64
+	Status      PositionStatus
+	Question    string `json:",omitempty"`
+	Outcome     string `json:",omitempty"`
+	Source      string `json:",omitempty"`
+	WalletLabel string `json:",omitempty"`
 }
 
 // PositionConfig drives sizing + exposure caps. SPEC §2 / §6.
