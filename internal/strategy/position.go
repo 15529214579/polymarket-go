@@ -52,13 +52,15 @@ type PositionConfig struct {
 	PerPositionUSD   float64 // Paper: 5 USDC
 	MaxTotalOpenUSD  float64 // Cap on sum(open SizeUSD)
 	MaxOpenPositions int     // Hard cap on concurrent positions
+	MaxPerMarketUSD  float64 // Cap per conditionID (0 = unlimited)
 }
 
 func DefaultPositionConfig() PositionConfig {
 	return PositionConfig{
 		PerPositionUSD:   5.0,
-		MaxTotalOpenUSD:  300.0, // paper: generous cap for lottery volume
+		MaxTotalOpenUSD:  300.0,
 		MaxOpenPositions: 60,
+		MaxPerMarketUSD:  30.0,
 	}
 }
 
@@ -73,6 +75,7 @@ type PositionStats struct {
 var (
 	ErrMaxPositions     = errors.New("max concurrent positions reached")
 	ErrMaxExposure      = errors.New("max total exposure reached")
+	ErrMaxPerMarket     = errors.New("max per-market exposure reached")
 	ErrInvalidEntry     = errors.New("invalid entry mid")
 	ErrPositionNotFound = errors.New("no open position for id/asset")
 )
@@ -145,6 +148,13 @@ func (pm *PositionManager) OpenSized(assetID, market string, entry feed.Tick, si
 	}
 	if pm.totalExposureLocked()+sizeUSD > pm.cfg.MaxTotalOpenUSD+1e-9 {
 		return nil, ErrMaxExposure
+	}
+	if pm.cfg.MaxPerMarketUSD > 0 && market != "" {
+		if pm.marketExposureLocked(market)+sizeUSD > pm.cfg.MaxPerMarketUSD+1e-9 {
+			return nil, fmt.Errorf("%w: market=%s existing=$%.2f new=$%.2f cap=$%.2f",
+				ErrMaxPerMarket, market[:min(len(market), 12)],
+				pm.marketExposureLocked(market), sizeUSD, pm.cfg.MaxPerMarketUSD)
+		}
 	}
 
 	pm.nextID++
@@ -332,6 +342,20 @@ func (pm *PositionManager) totalExposureLocked() float64 {
 		s += p.SizeUSD
 	}
 	return s
+}
+
+func (pm *PositionManager) marketExposureLocked(market string) float64 {
+	var s float64
+	for _, p := range pm.byMarket[market] {
+		s += p.SizeUSD
+	}
+	return s
+}
+
+func (pm *PositionManager) ExposureForMarket(market string) float64 {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	return pm.marketExposureLocked(market)
 }
 
 // positionState is the JSON-serializable snapshot for persistence.

@@ -2011,21 +2011,28 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					return
 				}
 
-				isSportsMarket := func(q string) bool {
+				isAllowedMarket := func(q string) bool {
 					lower := strings.ToLower(q)
 					keywords := []string{
-						"nba", "nfl", "mlb", "nhl", "mls", "wnba",
+						// Basketball
+						"nba", "wnba",
+						// Soccer/Football
 						"epl", "la liga", "bundesliga", "serie a", "ligue 1",
 						"premier league", "champions league", "ucl", "uefa", "fifa",
 						"copa ", "concacaf", "conmebol", "eredivisie", "liga mx",
-						"ufc", "mma", "boxing", "bellator", "pfl", "one championship",
+						"fútbol", "futbol", "football", "soccer", "mls",
+						// Tennis
 						"atp", "wta", "grand slam", "roland garros", "wimbledon",
+						// Esports
 						"lol", "lck", "lpl", "lec", "dota", "cs2", "csgo", "valorant", "esport",
-						"f1", "formula 1", "nascar", "motogp", "indycar",
-						"cricket", "ipl", "rugby", "golf", "pga",
-						"world series", "super bowl", "stanley cup", "world cup",
+						// UFC/MMA
+						"ufc", "mma", "boxing", "bellator", "pfl", "one championship",
+						// Crypto
+						"bitcoin", "btc", "ethereum", "eth", "solana", "sol",
+						"crypto", "token", "defi", "nft", "blockchain",
+						// Sports formats
 						"spread:", "total points",
-						"fútbol", "futbol", "football", "soccer",
+						"world series", "super bowl", "stanley cup", "world cup",
 					}
 					for _, k := range keywords {
 						if strings.Contains(lower, k) {
@@ -2041,9 +2048,9 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 
 				switch side {
 				case "BUY":
-					if !isSportsMarket(ev.Question) {
-						appendWhaleTrade(ev, "skip", "non_sports_filtered")
-						slog.Info("copytrade_non_sports_filtered", "wallet", ev.Label, "market", ev.Question)
+					if !isAllowedMarket(ev.Question) {
+						appendWhaleTrade(ev, "skip", "category_filtered")
+						slog.Info("copytrade_category_filtered", "wallet", ev.Label, "market", ev.Question)
 						return
 					}
 					if meta, ok := lookupMarketMeta(ev.ConditionID); ok {
