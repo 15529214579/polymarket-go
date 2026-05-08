@@ -2027,6 +2027,20 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						"lol", "lck", "lpl", "lec", "dota", "cs2", "csgo", "valorant", "esport",
 						// UFC/MMA
 						"ufc", "mma", "boxing", "bellator", "pfl", "one championship",
+						// NFL
+						"nfl", "afc", "nfc", "touchdown", "quarterback",
+						// MLB
+						"mlb", "baseball",
+						// NHL
+						"nhl", "hockey",
+						// F1 / Motorsport
+						"formula 1", "f1 ", "grand prix", "motogp", "nascar", "indycar",
+						// Golf
+						"golf", "pga", "masters", "the open", "ryder cup",
+						// Cricket
+						"cricket", "ipl", "t20", "test match", "ashes",
+						// Rugby
+						"rugby", "six nations", "world rugby",
 						// Crypto
 						"bitcoin", "btc", "ethereum", "eth", "solana", "sol",
 						"crypto", "token", "defi", "nft", "blockchain",
