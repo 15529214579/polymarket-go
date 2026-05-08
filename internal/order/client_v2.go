@@ -49,7 +49,7 @@ func (c *V2Client) Submit(ctx context.Context, in Intent) (Result, error) {
 	}
 
 	exchange := common.HexToAddress(V2ExchangeAddress)
-	if c.negRisk {
+	if in.NegRisk {
 		exchange = common.HexToAddress(V2NegRiskExchangeAddress)
 	}
 

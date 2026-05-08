@@ -42,6 +42,7 @@ type Market struct {
 	ClobTokenIDsRaw  string  `json:"clobTokenIds"`
 	OutcomePricesRaw string  `json:"outcomePrices"`
 	OutcomesRaw      string  `json:"outcomes"`
+	NegRisk          bool    `json:"negRisk"`
 }
 
 func (m Market) ClobTokenIDs() []string  { return parseStringArray(m.ClobTokenIDsRaw) }

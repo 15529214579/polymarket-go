@@ -1963,6 +1963,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 	type marketMeta struct {
 		EndDate  time.Time
 		Category string
+		NegRisk  bool
 	}
 	var endDateMu sync.Mutex
 	metaCache := make(map[string]marketMeta)
@@ -1986,7 +1987,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				return marketMeta{}, false
 			}
 		}
-		m := marketMeta{EndDate: ed, Category: mkts[0].Category}
+		m := marketMeta{EndDate: ed, Category: mkts[0].Category, NegRisk: mkts[0].NegRisk}
 		endDateMu.Lock()
 		metaCache[conditionID] = m
 		endDateMu.Unlock()
@@ -2082,7 +2083,9 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						slog.Info("copytrade_category_filtered", "wallet", ev.Label, "market", ev.Question)
 						return
 					}
+					isNegRisk := true
 					if meta, ok := lookupMarketMeta(ev.ConditionID); ok {
+						isNegRisk = meta.NegRisk
 						if time.Until(meta.EndDate) > 30*24*time.Hour {
 							appendWhaleTrade(ev, "skip", fmt.Sprintf("settlement_too_far:%s", meta.EndDate.Format("2006-01-02")))
 							slog.Info("copytrade_settlement_filtered", "wallet", ev.Label, "market", ev.Question, "end_date", meta.EndDate.Format("2006-01-02"))
@@ -2118,6 +2121,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						SizeUSD: sizeUSD,
 						LimitPx: ev.Price,
 						Type:    order.GTC,
+						NegRisk: isNegRisk,
 					}
 					result, err := orderClient.Submit(ctx, intent)
 					if err != nil {

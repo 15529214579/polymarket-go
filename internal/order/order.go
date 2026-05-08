@@ -49,6 +49,7 @@ type Intent struct {
 	LimitPx  float64 // 0..1 probability
 	Type     OrderType
 	Deadline time.Time // for GTD; zero for GTC
+	NegRisk  bool      // true for NegRisk markets (different exchange address)
 }
 
 // Result is what Submit returns — unified for paper + real.
