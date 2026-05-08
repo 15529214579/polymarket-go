@@ -1944,6 +1944,36 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 		}
 	}
 
+	// endDateCache caches market conditionID → end date to avoid repeated
+	// Gamma API lookups when the same market triggers multiple whale trades.
+	var endDateMu sync.Mutex
+	endDateCache := make(map[string]time.Time)
+	lookupEndDate := func(conditionID string) (time.Time, bool) {
+		endDateMu.Lock()
+		if t, ok := endDateCache[conditionID]; ok {
+			endDateMu.Unlock()
+			return t, true
+		}
+		endDateMu.Unlock()
+		qctx, qcancel := context.WithTimeout(ctx, 10*time.Second)
+		defer qcancel()
+		mkts, err := gc.GetByConditionIDs(qctx, []string{conditionID})
+		if err != nil || len(mkts) == 0 {
+			return time.Time{}, false
+		}
+		ed, err := time.Parse(time.RFC3339, mkts[0].EndDate)
+		if err != nil {
+			ed, err = time.Parse("2006-01-02T15:04:05Z", mkts[0].EndDate)
+			if err != nil {
+				return time.Time{}, false
+			}
+		}
+		endDateMu.Lock()
+		endDateCache[conditionID] = ed
+		endDateMu.Unlock()
+		return ed, true
+	}
+
 	// Smart-money whale tracker: polls target wallet's CLOB trades and
 	// pushes DM for large orders. Feature-flagged via -whale_enabled.
 	// In whale signal_mode: BUY → SignalPrompt with buttons (boss clicks to follow);
@@ -1979,6 +2009,14 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 
 				switch side {
 				case "BUY":
+					if endDate, ok := lookupEndDate(ev.ConditionID); ok {
+						if time.Until(endDate) > 30*24*time.Hour {
+							appendWhaleTrade(ev, "skip", fmt.Sprintf("settlement_too_far:%s", endDate.Format("2006-01-02")))
+							slog.Info("copytrade_settlement_filtered", "wallet", ev.Label, "market", ev.Question, "end_date", endDate.Format("2006-01-02"))
+							notifier.WhaleAlert(baseAlert)
+							return
+						}
+					}
 					if err := rm.AllowOpen(time.Now()); err != nil {
 						appendWhaleTrade(ev, "skip", "risk_blocked:"+err.Error())
 						slog.Info("copytrade_blocked", "reason", err.Error(), "wallet", ev.Label, "market", ev.Question)
@@ -2041,6 +2079,10 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						notifier.WhaleAlert(baseAlert)
 						return
 					}
+					sellPct := ev.PctSold / 100.0
+					if sellPct <= 0 || sellPct > 1 {
+						sellPct = 1.0
+					}
 					now := time.Now()
 					closed := 0
 					for _, pos := range matches {
@@ -2054,7 +2096,14 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 							ChangePP: (ev.Price - pos.EntryMid) * 100,
 							Reason:   strategy.ExitReason("whale_sell"),
 						}
-						closedPos, err := pm.Close(pos.ID, exitSig)
+						closeUnits := pos.Units * sellPct
+						var closedPos strategy.Position
+						var err error
+						if sellPct >= 0.95 {
+							closedPos, err = pm.Close(pos.ID, exitSig)
+						} else {
+							closedPos, err = pm.PartialClose(pos.ID, closeUnits, exitSig)
+						}
 						if err != nil {
 							slog.Warn("copytrade_close_miss", "pos", pos.ID, "err", err.Error())
 							continue
@@ -2076,6 +2125,10 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						if err := rm.SaveState(riskStatePath); err != nil {
 							slog.Warn("risk_save_err", "err", err)
 						}
+						closeReason := "copytrade_sell"
+						if sellPct < 0.95 {
+							closeReason = fmt.Sprintf("copytrade_partial_%.0f%%", ev.PctSold)
+						}
 						if jerr := jrn.Append(journal.TradeRecord{
 							ID:           closedPos.ID,
 							AssetID:      closedPos.AssetID,
@@ -2095,18 +2148,29 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 							EntryFeeUSD:  entryFeeShare,
 							NetPnLUSD:    netPnL,
 							OpenOrderID:  openOID,
-							CloseOrderID: "copytrade_sell",
+							CloseOrderID: closeReason,
 							Mode:         "paper",
 							SignalSource: source,
 						}); jerr != nil {
 							slog.Warn("journal_append_fail", "asset", short(ev.AssetID), "err", jerr.Error())
 						}
 						closed++
+						slog.Info("copytrade_sell_executed",
+							"pos", pos.ID,
+							"pct_sold", fmt.Sprintf("%.0f%%", ev.PctSold),
+							"close_units", closeUnits,
+							"remaining", pos.Units-closeUnits,
+							"pnl", closedPos.PnLUSD,
+						)
 					}
 					if closed > 0 {
 						savePositions()
-						appendWhaleTrade(ev, "closed", fmt.Sprintf("matched=%d", closed))
-						slog.Info("copytrade_closed", "wallet", ev.Label, "asset", short(ev.AssetID), "count", closed)
+						action := "closed"
+						if sellPct < 0.95 {
+							action = fmt.Sprintf("partial_%.0f%%", ev.PctSold)
+						}
+						appendWhaleTrade(ev, action, fmt.Sprintf("matched=%d", closed))
+						slog.Info("copytrade_closed", "wallet", ev.Label, "asset", short(ev.AssetID), "count", closed, "pct", ev.PctSold)
 					} else {
 						appendWhaleTrade(ev, "sell_close_fail", "")
 					}
