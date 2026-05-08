@@ -25,6 +25,7 @@ func main() {
 	dryRun := flag.Bool("dry-run", false, "derive key + print intent, don't submit")
 	autoWrap := flag.Bool("auto-wrap", true, "auto wrap USDC.e → pUSD if needed")
 	rpcURL := flag.String("rpc", "", "Polygon RPC URL (default: polygon-rpc.com)")
+	hexKey := flag.String("key", "", "hex private key (bypasses Bitwarden mnemonic)")
 	flag.Parse()
 
 	if *assetID == "" || *limitPx <= 0 {
@@ -36,15 +37,25 @@ func main() {
 
 	order.InitProxy()
 
-	mnemonic, err := loadMnemonic()
-	if err != nil {
-		slog.Error("wallet_load_failed", "err", err)
-		os.Exit(1)
-	}
-	wallet, err := order.NewWalletFromMnemonic(mnemonic, "")
-	if err != nil {
-		slog.Error("wallet_derive_failed", "err", err)
-		os.Exit(1)
+	var wallet *order.Wallet
+	if *hexKey != "" {
+		var err error
+		wallet, err = order.NewWalletFromHexKey(*hexKey)
+		if err != nil {
+			slog.Error("wallet_from_key_failed", "err", err)
+			os.Exit(1)
+		}
+	} else {
+		mnemonic, err := loadMnemonic()
+		if err != nil {
+			slog.Error("wallet_load_failed", "err", err)
+			os.Exit(1)
+		}
+		wallet, err = order.NewWalletFromMnemonic(mnemonic, "")
+		if err != nil {
+			slog.Error("wallet_derive_failed", "err", err)
+			os.Exit(1)
+		}
 	}
 	slog.Info("wallet_loaded", "address", wallet.Address().Hex())
 

@@ -5,6 +5,7 @@
 package whale
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -169,6 +171,9 @@ func (t *Tracker) Run(ctx context.Context) error {
 
 	tk := time.NewTicker(t.cfg.PollInterval)
 	defer tk.Stop()
+	// Bound concurrent /activity HTTP fans-out so a 70-wallet copytrade
+	// list doesn't burst-hammer data-api.polymarket.com on every tick.
+	sem := make(chan struct{}, 10)
 	var pollCount int
 	for {
 		select {
@@ -176,11 +181,19 @@ func (t *Tracker) Run(ctx context.Context) error {
 			return ctx.Err()
 		case <-tk.C:
 			pollCount++
+			var wg sync.WaitGroup
 			for _, w := range wallets {
-				if err := t.poll(ctx, w); err != nil {
-					t.logger.Warn("whale_poll_fail", "wallet", w.Label, "err", err.Error())
-				}
+				wg.Add(1)
+				sem <- struct{}{}
+				go func(w WalletEntry) {
+					defer wg.Done()
+					defer func() { <-sem }()
+					if err := t.poll(ctx, w); err != nil {
+						t.logger.Warn("whale_poll_fail", "wallet", w.Label, "err", err.Error())
+					}
+				}(w)
 			}
+			wg.Wait()
 			if pollCount%10 == 0 {
 				for _, w := range wallets {
 					st := t.states[strings.ToLower(w.Address)]
@@ -267,7 +280,8 @@ func (t *Tracker) poll(ctx context.Context, w WalletEntry) error {
 			newSeen[tr.TransactionHash] = struct{}{}
 		}
 
-		if tr.Type != "" && strings.ToUpper(tr.Type) != "BUY" && strings.ToUpper(tr.Type) != "SELL" {
+		side := strings.ToUpper(tr.Side)
+		if side != "BUY" && side != "SELL" {
 			continue
 		}
 
@@ -470,4 +484,62 @@ func ParseWallets(s string) ([]WalletEntry, error) {
 		wallets = append(wallets, we)
 	}
 	return wallets, nil
+}
+
+// LoadWalletsFile reads addresses from a newline-delimited file and returns a
+// WalletEntry list ready to drop into Config.Wallets. Each non-empty,
+// non-comment line is one 0x… address; the label is auto-derived
+// "w_<first6>…<last4>". MinSizeUSD is applied uniformly to every wallet —
+// callers tuning per-wallet thresholds should keep using ParseWallets.
+func LoadWalletsFile(path string, minSizeUSD float64) ([]WalletEntry, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open wallets file %s: %w", path, err)
+	}
+	defer f.Close()
+
+	var wallets []WalletEntry
+	seen := make(map[string]struct{})
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		// Strip inline comments so "0xabc... # alice" still works.
+		if i := strings.Index(line, "#"); i >= 0 {
+			line = strings.TrimSpace(line[:i])
+		}
+		// Take the first whitespace-delimited token in case the line has
+		// trailing tags ("0xabc... alice").
+		if i := strings.IndexAny(line, " \t"); i >= 0 {
+			line = line[:i]
+		}
+		if line == "" {
+			continue
+		}
+		addr := strings.ToLower(line)
+		if _, dup := seen[addr]; dup {
+			continue
+		}
+		seen[addr] = struct{}{}
+		wallets = append(wallets, WalletEntry{
+			Address:    line,
+			Label:      walletLabel(line),
+			MinSizeUSD: minSizeUSD,
+		})
+	}
+	if err := sc.Err(); err != nil {
+		return nil, fmt.Errorf("read wallets file %s: %w", path, err)
+	}
+	return wallets, nil
+}
+
+// walletLabel returns the auto-generated short label used for file-loaded
+// wallets — e.g. 0xd1c7…31d2b → w_d1c7…1d2b.
+func walletLabel(addr string) string {
+	if len(addr) < 10 {
+		return "w_" + addr
+	}
+	return "w_" + addr[2:6] + "…" + addr[len(addr)-4:]
 }

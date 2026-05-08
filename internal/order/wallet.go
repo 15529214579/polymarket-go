@@ -55,6 +55,20 @@ func NewWalletFromMnemonic(mnemonic, hdPath string) (*Wallet, error) {
 	return &Wallet{privKey: pk, address: acct.Address}, nil
 }
 
+// NewWalletFromHexKey loads a wallet directly from a hex-encoded private key.
+func NewWalletFromHexKey(hexKey string) (*Wallet, error) {
+	hexKey = strings.TrimSpace(strings.TrimPrefix(hexKey, "0x"))
+	if hexKey == "" {
+		return nil, errors.New("order: empty hex key")
+	}
+	pk, err := crypto.HexToECDSA(hexKey)
+	if err != nil {
+		return nil, fmt.Errorf("order: bad hex key: %w", err)
+	}
+	addr := crypto.PubkeyToAddress(pk.PublicKey)
+	return &Wallet{privKey: pk, address: addr}, nil
+}
+
 // Address returns the checksummed EVM address corresponding to the wallet.
 func (w *Wallet) Address() common.Address { return w.address }
 

@@ -89,6 +89,8 @@ func main() {
 	fadeMode := flag.Bool("fade_mode", false, "fade (mean-reversion): buy the opposite outcome when momentum fires")
 	confirmDelay := flag.Duration("confirm_delay", 10*time.Second, "wait N seconds after signal trigger, re-check price before entry")
 	whaleWallets := flag.String("whale_wallets", "", "tracked wallets: addr|label|minUSD|profileURL,... (comma-separated)")
+	walletsFile := flag.String("wallets_file", "", "path to wallets file (one address per line) for copytrade mode")
+	copytradeSize := flag.Float64("copytrade_size", 5.0, "per-trade paper size in USDC for copytrade mode")
 	whaleWallet := flag.String("whale_wallet", "", "(legacy) single target wallet address (hex 0x…)")
 	whaleProfile := flag.String("whale_profile", "", "(legacy) whale's Polymarket profile URL")
 	whaleMinUSD := flag.Float64("whale_min_usd", 1000, "(legacy) minimum notional USD to trigger alert")
@@ -184,6 +186,16 @@ func main() {
 			MinSizeUSD:   *whaleMinUSD,
 			PollInterval: *whaleInterval,
 		}
+		if *walletsFile != "" {
+			fileWallets, err := whale.LoadWalletsFile(*walletsFile, whaleCfg.MinSizeUSD)
+			if err != nil {
+				slog.Error("copytrade.wallets_load_fail", "file", *walletsFile, "err", err)
+				os.Exit(1)
+			}
+			whaleCfg.Wallets = fileWallets
+			whaleCfg.Enabled = true
+			slog.Info("copytrade.wallets_loaded", "file", *walletsFile, "count", len(fileWallets))
+		}
 		oddsPapiCfg := odds.OddsPapiConfig{
 			Enabled:   *oddsPapiEnabled,
 			Interval:  *oddsPapiInterval,
@@ -219,7 +231,7 @@ func main() {
 				EurovisionInterval: *eurovisionInterval,
 				EurovisionMinEdge:  *eurovisionMinEdge,
 			}
-			if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, *arbEnabled, *arbInterval, *arbMinGapPP, *arbDBPath, injCfg, whaleCfg, oddsPapiCfg, *confirmDelay, btcCfg, updownCfg, p10, *liveTrading, *fadeMode); err != nil && ctx.Err() == nil {
+			if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, *arbEnabled, *arbInterval, *arbMinGapPP, *arbDBPath, injCfg, whaleCfg, oddsPapiCfg, *confirmDelay, btcCfg, updownCfg, p10, *liveTrading, *fadeMode, *walletsFile, *copytradeSize); err != nil && ctx.Err() == nil {
 			slog.Error("detect failed", "err", err)
 			os.Exit(1)
 		}
@@ -451,9 +463,9 @@ type phase10Config struct {
 	EurovisionMinEdge  float64
 }
 
-func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, arbEnabled bool, arbInterval time.Duration, arbMinGapPP float64, arbDBPath string, injCfg injury.Config, whaleCfg whale.Config, oddsPapiCfg odds.OddsPapiConfig, confirmDelay time.Duration, btcCfg btc.StrategyConfig, updownCfg btc.UpDownConfig, p10 phase10Config, liveTrading bool, fadeMode bool) error {
-	if signalMode != "auto" && signalMode != "prompt" && signalMode != "whale" {
-		return fmt.Errorf("invalid signal_mode %q (want auto|prompt|whale)", signalMode)
+func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, arbEnabled bool, arbInterval time.Duration, arbMinGapPP float64, arbDBPath string, injCfg injury.Config, whaleCfg whale.Config, oddsPapiCfg odds.OddsPapiConfig, confirmDelay time.Duration, btcCfg btc.StrategyConfig, updownCfg btc.UpDownConfig, p10 phase10Config, liveTrading bool, fadeMode bool, walletsFile string, copytradeSize float64) error {
+	if signalMode != "auto" && signalMode != "prompt" && signalMode != "whale" && signalMode != "copytrade" {
+		return fmt.Errorf("invalid signal_mode %q (want auto|prompt|whale|copytrade)", signalMode)
 	}
 	if exitMode != "hold" && exitMode != "auto" && exitMode != "ladder" {
 		return fmt.Errorf("invalid exit_mode %q (want hold|auto|ladder)", exitMode)
@@ -1872,6 +1884,159 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 	if whaleCfg.Enabled {
 		wt := whale.NewTracker(whaleCfg, func(ev whale.AlertEvent) {
 			side := strings.ToUpper(ev.Side)
+
+			if signalMode == "copytrade" {
+				baseAlert := notify.WhaleAlertEvent{
+					Wallet:      ev.Wallet,
+					Label:       ev.Label,
+					Side:        ev.Side,
+					SizeUnits:   ev.SizeUnits,
+					Price:       ev.Price,
+					Notional:    ev.Notional,
+					Market:      ev.Question,
+					Outcome:     ev.Outcome,
+					TradeID:     ev.TradeID,
+					LinkURL:     ev.LinkURL,
+					ProfileURL:  ev.ProfileURL,
+					Timestamp:   ev.Timestamp,
+					TotalShares: ev.TotalShares,
+					AvgPrice:    ev.AvgPrice,
+					PctSold:     ev.PctSold,
+				}
+
+				if ev.Price < 0.05 || ev.Price > 0.95 {
+					slog.Info("copytrade_price_filtered", "wallet", ev.Label, "price", ev.Price, "market", ev.Question)
+					return
+				}
+
+				switch side {
+				case "BUY":
+					if err := rm.AllowOpen(time.Now()); err != nil {
+						slog.Info("copytrade_blocked", "reason", err.Error(), "wallet", ev.Label, "market", ev.Question)
+						return
+					}
+					tick := feed.Tick{Mid: ev.Price, Time: ev.Timestamp}
+					pos, err := pm.OpenSized(ev.AssetID, ev.ConditionID, tick, copytradeSize)
+					if err != nil {
+						slog.Warn("copytrade_open_rejected", "wallet", ev.Label, "asset", short(ev.AssetID), "err", err.Error())
+						return
+					}
+					intent := order.Intent{
+						AssetID: ev.AssetID,
+						Market:  ev.ConditionID,
+						Side:    order.Buy,
+						SizeUSD: copytradeSize,
+						LimitPx: ev.Price,
+						Type:    order.GTC,
+					}
+					result, err := orderClient.Submit(ctx, intent)
+					if err != nil {
+						slog.Warn("copytrade_submit_err", "wallet", ev.Label, "err", err.Error())
+					} else {
+						if err := pm.SetOpenFee(pos.ID, result.FeeUSD); err != nil {
+							slog.Warn("copytrade_set_open_fee_fail", "pos", pos.ID, "err", err.Error())
+						}
+						slog.Info("copytrade_filled",
+							"pos", pos.ID,
+							"wallet", ev.Label,
+							"asset", short(ev.AssetID),
+							"outcome", ev.Outcome,
+							"price", ev.Price,
+							"size_usd", copytradeSize,
+							"order_id", result.OrderID,
+							"fee_usd", result.FeeUSD,
+						)
+					}
+					src.Mark(pos.ID, "copytrade_"+ev.Label, result.OrderID)
+					savePositions()
+					notifier.WhaleAlert(baseAlert)
+					return
+
+				case "SELL":
+					var matches []strategy.Position
+					for _, pos := range pm.Snapshot() {
+						if pos.AssetID == ev.AssetID {
+							matches = append(matches, pos)
+						}
+					}
+					if len(matches) == 0 {
+						notifier.WhaleAlert(baseAlert)
+						return
+					}
+					now := time.Now()
+					closed := 0
+					for _, pos := range matches {
+						exitSig := strategy.ExitSignal{
+							AssetID:  pos.AssetID,
+							Market:   pos.Market,
+							Time:     now,
+							EntryMid: pos.EntryMid,
+							ExitMid:  ev.Price,
+							HeldFor:  now.Sub(pos.EntryTime),
+							ChangePP: (ev.Price - pos.EntryMid) * 100,
+							Reason:   strategy.ExitReason("whale_sell"),
+						}
+						closedPos, err := pm.Close(pos.ID, exitSig)
+						if err != nil {
+							slog.Warn("copytrade_close_miss", "pos", pos.ID, "err", err.Error())
+							continue
+						}
+						entryFeeShare := 0.0
+						if closedPos.InitUnits > 0 {
+							entryFeeShare = closedPos.OpenFeeUSD * (closedPos.Units / closedPos.InitUnits)
+						}
+						netPnL := closedPos.PnLUSD - entryFeeShare
+						source, openOID := src.Take(closedPos.ID)
+						if tripped := rm.OnClose(netPnL, now); tripped {
+							rst := rm.State()
+							slog.Error("risk_trip",
+								"reason", string(rst.BlockReason),
+								"day_pnl_usd", rst.DayRealizedPnL,
+								"cap_usd", rst.DayLossCapUSD,
+							)
+						}
+						if err := rm.SaveState(riskStatePath); err != nil {
+							slog.Warn("risk_save_err", "err", err)
+						}
+						if jerr := jrn.Append(journal.TradeRecord{
+							ID:           closedPos.ID,
+							AssetID:      closedPos.AssetID,
+							Market:       closedPos.Market,
+							Question:     ev.Question,
+							Outcome:      ev.Outcome,
+							Side:         "buy",
+							SizeUSD:      closedPos.SizeUSD,
+							Units:        closedPos.Units,
+							EntryMid:     closedPos.EntryMid,
+							EntryTime:    closedPos.EntryTime,
+							ExitMid:      closedPos.ExitMid,
+							ExitTime:     closedPos.ExitTime,
+							ExitReason:   string(closedPos.ExitReason),
+							HeldSec:      int(closedPos.ExitTime.Sub(closedPos.EntryTime).Seconds()),
+							PnLUSD:       closedPos.PnLUSD,
+							EntryFeeUSD:  entryFeeShare,
+							NetPnLUSD:    netPnL,
+							OpenOrderID:  openOID,
+							CloseOrderID: "copytrade_sell",
+							Mode:         "paper",
+							SignalSource: source,
+						}); jerr != nil {
+							slog.Warn("journal_append_fail", "asset", short(ev.AssetID), "err", jerr.Error())
+						}
+						closed++
+					}
+					if closed > 0 {
+						savePositions()
+						slog.Info("copytrade_closed", "wallet", ev.Label, "asset", short(ev.AssetID), "count", closed)
+					}
+					notifier.WhaleAlert(baseAlert)
+					return
+
+				default:
+					notifier.WhaleAlert(baseAlert)
+					return
+				}
+			}
 
 			if signalMode != "whale" {
 				notifier.WhaleAlert(notify.WhaleAlertEvent{

@@ -37,15 +37,12 @@ start() {
   ( cd "$ROOT" && go build -o bin/bot ./cmd/bot ) || { echo "build failed"; exit 1; }
   cd "$ROOT" || exit 1
   shift_args=("${@:2}")
-  # Default mode (2026-04-25 SGT): whale-follow mode — momentum auto-open
-  # and DM buttons disabled; whale BUY → SignalPrompt with buy buttons,
-  # whale SELL → close prompt with buttons. Lottery scanner still runs.
-  # OddsPapi: Pinnacle sharp-line scanner for football (EPL/UCL/La Liga) at 3h.
-  # fee_bp=0 matches CLOB V1; update after V2 cutover.
-  # Uncomment -live to switch from paper to real V2 CLOB orders.
-  # Requires: (1) pUSD balance in wallet (2) owner approval
+  # Default mode (2026-05-08 SGT): copytrade mode — auto paper-follow 71
+  # whale wallets loaded from wallets.txt. Min trade $0 (capture all).
+  # Poll 60s. $5 per paper position. Ladder exit SL 20% / timeout 10m.
+  # Injury scanner + OddsPapi still run alongside.
   LIVE_FLAG="${POLYMARKET_LIVE:+"-live"}"
-  args=(-mode=detect -signal_mode=whale -exit_mode=ladder -markets=20 -window=60 -fee_bp=0 -fade_mode -ladder_sl_pct=0.20 -ladder_max_hold=10m ${LIVE_FLAG} -injury_enabled -injury_interval=1m -whale_enabled "-whale_wallets=0xdb27bf2ac5d428a9c63dbc914611036855a6c56e|drpufferfish|1000|https://polymarket.com/@drpufferfish,0xbddf61af533ff524d27154e589d2d7a81510c684|countryside|1500|https://polymarket.com/@countryside,0xc2e7800b5af46e6093872b177b7a5e7f0563be51|beachboy4|5000|https://polymarket.com/@beachboy4" -oddspapi_enabled -oddspapi_interval=3h -oddspapi_bookmaker=pinnacle -oddspapi_sports=soccer_epl,soccer_spain_la_liga,soccer_uefa_champs_league -btc_daily_enabled -btc_daily_interval=15m -btc_daily_min_edge_pp=5 -eurovision_enabled -eurovision_interval=6h -eurovision_min_edge_pp=5)
+  args=(-mode=detect -signal_mode=copytrade -exit_mode=ladder -markets=20 -window=60 -fee_bp=0 -ladder_sl_pct=0.20 -ladder_max_hold=10m ${LIVE_FLAG} -injury_enabled -injury_interval=1m -whale_enabled -whale_min_usd=100 -whale_interval=60s -wallets_file="$ROOT/wallets.txt" -copytrade_size=5 -oddspapi_enabled -oddspapi_interval=3h -oddspapi_bookmaker=pinnacle -oddspapi_sports=soccer_epl,soccer_spain_la_liga,soccer_uefa_champs_league)
   if [ "${#shift_args[@]}" -gt 0 ]; then
     args=("${shift_args[@]}")
   fi
