@@ -3075,10 +3075,15 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 			var activeLines []posLine
 			zeroCount := 0
 			zeroPnL := 0.0
+			settledCount := 0
+			settledPnL := 0.0
 			for _, l := range lines {
 				if l.curPrice < 0.001 && l.value < 0.01 {
 					zeroCount++
 					zeroPnL += l.pnl
+				} else if l.curPrice >= 0.99 || l.redeemable {
+					settledCount++
+					settledPnL += l.pnl
 				} else {
 					activeLines = append(activeLines, l)
 				}
@@ -3116,8 +3121,11 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 			} else {
 				sb.WriteString("\n无活跃持仓\n")
 			}
+			if settledCount > 0 {
+				sb.WriteString(fmt.Sprintf("\n✅ 已结算: %d 笔 · $%+.2f\n", settledCount, settledPnL))
+			}
 			if zeroCount > 0 {
-				sb.WriteString(fmt.Sprintf("\n⚫ 已归零: %d 笔 · $%+.2f\n", zeroCount, zeroPnL))
+				sb.WriteString(fmt.Sprintf("⚫ 已归零: %d 笔 · $%+.2f\n", zeroCount, zeroPnL))
 			}
 
 			notifier.SidecarAlert(sb.String())
@@ -3140,7 +3148,16 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 		go func() {
 			tk := time.NewTicker(1 * time.Hour)
 			defer tk.Stop()
+			redeemedFile := filepath.Join("db", "redeemed.json")
 			redeemed := make(map[string]bool)
+			if data, err := os.ReadFile(redeemedFile); err == nil {
+				json.Unmarshal(data, &redeemed)
+			}
+			saveRedeemed := func() {
+				if data, err := json.Marshal(redeemed); err == nil {
+					os.WriteFile(redeemedFile, data, 0644)
+				}
+			}
 			checkRedeem := func() {
 				positions, err := fetchDataAPIPositions(walletAddress)
 				if err != nil {
@@ -3172,6 +3189,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 							p.Title, p.Outcome, p.Size, err))
 					} else {
 						redeemed[p.Asset] = true
+						saveRedeemed()
 						pnl := p.CurrentValue - p.InitialValue
 						slog.Info("redeem_success", "title", p.Title, "size", p.Size, "pnl", pnl)
 						notifier.SidecarAlert(fmt.Sprintf("💰 赎回成功: %s\n%s · %.1f份 · $%.2f→$%.2f · P&L $%+.2f\n%s SGT",
