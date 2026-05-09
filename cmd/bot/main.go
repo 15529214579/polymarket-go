@@ -3094,11 +3094,8 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 			}
 			sort.Slice(lines, func(i, j int) bool { return lines[i].buyTime.After(lines[j].buyTime) })
 
-			netPnL := totalValue - totalCost
-			sb.WriteString(fmt.Sprintf("持仓: %d 笔 · $%.2f 成本 · $%.2f 市值\n", len(lines), totalCost, totalValue))
-			sb.WriteString(fmt.Sprintf("总 P&L: $%+.2f\n", netPnL))
-
 			var activeLines []posLine
+			var activeCost, activeValue float64
 			zeroCount := 0
 			zeroPnL := 0.0
 			settledCount := 0
@@ -3112,8 +3109,19 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					settledPnL += l.pnl
 				} else {
 					activeLines = append(activeLines, l)
+					activeCost += l.cost
+					activeValue += l.value
 				}
 			}
+
+			activePnL := activeValue - activeCost
+			totalNetPnL := activePnL + settledPnL + zeroPnL
+			sb.WriteString(fmt.Sprintf("持仓: %d 笔 · $%.2f 成本 · $%.2f 市值\n", len(activeLines), activeCost, activeValue))
+			sb.WriteString(fmt.Sprintf("浮盈: $%+.2f\n", activePnL))
+			if settledCount > 0 || zeroCount > 0 {
+				sb.WriteString(fmt.Sprintf("已实现: $%+.2f (%d结算/%d归零)\n", settledPnL+zeroPnL, settledCount, zeroCount))
+			}
+			sb.WriteString(fmt.Sprintf("总 P&L: $%+.2f\n", totalNetPnL))
 
 			if len(activeLines) > 0 {
 				sb.WriteString(fmt.Sprintf("\n--- 持仓明细 (%d) ---\n", len(activeLines)))
@@ -3155,7 +3163,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 			}
 
 			notifier.SidecarAlert(sb.String())
-			slog.Info("hourly_pnl_pushed", "positions", len(lines), "active", len(activeLines), "zeroed", zeroCount, "cost", totalCost, "value", totalValue, "pnl", totalPnL)
+			slog.Info("hourly_pnl_pushed", "positions", len(lines), "active", len(activeLines), "settled", settledCount, "zeroed", zeroCount, "active_cost", activeCost, "active_value", activeValue, "active_pnl", activePnL, "settled_pnl", settledPnL, "total_pnl", totalNetPnL)
 		}
 		time.Sleep(5 * time.Second)
 		pushPnL()
