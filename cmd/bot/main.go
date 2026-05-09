@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math/big"
 	nethttp "net/http"
 	neturl "net/url"
 	"os"
@@ -121,6 +122,7 @@ func main() {
 	eurovisionInterval := flag.Duration("eurovision_interval", 6*time.Hour, "Eurovision scan interval")
 	eurovisionMinEdge := flag.Float64("eurovision_min_edge_pp", 5.0, "Eurovision minimum edge in pp to signal")
 	liveTrading := flag.Bool("live", false, "enable real V2 CLOB order submission (requires wallet mnemonic in Bitwarden)")
+	initialCapital := flag.Float64("initial_capital", 200.0, "initial capital in USD for total P&L calculation")
 	flag.Parse()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -234,7 +236,7 @@ func main() {
 				EurovisionInterval: *eurovisionInterval,
 				EurovisionMinEdge:  *eurovisionMinEdge,
 			}
-			if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, *arbEnabled, *arbInterval, *arbMinGapPP, *arbDBPath, injCfg, whaleCfg, oddsPapiCfg, *confirmDelay, btcCfg, updownCfg, p10, *liveTrading, *fadeMode, *walletsFile, *copytradeSize, *walletTiersFile); err != nil && ctx.Err() == nil {
+			if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, *arbEnabled, *arbInterval, *arbMinGapPP, *arbDBPath, injCfg, whaleCfg, oddsPapiCfg, *confirmDelay, btcCfg, updownCfg, p10, *liveTrading, *fadeMode, *walletsFile, *copytradeSize, *walletTiersFile, *initialCapital); err != nil && ctx.Err() == nil {
 			slog.Error("detect failed", "err", err)
 			os.Exit(1)
 		}
@@ -466,7 +468,7 @@ type phase10Config struct {
 	EurovisionMinEdge  float64
 }
 
-func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, arbEnabled bool, arbInterval time.Duration, arbMinGapPP float64, arbDBPath string, injCfg injury.Config, whaleCfg whale.Config, oddsPapiCfg odds.OddsPapiConfig, confirmDelay time.Duration, btcCfg btc.StrategyConfig, updownCfg btc.UpDownConfig, p10 phase10Config, liveTrading bool, fadeMode bool, walletsFile string, copytradeSize float64, walletTiersFile string) error {
+func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, arbEnabled bool, arbInterval time.Duration, arbMinGapPP float64, arbDBPath string, injCfg injury.Config, whaleCfg whale.Config, oddsPapiCfg odds.OddsPapiConfig, confirmDelay time.Duration, btcCfg btc.StrategyConfig, updownCfg btc.UpDownConfig, p10 phase10Config, liveTrading bool, fadeMode bool, walletsFile string, copytradeSize float64, walletTiersFile string, initialCapital float64) error {
 	if signalMode != "auto" && signalMode != "prompt" && signalMode != "whale" && signalMode != "copytrade" {
 		return fmt.Errorf("invalid signal_mode %q (want auto|prompt|whale|copytrade)", signalMode)
 	}
@@ -3053,19 +3055,30 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				}
 			}
 
-			var totalCost, totalValue, totalPnL, totalRealized float64
+			// --- Query wallet balance ---
+			var walletPUSD float64
+			if onChain != nil {
+				if bal, berr := onChain.PUSDBalance(ctx); berr == nil {
+					f, _ := new(big.Float).SetInt(bal).Float64()
+					walletPUSD = f / 1e6
+				} else {
+					slog.Warn("pnl_wallet_balance_err", "err", berr)
+				}
+			}
+
+			// --- Classify positions ---
 			type posLine struct {
 				emoji, title, outcome string
 				avgPrice, curPrice    float64
 				size                  float64
 				cost, value           float64
 				pnl, pct              float64
-				realizedPnl           float64
 				endDate               string
 				redeemable            bool
 				buyTime               time.Time
 			}
-			var lines []posLine
+			var activeLines []posLine
+			var activeCost, activeValue float64
 			for _, p := range positions {
 				if p.Size < 0.01 {
 					continue
@@ -3073,12 +3086,12 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				if _, tracked := buyTimesMap[p.Asset]; !tracked {
 					continue
 				}
+				if p.CurPrice < 0.001 || p.CurPrice >= 0.99 || p.Redeemable {
+					continue
+				}
 				emoji := "🟢"
 				if p.CashPnL < 0 {
 					emoji = "🔴"
-				}
-				if p.Redeemable {
-					emoji = "💰"
 				}
 				title := p.Title
 				if title == "" {
@@ -3087,51 +3100,54 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						title = title[:8] + ".." + title[len(title)-4:]
 					}
 				}
-				totalCost += p.InitialValue
-				totalValue += p.CurrentValue
-				totalPnL += p.CashPnL
-				totalRealized += p.RealizedPnL
+				activeCost += p.InitialValue
+				activeValue += p.CurrentValue
 				bt := buyTimesMap[p.Asset]
-				lines = append(lines, posLine{
+				activeLines = append(activeLines, posLine{
 					emoji: emoji, title: title, outcome: p.Outcome,
 					avgPrice: p.AvgPrice, curPrice: p.CurPrice,
 					size: p.Size, cost: p.InitialValue, value: p.CurrentValue,
 					pnl: p.CashPnL, pct: p.PercentPnL,
-					realizedPnl: p.RealizedPnL,
 					endDate: p.EndDate, redeemable: p.Redeemable,
 					buyTime: bt,
 				})
 			}
-			sort.Slice(lines, func(i, j int) bool { return lines[i].buyTime.After(lines[j].buyTime) })
+			sort.Slice(activeLines, func(i, j int) bool { return activeLines[i].buyTime.After(activeLines[j].buyTime) })
 
-			var activeLines []posLine
-			var activeCost, activeValue float64
-			zeroCount := 0
-			zeroPnL := 0.0
-			settledCount := 0
-			settledPnL := 0.0
-			for _, l := range lines {
-				if l.curPrice < 0.001 && l.value < 0.01 {
-					zeroCount++
-					zeroPnL += l.pnl
-				} else if l.curPrice >= 0.99 || l.redeemable {
-					settledCount++
-					settledPnL += l.pnl
-				} else {
-					activeLines = append(activeLines, l)
-					activeCost += l.cost
-					activeValue += l.value
+			// --- Total assets & profit ---
+			totalAssets := walletPUSD + activeValue
+			capital := initialCapital
+			totalProfit := totalAssets - capital
+			totalProfitPct := 0.0
+			if capital > 0 {
+				totalProfitPct = totalProfit / capital * 100
+			}
+
+			// --- Daily profit (snapshot-based) ---
+			snapshotFile := filepath.Join(filepath.Dir(journalDir), "daily_snapshot.json")
+			todayStr := time.Now().In(sgt).Format("2006-01-02")
+			type dailySnap struct {
+				Date        string  `json:"date"`
+				TotalAssets float64 `json:"total_assets"`
+			}
+			var snap dailySnap
+			if raw, rerr := os.ReadFile(snapshotFile); rerr == nil {
+				json.Unmarshal(raw, &snap)
+			}
+			if snap.Date != todayStr {
+				snap = dailySnap{Date: todayStr, TotalAssets: totalAssets}
+				if jb, jerr := json.Marshal(snap); jerr == nil {
+					os.WriteFile(snapshotFile, jb, 0644)
 				}
 			}
+			dailyProfit := totalAssets - snap.TotalAssets
 
-			activePnL := activeValue - activeCost
-			totalNetPnL := activePnL + settledPnL + zeroPnL
+			// --- Format header ---
+			sb.WriteString(fmt.Sprintf("总资产: $%.2f (本金 $%.0f)\n", totalAssets, capital))
+			sb.WriteString(fmt.Sprintf("总盈利: $%+.2f (%+.1f%%)\n", totalProfit, totalProfitPct))
+			sb.WriteString(fmt.Sprintf("今日: $%+.2f\n", dailyProfit))
+			sb.WriteString(fmt.Sprintf("闲钱: $%.2f pUSD\n", walletPUSD))
 			sb.WriteString(fmt.Sprintf("持仓: %d 笔 · $%.2f 成本 · $%.2f 市值\n", len(activeLines), activeCost, activeValue))
-			sb.WriteString(fmt.Sprintf("浮盈: $%+.2f\n", activePnL))
-			if settledCount > 0 || zeroCount > 0 {
-				sb.WriteString(fmt.Sprintf("已实现: $%+.2f (%d结算/%d归零)\n", settledPnL+zeroPnL, settledCount, zeroCount))
-			}
-			sb.WriteString(fmt.Sprintf("总 P&L: $%+.2f\n", totalNetPnL))
 
 			if len(activeLines) > 0 {
 				sb.WriteString(fmt.Sprintf("\n--- 持仓明细 (%d) ---\n", len(activeLines)))
@@ -3145,17 +3161,13 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					if direction == "" {
 						direction = "YES"
 					}
-					redeemTag := ""
-					if l.redeemable {
-						redeemTag = " [可赎回]"
-					}
 					timeTag := ""
 					if !l.buyTime.IsZero() {
 						timeTag = fmt.Sprintf(" · %s", l.buyTime.In(sgt).Format("01/02 15:04"))
 					}
-					sb.WriteString(fmt.Sprintf("%s %s · %s%s\n   %.1f份 · $%.2f成本 · 入%.3f→现%.3f · $%+.2f (%+.1f%%)%s\n",
+					sb.WriteString(fmt.Sprintf("%s %s · %s%s\n   %.1f份 · $%.2f成本 · 入%.3f→现%.3f · $%+.2f (%+.1f%%)\n",
 						l.emoji, title, direction, timeTag,
-						l.size, l.cost, l.avgPrice, l.curPrice, l.pnl, l.pct, redeemTag))
+						l.size, l.cost, l.avgPrice, l.curPrice, l.pnl, l.pct))
 					shown++
 					if shown >= 20 {
 						sb.WriteString(fmt.Sprintf("... +%d more\n", len(activeLines)-20))
@@ -3165,15 +3177,9 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 			} else {
 				sb.WriteString("\n无活跃持仓\n")
 			}
-			if settledCount > 0 {
-				sb.WriteString(fmt.Sprintf("\n✅ 已结算: %d 笔 · $%+.2f\n", settledCount, settledPnL))
-			}
-			if zeroCount > 0 {
-				sb.WriteString(fmt.Sprintf("⚫ 已归零: %d 笔 · $%+.2f\n", zeroCount, zeroPnL))
-			}
 
 			notifier.SidecarAlert(sb.String())
-			slog.Info("hourly_pnl_pushed", "positions", len(lines), "active", len(activeLines), "settled", settledCount, "zeroed", zeroCount, "active_cost", activeCost, "active_value", activeValue, "active_pnl", activePnL, "settled_pnl", settledPnL, "total_pnl", totalNetPnL)
+			slog.Info("hourly_pnl_pushed", "active", len(activeLines), "active_cost", activeCost, "active_value", activeValue, "wallet", walletPUSD, "total_assets", totalAssets, "total_profit", totalProfit, "daily_profit", dailyProfit)
 		}
 		time.Sleep(5 * time.Second)
 		pushPnL()
