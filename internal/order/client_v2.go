@@ -181,22 +181,18 @@ func (c *V2Client) Submit(ctx context.Context, in Intent) (Result, error) {
 		}, nil
 	}
 
-	if (clobResp.Status == "live" || clobResp.Status == "delayed") && len(clobResp.TradeIDs) == 0 {
-		slog.Warn("v2_order_no_match", "order_id", clobResp.OrderID,
-			"status", clobResp.Status, "limit_px", in.LimitPx,
-			"hint", "not immediately filled, cancelling")
-		c.tryCancelOrder(context.Background(), clobResp.OrderID)
-		errMsg := fmt.Sprintf("order %s but not filled — limit %.4f, cancelled", clobResp.Status, in.LimitPx)
-		return Result{
-			OrderID:  clobResp.OrderID,
-			Status:   StatusExpired,
-			SubmitAt: now,
-			Error:    errMsg,
-		}, fmt.Errorf("order: %s", errMsg)
-	}
-
-	slog.Info("v2_order_pending", "order_id", clobResp.OrderID, "status", clobResp.Status, "polling_start", true)
-	return c.pollUntilFilled(ctx, clobResp.OrderID, in, now)
+	// Anything other than "matched" means not immediately filled — cancel and fail.
+	slog.Warn("v2_order_no_match", "order_id", clobResp.OrderID,
+		"status", clobResp.Status, "limit_px", in.LimitPx,
+		"hint", "not immediately filled, cancelling")
+	c.tryCancelOrder(context.Background(), clobResp.OrderID)
+	errMsg := fmt.Sprintf("order %s but not filled — limit %.4f below best ask, cancelled", clobResp.Status, in.LimitPx)
+	return Result{
+		OrderID:  clobResp.OrderID,
+		Status:   StatusExpired,
+		SubmitAt: now,
+		Error:    errMsg,
+	}, fmt.Errorf("order: %s", errMsg)
 }
 
 func (c *V2Client) pollUntilFilled(ctx context.Context, orderID string, in Intent, submitAt time.Time) (Result, error) {
@@ -359,6 +355,29 @@ func (c *V2Client) tryCancelOrder(ctx context.Context, orderID string) {
 		}
 		return
 	}
+}
+
+func (c *V2Client) CancelAllOpen(ctx context.Context) error {
+	path := "/cancel-all"
+	headers := buildL2Headers(c.creds, c.wallet.Address(), "DELETE", path, "")
+	req, err := http.NewRequestWithContext(ctx, "DELETE", c.clobBase+path, nil)
+	if err != nil {
+		return err
+	}
+	for k, v := range headers {
+		req.Header[k] = v
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("DELETE %s: %w", path, err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	slog.Info("v2_cancel_all_open", "status", resp.StatusCode, "body", string(body))
+	if resp.StatusCode != 200 && resp.StatusCode != 204 {
+		return fmt.Errorf("DELETE %s %d: %s", path, resp.StatusCode, body)
+	}
+	return nil
 }
 
 func computeFillStats(trades []TradeResponse) (totalSize, avgPrice float64) {
