@@ -2129,13 +2129,22 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						NegRisk: isNegRisk,
 					}
 					result, err := orderClient.Submit(ctx, intent)
-					if err != nil {
-						slog.Warn("copytrade_submit_err", "wallet", ev.Label, "err", err.Error())
+					if err != nil || result.Status != order.StatusFilled {
+						reason := ""
+						if err != nil {
+							reason = err.Error()
+						} else {
+							reason = fmt.Sprintf("order %s: %s", result.Status, result.Error)
+						}
+						slog.Warn("copytrade_submit_err", "wallet", ev.Label, "err", reason, "status", result.Status)
 						errMsg := fmt.Sprintf("❌ 跟单失败\n%s · %s\n💰 $%.0f @ %.4f · Tier %s\n🐋 %s\n⚠️ %s",
 							ev.Question, ev.Outcome,
 							sizeUSD, ev.Price, tier,
-							ev.Label, err.Error())
+							ev.Label, reason)
 						notifier.SidecarAlert(errMsg)
+						pm.Close(pos.ID, strategy.ExitSignal{Reason: "submit_failed"})
+						savePositions()
+						appendWhaleTrade(ev, "submit_failed", reason)
 					} else {
 						if err := pm.SetOpenFee(pos.ID, result.FeeUSD); err != nil {
 							slog.Warn("copytrade_set_open_fee_fail", "pos", pos.ID, "err", err.Error())
@@ -2157,12 +2166,12 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 							ev.Label, ev.Notional,
 							result.OrderID)
 						notifier.SidecarAlert(fillMsg)
+						src.Mark(pos.ID, "copytrade_"+ev.Label, result.OrderID)
+						savePositions()
+						buyTimesMap[ev.AssetID] = time.Now()
+						saveBuyTimes()
+						appendWhaleTrade(ev, "followed", "")
 					}
-					src.Mark(pos.ID, "copytrade_"+ev.Label, result.OrderID)
-					savePositions()
-					buyTimesMap[ev.AssetID] = time.Now()
-					saveBuyTimes()
-					appendWhaleTrade(ev, "followed", "")
 					notifier.WhaleAlert(baseAlert)
 					return
 
