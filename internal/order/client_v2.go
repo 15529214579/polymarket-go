@@ -380,6 +380,25 @@ func (c *V2Client) CancelAllOpen(ctx context.Context) error {
 	return nil
 }
 
+func (c *V2Client) GetOpenOrders(ctx context.Context) (json.RawMessage, error) {
+	path := "/open-orders"
+	headers := buildL2Headers(c.creds, c.wallet.Address(), "GET", path, "")
+	req, err := http.NewRequestWithContext(ctx, "GET", c.clobBase+path, nil)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range headers {
+		req.Header[k] = v
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	return body, nil
+}
+
 func computeFillStats(trades []TradeResponse) (totalSize, avgPrice float64) {
 	if len(trades) == 0 {
 		return 0, 0

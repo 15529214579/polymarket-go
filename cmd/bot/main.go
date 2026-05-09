@@ -2130,6 +2130,12 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					if crossPx > 0.99 {
 						crossPx = 0.99
 					}
+					// Clear any stale orders before placing new one
+					if v2, ok := orderClient.(*order.V2Client); ok {
+						if err := v2.CancelAllOpen(ctx); err != nil {
+							slog.Warn("copytrade_pre_cancel_err", "err", err)
+						}
+					}
 					intent := order.Intent{
 						AssetID: ev.AssetID,
 						Market:  ev.ConditionID,
@@ -2140,6 +2146,18 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						NegRisk: isNegRisk,
 					}
 					result, err := orderClient.Submit(ctx, intent)
+					// Retry with reduced size on balance error
+					if err != nil && strings.Contains(err.Error(), "not enough balance") {
+						avail := parseAvailableBalance(err.Error())
+						if avail > 1.0 {
+							slog.Info("copytrade_balance_retry", "original_size", sizeUSD, "available", avail)
+							intent.SizeUSD = avail * 0.95
+							result, err = orderClient.Submit(ctx, intent)
+							if err == nil && result.Status == order.StatusFilled {
+								sizeUSD = intent.SizeUSD
+							}
+						}
+					}
 					if err != nil || result.Status != order.StatusFilled {
 						reason := ""
 						if err != nil {
@@ -3890,9 +3908,29 @@ func (h *buyHandler) OnClose(ctx context.Context, nonce string, messageID int64)
 // buildNotifier returns a Telegram notifier when TELEGRAM_BOT_TOKEN + _CHAT_ID
 // are present, otherwise a Nop so the trading loop is unconditional.
 //
-// SIDECAR_BOT_TOKEN, when set, routes SignalPrompt messages through that bot so
-// the inline-keyboard message originates from the same bot the LongPoll watches
-// for callback_query (Phase 3.5.b). Other events stay on the alert bot.
+func parseAvailableBalance(errMsg string) float64 {
+	// Parse: "balance: 22011730, sum of matched orders: 19986400, order amount..."
+	balIdx := strings.Index(errMsg, "balance: ")
+	matchIdx := strings.Index(errMsg, "sum of matched orders: ")
+	if balIdx < 0 || matchIdx < 0 {
+		return 0
+	}
+	balStr := errMsg[balIdx+len("balance: "):]
+	if i := strings.IndexByte(balStr, ','); i > 0 {
+		balStr = balStr[:i]
+	}
+	matchStr := errMsg[matchIdx+len("sum of matched orders: "):]
+	if i := strings.IndexByte(matchStr, ','); i > 0 {
+		matchStr = matchStr[:i]
+	}
+	bal, err1 := strconv.ParseFloat(strings.TrimSpace(balStr), 64)
+	matched, err2 := strconv.ParseFloat(strings.TrimSpace(matchStr), 64)
+	if err1 != nil || err2 != nil {
+		return 0
+	}
+	return (bal - matched) / 1e6
+}
+
 func buildNotifier() notify.Notifier {
 	tok := os.Getenv("TELEGRAM_BOT_TOKEN")
 	chat := os.Getenv("TELEGRAM_CHAT_ID")

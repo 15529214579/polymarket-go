@@ -26,9 +26,10 @@ func main() {
 	autoWrap := flag.Bool("auto-wrap", true, "auto wrap USDC.e → pUSD if needed")
 	rpcURL := flag.String("rpc", "", "Polygon RPC URL (default: polygon-rpc.com)")
 	hexKey := flag.String("key", "", "hex private key (bypasses Bitwarden mnemonic)")
+	queryOpenOrders := flag.Bool("open-orders", false, "query CLOB open orders and exit")
 	flag.Parse()
 
-	if *assetID == "" || *limitPx <= 0 {
+	if !*queryOpenOrders && (*assetID == "" || *limitPx <= 0) {
 		fmt.Fprintf(os.Stderr, "Usage: trade -asset <tokenID> -price <0..1> [-size <usd>] [-negrisk] [-dry-run]\n")
 		os.Exit(1)
 	}
@@ -65,6 +66,30 @@ func main() {
 		os.Exit(1)
 	}
 	slog.Info("api_key_derived", "api_key", creds.APIKey)
+
+	if *queryOpenOrders {
+		client := order.NewV2Client(wallet, creds, false)
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		body, err := client.GetOpenOrders(ctx)
+		if err != nil {
+			slog.Error("open_orders_query_failed", "err", err)
+			os.Exit(1)
+		}
+		var pretty json.RawMessage
+		if json.Unmarshal(body, &pretty) == nil {
+			out, _ := json.MarshalIndent(pretty, "", "  ")
+			fmt.Println(string(out))
+		} else {
+			fmt.Println(string(body))
+		}
+
+		// Also cancel all
+		if err := client.CancelAllOpen(ctx); err != nil {
+			slog.Warn("cancel_all_failed", "err", err)
+		}
+		return
+	}
 
 	if *autoWrap {
 		oc, err := order.NewOnChain(*rpcURL, wallet)
