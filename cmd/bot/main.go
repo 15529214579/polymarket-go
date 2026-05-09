@@ -2065,9 +2065,6 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						"cricket", "ipl", "t20", "test match", "ashes",
 						// Rugby
 						"rugby", "six nations", "world rugby",
-						// Crypto
-						"bitcoin", "btc", "ethereum", "eth", "solana", "sol",
-						"crypto", "token", "defi", "nft", "blockchain",
 						// Sports formats
 						"spread:", "total points",
 						"world series", "super bowl", "stanley cup", "world cup",
