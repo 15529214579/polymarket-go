@@ -2125,7 +2125,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						Side:    order.Buy,
 						SizeUSD: sizeUSD,
 						LimitPx: ev.Price,
-						Type:    order.GTC,
+						Type:    order.FOK,
 						NegRisk: isNegRisk,
 					}
 					result, err := orderClient.Submit(ctx, intent)

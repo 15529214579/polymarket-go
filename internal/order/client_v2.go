@@ -155,6 +155,18 @@ func (c *V2Client) Submit(ctx context.Context, in Intent) (Result, error) {
 		return Result{Status: StatusRejected, Error: err.Error()}, fmt.Errorf("order: parse response: %w", err)
 	}
 
+	slog.Info("v2_post_response",
+		"order_id", clobResp.OrderID,
+		"status", clobResp.Status,
+		"success", clobResp.Success,
+		"error_msg", clobResp.ErrorMsg,
+		"trades", len(clobResp.TradeIDs))
+
+	if !clobResp.Success && clobResp.ErrorMsg != "" {
+		errMsg := fmt.Sprintf("CLOB rejected: %s", clobResp.ErrorMsg)
+		return Result{Status: StatusRejected, Error: errMsg}, fmt.Errorf("order: %s", errMsg)
+	}
+
 	if clobResp.Status == "matched" {
 		slog.Info("v2_order_filled",
 			"order_id", clobResp.OrderID,
@@ -169,7 +181,7 @@ func (c *V2Client) Submit(ctx context.Context, in Intent) (Result, error) {
 		}, nil
 	}
 
-	slog.Info("v2_order_pending", "order_id", clobResp.OrderID, "polling_start", true)
+	slog.Info("v2_order_pending", "order_id", clobResp.OrderID, "status", clobResp.Status, "polling_start", true)
 	return c.pollUntilFilled(ctx, clobResp.OrderID, in, now)
 }
 
@@ -177,6 +189,9 @@ func (c *V2Client) pollUntilFilled(ctx context.Context, orderID string, in Inten
 	deadline := time.After(pollTimeout)
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
+
+	consecutive404 := 0
+	const max404 = 3
 
 	for {
 		select {
@@ -192,9 +207,18 @@ func (c *V2Client) pollUntilFilled(ctx context.Context, orderID string, in Inten
 		case <-ticker.C:
 			os, err := c.GetOrder(ctx, orderID)
 			if err != nil {
-				slog.Warn("v2_poll_err", "order_id", orderID, "err", err)
+				if strings.Contains(err.Error(), "404") {
+					consecutive404++
+					if consecutive404 >= max404 {
+						slog.Warn("v2_poll_404_bail", "order_id", orderID, "consecutive", consecutive404)
+						return Result{OrderID: orderID, Status: StatusExpired, SubmitAt: submitAt,
+							Error: "order not found (404)"}, nil
+					}
+				}
+				slog.Warn("v2_poll_err", "order_id", orderID, "err", err, "404_count", consecutive404)
 				continue
 			}
+			consecutive404 = 0
 			switch os.Status {
 			case "matched":
 				slog.Info("v2_order_filled_after_poll", "order_id", orderID,
