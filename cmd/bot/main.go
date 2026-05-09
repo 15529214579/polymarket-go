@@ -2121,7 +2121,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					pos.Outcome = ev.Outcome
 					pos.Source = "copytrade"
 					pos.WalletLabel = ev.Label
-					crossPx := ev.Price * 1.02
+					crossPx := ev.Price * 1.05
 					if crossPx > 0.99 {
 						crossPx = 0.99
 					}

@@ -181,6 +181,19 @@ func (c *V2Client) Submit(ctx context.Context, in Intent) (Result, error) {
 		}, nil
 	}
 
+	if clobResp.Status == "live" && len(clobResp.TradeIDs) == 0 {
+		slog.Warn("v2_order_live_no_match", "order_id", clobResp.OrderID,
+			"limit_px", in.LimitPx, "hint", "price below best ask, cancelling")
+		c.tryCancelOrder(context.Background(), clobResp.OrderID)
+		errMsg := fmt.Sprintf("order live but not filled — limit %.4f below best ask, cancelled", in.LimitPx)
+		return Result{
+			OrderID:  clobResp.OrderID,
+			Status:   StatusExpired,
+			SubmitAt: now,
+			Error:    errMsg,
+		}, fmt.Errorf("order: %s", errMsg)
+	}
+
 	slog.Info("v2_order_pending", "order_id", clobResp.OrderID, "status", clobResp.Status, "polling_start", true)
 	return c.pollUntilFilled(ctx, clobResp.OrderID, in, now)
 }
