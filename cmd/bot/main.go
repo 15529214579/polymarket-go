@@ -2049,7 +2049,8 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						// Tennis
 						"atp", "wta", "grand slam", "roland garros", "wimbledon",
 						// Esports
-						"lol", "lck", "lpl", "lec", "dota", "cs2", "csgo", "valorant", "esport",
+						"lol", "lck", "lpl", "lec", "lcs", "dota", "cs2", "csgo", "valorant", "esport",
+						"handicap",
 						// UFC/MMA
 						"ufc", "mma", "boxing", "bellator", "pfl", "one championship",
 						// NFL
