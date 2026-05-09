@@ -3094,10 +3094,9 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 			}
 			sort.Slice(lines, func(i, j int) bool { return lines[i].buyTime.After(lines[j].buyTime) })
 
+			netPnL := totalValue - totalCost
 			sb.WriteString(fmt.Sprintf("持仓: %d 笔 · $%.2f 成本 · $%.2f 市值\n", len(lines), totalCost, totalValue))
-			sb.WriteString(fmt.Sprintf("浮盈: $%+.2f\n", totalPnL))
-			sb.WriteString(fmt.Sprintf("已实现: $%+.2f\n", totalRealized))
-			sb.WriteString(fmt.Sprintf("总 P&L: $%+.2f\n", totalPnL+totalRealized))
+			sb.WriteString(fmt.Sprintf("总 P&L: $%+.2f\n", netPnL))
 
 			var activeLines []posLine
 			zeroCount := 0
