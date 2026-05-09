@@ -1,8 +1,8 @@
 {
   "day": "2026-05-09",
-  "day_realized": 0.0,
-  "cumulative_pnl": 0.0,
-  "peak_equity": 300,
+  "day_realized": 0,
+  "cumulative_pnl": 0,
+  "peak_equity": 400,
   "blocked": false,
   "block_reason": ""
 }

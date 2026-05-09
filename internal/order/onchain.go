@@ -26,14 +26,19 @@ const (
 	USDCeAddress          = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"
 	PUSDAddress           = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB"
 	CollateralOnrampAddr  = "0x93070a847efEf7F70739046A929D47a521F5B8ee"
+	ConditionalTokensAddr = "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045"
+	NegRiskAdapterAddr    = "0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296"
 	USDCDecimals          = 6
 	ApproveGas            = 60_000
 	WrapGas               = 150_000
+	RedeemGas             = 300_000
 )
 
 var (
-	erc20ABI  abi.ABI
-	onrampABI abi.ABI
+	erc20ABI        abi.ABI
+	onrampABI       abi.ABI
+	ctfRedeemABI    abi.ABI
+	negRiskRedeemABI abi.ABI
 )
 
 func init() {
@@ -52,6 +57,20 @@ func init() {
 	]`))
 	if err != nil {
 		panic("order: parse onramp abi: " + err.Error())
+	}
+
+	ctfRedeemABI, err = abi.JSON(strings.NewReader(`[
+		{"inputs":[{"name":"collateralToken","type":"address"},{"name":"parentCollectionId","type":"bytes32"},{"name":"conditionId","type":"bytes32"},{"name":"indexSets","type":"uint256[]"}],"name":"redeemPositions","outputs":[],"stateMutability":"nonpayable","type":"function"}
+	]`))
+	if err != nil {
+		panic("order: parse ctf redeem abi: " + err.Error())
+	}
+
+	negRiskRedeemABI, err = abi.JSON(strings.NewReader(`[
+		{"inputs":[{"name":"conditionId","type":"bytes32"},{"name":"amounts","type":"uint256[]"}],"name":"redeemPositions","outputs":[],"stateMutability":"nonpayable","type":"function"}
+	]`))
+	if err != nil {
+		panic("order: parse neg-risk redeem abi: " + err.Error())
 	}
 }
 
@@ -311,6 +330,85 @@ func formatUSDC(raw *big.Int) string {
 	divisor := new(big.Float).SetFloat64(1e6)
 	f.Quo(f, divisor)
 	return f.Text('f', 6)
+}
+
+func (o *OnChain) RedeemPosition(ctx context.Context, conditionIDHex string, outcomeIndex int, size float64, negRisk bool) error {
+	var conditionID common.Hash
+	copy(conditionID[:], common.FromHex(conditionIDHex))
+
+	slog.Info("redeem_start",
+		"conditionId", conditionIDHex,
+		"outcomeIndex", outcomeIndex,
+		"size", size,
+		"negRisk", negRisk,
+	)
+
+	indexSet := new(big.Int).Lsh(big.NewInt(1), uint(outcomeIndex))
+
+	if negRisk {
+		// NegRisk: first ensure CTF ERC1155 approval for NegRiskAdapter, then try adapter.
+		// If adapter fails, fall back to CTF direct redeem.
+		if err := o.ensureERC1155Approval(ctx, common.HexToAddress(ConditionalTokensAddr), common.HexToAddress(NegRiskAdapterAddr)); err != nil {
+			slog.Warn("erc1155_approval_failed", "err", err)
+		}
+		sizeRaw := new(big.Int).SetInt64(int64(size * 1e6))
+		amounts := []*big.Int{big.NewInt(0), big.NewInt(0)}
+		if outcomeIndex < len(amounts) {
+			amounts[outcomeIndex] = sizeRaw
+		}
+		data, err := negRiskRedeemABI.Pack("redeemPositions", conditionID, amounts)
+		if err != nil {
+			return fmt.Errorf("pack neg-risk redeem: %w", err)
+		}
+		err = o.sendTx(ctx, common.HexToAddress(NegRiskAdapterAddr), data, RedeemGas)
+		if err == nil {
+			return nil
+		}
+		slog.Warn("negrisk_adapter_redeem_failed_fallback_ctf", "err", err)
+	}
+
+	// CTF direct redeem (works for non-NegRisk; fallback for NegRisk)
+	data, err := ctfRedeemABI.Pack("redeemPositions",
+		common.HexToAddress(PUSDAddress),
+		common.Hash{},
+		conditionID,
+		[]*big.Int{indexSet},
+	)
+	if err != nil {
+		return fmt.Errorf("pack ctf redeem: %w", err)
+	}
+	return o.sendTx(ctx, common.HexToAddress(ConditionalTokensAddr), data, RedeemGas)
+}
+
+func (o *OnChain) ensureERC1155Approval(ctx context.Context, tokenContract, operator common.Address) error {
+	isApprovedABI, _ := abi.JSON(strings.NewReader(`[
+		{"inputs":[{"name":"account","type":"address"},{"name":"operator","type":"address"}],"name":"isApprovedForAll","outputs":[{"name":"","type":"bool"}],"stateMutability":"view","type":"function"},
+		{"inputs":[{"name":"operator","type":"address"},{"name":"approved","type":"bool"}],"name":"setApprovalForAll","outputs":[],"stateMutability":"nonpayable","type":"function"}
+	]`))
+
+	data, err := isApprovedABI.Pack("isApprovedForAll", o.address, operator)
+	if err != nil {
+		return err
+	}
+	result, err := o.client.CallContract(ctx, ethereum.CallMsg{To: &tokenContract, Data: data}, nil)
+	if err != nil {
+		return fmt.Errorf("isApprovedForAll: %w", err)
+	}
+	out, err := isApprovedABI.Unpack("isApprovedForAll", result)
+	if err != nil {
+		return err
+	}
+	if out[0].(bool) {
+		slog.Info("erc1155_already_approved", "token", tokenContract.Hex(), "operator", operator.Hex())
+		return nil
+	}
+
+	slog.Info("erc1155_approving", "token", tokenContract.Hex(), "operator", operator.Hex())
+	setData, err := isApprovedABI.Pack("setApprovalForAll", operator, true)
+	if err != nil {
+		return err
+	}
+	return o.sendTx(ctx, tokenContract, setData, ApproveGas)
 }
 
 func (o *OnChain) EnsureCLOBAllowance(ctx context.Context, creds *APICredentials, addr common.Address) error {

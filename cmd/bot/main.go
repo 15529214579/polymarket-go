@@ -619,6 +619,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 
 	var orderClient order.Client
 	var walletAddress string
+	var onChain *order.OnChain
 	paper := order.NewPaperClientWithFee(slippageBp, feeBp)
 	orderClient = paper
 	if liveTrading {
@@ -635,6 +636,13 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 		}
 		walletAddress = wallet.Address().Hex()
 		slog.Info("v2_wallet_loaded", "address", walletAddress)
+		oc, ocErr := order.NewOnChain("", wallet)
+		if ocErr != nil {
+			slog.Warn("onchain_init_failed", "err", ocErr)
+		} else {
+			onChain = oc
+			slog.Info("onchain_ready", "address", walletAddress)
+		}
 		creds, err := order.DeriveAPIKey(order.ClobBaseURL, wallet)
 		if err != nil {
 			slog.Error("v2_api_key_derive_failed", "err", err)
@@ -3130,6 +3138,64 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 		}
 	}()
 
+	// Auto-redeem: every 1h check for redeemable winning positions and redeem on-chain.
+	if onChain != nil && walletAddress != "" {
+		go func() {
+			tk := time.NewTicker(1 * time.Hour)
+			defer tk.Stop()
+			redeemed := make(map[string]bool)
+			checkRedeem := func() {
+				positions, err := fetchDataAPIPositions(walletAddress)
+				if err != nil {
+					slog.Warn("redeem_fetch_err", "err", err)
+					return
+				}
+				sgt := time.FixedZone("SGT", 8*3600)
+				for _, p := range positions {
+					if !p.Redeemable || p.CurPrice < 0.99 || p.Size < 0.01 {
+						continue
+					}
+					if redeemed[p.Asset] {
+						continue
+					}
+					slog.Info("redeem_candidate",
+						"title", p.Title,
+						"outcome", p.Outcome,
+						"size", p.Size,
+						"conditionId", p.ConditionID,
+						"negRisk", p.NegativeRisk,
+						"outcomeIndex", p.OutcomeIndex,
+					)
+					rCtx, rCancel := context.WithTimeout(ctx, 120*time.Second)
+					err := onChain.RedeemPosition(rCtx, p.ConditionID, p.OutcomeIndex, p.Size, p.NegativeRisk)
+					rCancel()
+					if err != nil {
+						slog.Error("redeem_failed", "title", p.Title, "err", err)
+						notifier.SidecarAlert(fmt.Sprintf("❌ 赎回失败: %s\n%s · %.1f份\n错误: %s",
+							p.Title, p.Outcome, p.Size, err))
+					} else {
+						redeemed[p.Asset] = true
+						pnl := p.CurrentValue - p.InitialValue
+						slog.Info("redeem_success", "title", p.Title, "size", p.Size, "pnl", pnl)
+						notifier.SidecarAlert(fmt.Sprintf("💰 赎回成功: %s\n%s · %.1f份 · $%.2f→$%.2f · P&L $%+.2f\n%s SGT",
+							p.Title, p.Outcome, p.Size, p.InitialValue, p.CurrentValue, pnl,
+							time.Now().In(sgt).Format("01/02 15:04")))
+					}
+				}
+			}
+			time.Sleep(10 * time.Second)
+			checkRedeem()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-tk.C:
+					checkRedeem()
+				}
+			}
+		}()
+	}
+
 	return ws.Run(ctx)
 }
 
@@ -3213,6 +3279,8 @@ type dataAPIPosition struct {
 	ConditionID  string  `json:"conditionId"`
 	EndDate      string  `json:"endDate"`
 	Redeemable   bool    `json:"redeemable"`
+	NegativeRisk bool    `json:"negativeRisk"`
+	OutcomeIndex int     `json:"outcomeIndex"`
 }
 
 func fetchDataAPIPositions(walletAddr string) ([]dataAPIPosition, error) {
