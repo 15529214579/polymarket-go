@@ -638,8 +638,10 @@ func FormatClosePrompt(ev ClosePromptEvent) string {
 			fmt.Fprintf(&b, " · 卖出 %.0f%%", ev.WhalePctSold)
 			if ev.WhalePctSold >= 95 {
 				b.WriteString(" 清仓")
-			} else {
+			} else if ev.WhalePrice >= ev.WhaleAvgPrice {
 				b.WriteString(" 部分止盈")
+			} else {
+				b.WriteString(" 部分止损")
 			}
 		}
 		b.WriteByte('\n')
@@ -685,8 +687,10 @@ func FormatWhaleAlert(ev WhaleAlertEvent) string {
 			fmt.Fprintf(&b, " · 本次卖出 %.0f%%", ev.PctSold)
 			if ev.PctSold >= 95 {
 				b.WriteString(" 清仓")
-			} else {
+			} else if ev.Price >= ev.AvgPrice {
 				b.WriteString(" 部分止盈")
+			} else {
+				b.WriteString(" 部分止损")
 			}
 		}
 		b.WriteByte('\n')

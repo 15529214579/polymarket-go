@@ -207,6 +207,21 @@ func (o *OnChain) ApproveExchanges(ctx context.Context) error {
 		}
 		slog.Info("exchange_approved", "exchange", ex.name)
 	}
+
+	ctf := common.HexToAddress(ConditionalTokensAddr)
+	erc1155Operators := []struct {
+		name string
+		addr common.Address
+	}{
+		{"CTFExchange", common.HexToAddress(V2ExchangeAddress)},
+		{"NegRiskExchange", common.HexToAddress(V2NegRiskExchangeAddress)},
+	}
+	for _, op := range erc1155Operators {
+		if err := o.ensureERC1155Approval(ctx, ctf, op.addr); err != nil {
+			return fmt.Errorf("ERC1155 approve for %s: %w", op.name, err)
+		}
+	}
+
 	return nil
 }
 

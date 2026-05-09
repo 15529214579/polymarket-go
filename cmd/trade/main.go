@@ -117,6 +117,7 @@ func main() {
 		SizeUSD: *sizeUSD,
 		LimitPx: *limitPx,
 		Type:    order.GTC,
+		NegRisk: *negRisk,
 	}
 
 	fmt.Printf("\n=== ORDER INTENT ===\n")
@@ -160,8 +161,22 @@ func main() {
 
 	if result.Status == order.StatusFilled {
 		fmt.Println("\n✅ ORDER FILLED")
+		saveBuyTime(*assetID)
 	} else {
 		fmt.Printf("\n⚠️  Status: %s — %s\n", result.Status, result.Error)
+	}
+}
+
+func saveBuyTime(asset string) {
+	path := "db/buy_times.json"
+	data := map[string]string{}
+	if raw, err := os.ReadFile(path); err == nil {
+		json.Unmarshal(raw, &data)
+	}
+	data[asset] = time.Now().Format(time.RFC3339)
+	if out, err := json.MarshalIndent(data, "", "  "); err == nil {
+		os.WriteFile(path, out, 0644)
+		slog.Info("buy_time_saved", "asset", asset[:20])
 	}
 }
 
