@@ -2119,12 +2119,16 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					pos.Outcome = ev.Outcome
 					pos.Source = "copytrade"
 					pos.WalletLabel = ev.Label
+					crossPx := ev.Price * 1.02
+					if crossPx > 0.99 {
+						crossPx = 0.99
+					}
 					intent := order.Intent{
 						AssetID: ev.AssetID,
 						Market:  ev.ConditionID,
 						Side:    order.Buy,
 						SizeUSD: sizeUSD,
-						LimitPx: ev.Price,
+						LimitPx: crossPx,
 						Type:    order.GTC,
 						NegRisk: isNegRisk,
 					}

@@ -187,6 +187,16 @@ func (c *V2Client) Submit(ctx context.Context, in Intent) (Result, error) {
 
 func (c *V2Client) pollUntilFilled(ctx context.Context, orderID string, in Intent, submitAt time.Time) (Result, error) {
 	deadline := time.After(pollTimeout)
+
+	// Wait 5s before first poll to let CLOB index the order
+	select {
+	case <-ctx.Done():
+		c.tryCancelOrder(context.Background(), orderID)
+		return Result{OrderID: orderID, Status: StatusExpired, SubmitAt: submitAt,
+			Error: "context cancelled"}, ctx.Err()
+	case <-time.After(5 * time.Second):
+	}
+
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
