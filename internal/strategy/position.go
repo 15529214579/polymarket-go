@@ -336,6 +336,23 @@ func (pm *PositionManager) Stats() PositionStats {
 	}
 }
 
+// PurgeSettled closes all open positions whose assetID is in the settledAssets
+// set (zeroed or settled to 1.0). Frees MaxOpen slots for new trades.
+func (pm *PositionManager) PurgeSettled(settledAssets map[string]float64) int {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	purged := 0
+	for _, p := range pm.open {
+		exitMid, ok := settledAssets[p.AssetID]
+		if !ok {
+			continue
+		}
+		pm.closeLocked(p, ExitSignal{ExitMid: exitMid, Time: time.Now(), Reason: ExitSettlement})
+		purged++
+	}
+	return purged
+}
+
 func (pm *PositionManager) totalExposureLocked() float64 {
 	var s float64
 	for _, p := range pm.open {

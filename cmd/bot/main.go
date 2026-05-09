@@ -3025,6 +3025,24 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				return
 			}
 
+			// Auto-close settled/zeroed positions in local position manager to free MaxOpen slots
+			settledAssets := map[string]float64{}
+			for _, p := range positions {
+				if _, tracked := buyTimesMap[p.Asset]; !tracked {
+					continue
+				}
+				if p.CurPrice < 0.001 || p.CurPrice >= 0.99 || p.Size < 0.01 {
+					settledAssets[p.Asset] = p.CurPrice
+				}
+			}
+			if len(settledAssets) > 0 {
+				purged := pm.PurgeSettled(settledAssets)
+				if purged > 0 {
+					slog.Info("positions_purged_settled", "count", purged)
+					savePositions()
+				}
+			}
+
 			var totalCost, totalValue, totalPnL, totalRealized float64
 			type posLine struct {
 				emoji, title, outcome string
