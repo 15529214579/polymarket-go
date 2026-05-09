@@ -2166,11 +2166,13 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 							reason = fmt.Sprintf("order %s: %s", result.Status, result.Error)
 						}
 						slog.Warn("copytrade_submit_err", "wallet", ev.Label, "err", reason, "status", result.Status)
-						errMsg := fmt.Sprintf("❌ 跟单失败\n%s · %s\n💰 $%.0f @ %.4f · Tier %s\n🐋 %s\n⚠️ %s",
-							ev.Question, ev.Outcome,
-							sizeUSD, ev.Price, tier,
-							ev.Label, reason)
-						notifier.SidecarAlert(errMsg)
+						if !strings.Contains(reason, "not enough balance") {
+							errMsg := fmt.Sprintf("❌ 跟单失败\n%s · %s\n💰 $%.0f @ %.4f · Tier %s\n🐋 %s\n⚠️ %s",
+								ev.Question, ev.Outcome,
+								sizeUSD, ev.Price, tier,
+								ev.Label, reason)
+							notifier.SidecarAlert(errMsg)
+						}
 						pm.Close(pos.ID, strategy.ExitSignal{Reason: "submit_failed"})
 						savePositions()
 						appendWhaleTrade(ev, "submit_failed", reason)
