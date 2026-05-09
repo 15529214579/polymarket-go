@@ -620,6 +620,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 	var orderClient order.Client
 	var walletAddress string
 	var onChain *order.OnChain
+	pnlTrigger := make(chan struct{}, 4)
 	paper := order.NewPaperClientWithFee(slippageBp, feeBp)
 	orderClient = paper
 	if liveTrading {
@@ -2175,6 +2176,10 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						buyTimesMap[ev.AssetID] = time.Now()
 						saveBuyTimes()
 						appendWhaleTrade(ev, "followed", "")
+						select {
+						case pnlTrigger <- struct{}{}:
+						default:
+						}
 					}
 					notifier.WhaleAlert(baseAlert)
 					return
@@ -3176,6 +3181,9 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 			case <-ctx.Done():
 				return
 			case <-tk.C:
+				pushPnL()
+			case <-pnlTrigger:
+				time.Sleep(10 * time.Second)
 				pushPnL()
 			}
 		}
