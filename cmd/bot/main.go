@@ -95,6 +95,7 @@ func main() {
 	walletsFile := flag.String("wallets_file", "", "path to wallets file (one address per line) for copytrade mode")
 	copytradeSize := flag.Float64("copytrade_size", 5.0, "default per-trade paper size in USDC for copytrade mode")
 	walletTiersFile := flag.String("wallet_tiers", "", "path to copytrade_backtest_results.json for tiered sizing (A=$20, B=$10, C/D=default)")
+	minTier := flag.String("min_tier", "", "minimum wallet tier for copytrade (A=only A, B=A+B, C=A+B+C, empty=all)")
 	whaleWallet := flag.String("whale_wallet", "", "(legacy) single target wallet address (hex 0x…)")
 	whaleProfile := flag.String("whale_profile", "", "(legacy) whale's Polymarket profile URL")
 	whaleMinUSD := flag.Float64("whale_min_usd", 1000, "(legacy) minimum notional USD to trigger alert")
@@ -236,7 +237,7 @@ func main() {
 				EurovisionInterval: *eurovisionInterval,
 				EurovisionMinEdge:  *eurovisionMinEdge,
 			}
-			if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, *arbEnabled, *arbInterval, *arbMinGapPP, *arbDBPath, injCfg, whaleCfg, oddsPapiCfg, *confirmDelay, btcCfg, updownCfg, p10, *liveTrading, *fadeMode, *walletsFile, *copytradeSize, *walletTiersFile, *initialCapital); err != nil && ctx.Err() == nil {
+			if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, *arbEnabled, *arbInterval, *arbMinGapPP, *arbDBPath, injCfg, whaleCfg, oddsPapiCfg, *confirmDelay, btcCfg, updownCfg, p10, *liveTrading, *fadeMode, *walletsFile, *copytradeSize, *walletTiersFile, *initialCapital, *minTier); err != nil && ctx.Err() == nil {
 			slog.Error("detect failed", "err", err)
 			os.Exit(1)
 		}
@@ -468,7 +469,7 @@ type phase10Config struct {
 	EurovisionMinEdge  float64
 }
 
-func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, arbEnabled bool, arbInterval time.Duration, arbMinGapPP float64, arbDBPath string, injCfg injury.Config, whaleCfg whale.Config, oddsPapiCfg odds.OddsPapiConfig, confirmDelay time.Duration, btcCfg btc.StrategyConfig, updownCfg btc.UpDownConfig, p10 phase10Config, liveTrading bool, fadeMode bool, walletsFile string, copytradeSize float64, walletTiersFile string, initialCapital float64) error {
+func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, arbEnabled bool, arbInterval time.Duration, arbMinGapPP float64, arbDBPath string, injCfg injury.Config, whaleCfg whale.Config, oddsPapiCfg odds.OddsPapiConfig, confirmDelay time.Duration, btcCfg btc.StrategyConfig, updownCfg btc.UpDownConfig, p10 phase10Config, liveTrading bool, fadeMode bool, walletsFile string, copytradeSize float64, walletTiersFile string, initialCapital float64, minTierFilter string) error {
 	if signalMode != "auto" && signalMode != "prompt" && signalMode != "whale" && signalMode != "copytrade" {
 		return fmt.Errorf("invalid signal_mode %q (want auto|prompt|whale|copytrade)", signalMode)
 	}
@@ -2090,6 +2091,23 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 
 				switch side {
 				case "BUY":
+					if minTierFilter != "" {
+						wTier := walletTiers[strings.ToLower(ev.Wallet)]
+						allowed := false
+						switch strings.ToUpper(minTierFilter) {
+						case "A":
+							allowed = wTier == "A"
+						case "B":
+							allowed = wTier == "A" || wTier == "B"
+						case "C":
+							allowed = wTier == "A" || wTier == "B" || wTier == "C"
+						}
+						if !allowed {
+							appendWhaleTrade(ev, "skip", "tier_filtered:"+wTier)
+							slog.Info("copytrade_tier_filtered", "wallet", ev.Label, "tier", wTier, "min_tier", minTierFilter, "market", ev.Question)
+							return
+						}
+					}
 					if !isAllowedMarket(ev.Question) {
 						appendWhaleTrade(ev, "skip", "category_filtered")
 						slog.Info("copytrade_category_filtered", "wallet", ev.Label, "market", ev.Question)
