@@ -2124,10 +2124,12 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						baseAlert.Label = fmt.Sprintf("🔥💰 [强烈推荐买入] %s (Tier A)", aLabel)
 					}
 					// Extra DM via sidecar bot so A-tier alerts don't get buried
-					notifier.SidecarAlert(fmt.Sprintf("🔥💰 A级鲸鱼下单\n%s · %s\n💰 %.0f shares @ %.4f = $%.0f\n🐋 %s\n%s",
+					aTierMsg := fmt.Sprintf("🔥💰 A级鲸鱼下单\n%s · %s\n💰 %.0f shares @ %.4f = $%.0f\n🐋 %s\n%s",
 						ev.Question, ev.Outcome,
 						ev.SizeUnits, ev.Price, ev.Notional,
-						baseAlert.Label, ev.LinkURL))
+						baseAlert.Label, ev.LinkURL)
+					notifier.SidecarAlert(aTierMsg)
+					notifier.MonitorAlert(aTierMsg)
 					if !isAllowedMarket(ev.Question) {
 						appendWhaleTrade(ev, "skip", "category_filtered")
 						slog.Info("copytrade_category_filtered", "wallet", ev.Label, "market", ev.Question)

@@ -207,6 +207,11 @@ func (t *Telegram) SidecarAlert(text string) {
 	t.enqueue(outgoing{text: text, tag: "sidecar_alert", sendToken: tok})
 }
 
+// MonitorAlert sends via the base BotToken (5号 monitor bot) for high-priority DMs.
+func (t *Telegram) MonitorAlert(text string) {
+	t.enqueue(outgoing{text: text, tag: "monitor_alert", sendToken: t.cfg.BotToken})
+}
+
 // ClosePrompt enqueues a DM with a close button when a whale sells an asset
 // we hold. The boss clicks "✅ 平仓" to confirm or ignores.
 func (t *Telegram) ClosePrompt(ev ClosePromptEvent) {

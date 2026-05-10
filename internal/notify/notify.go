@@ -42,6 +42,8 @@ type Notifier interface {
 	TextAlert(text string)
 	// SidecarAlert sends via the sidecar/prompt bot (@Murphyoderbot).
 	SidecarAlert(text string)
+	// MonitorAlert sends via the base bot (5号 monitor bot) for high-priority DMs.
+	MonitorAlert(text string)
 	// WhaleAlert pushes a smart-money whale trade notification. Guarded by
 	// -whale_enabled flag; to remove: delete this method + WhaleAlertEvent +
 	// FormatWhaleAlert.
