@@ -2115,6 +2115,14 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 							return
 						}
 					}
+					// A-tier wallet passed filter — mark alert with strong recommendation
+					{
+						aLabel := ev.Label
+						if aLabel == "" {
+							aLabel = ev.Wallet
+						}
+						baseAlert.Label = fmt.Sprintf("🔥💰 [强烈推荐买入] %s (Tier A)", aLabel)
+					}
 					if !isAllowedMarket(ev.Question) {
 						appendWhaleTrade(ev, "skip", "category_filtered")
 						slog.Info("copytrade_category_filtered", "wallet", ev.Label, "market", ev.Question)
