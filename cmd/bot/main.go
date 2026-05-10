@@ -2105,6 +2105,13 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						if !allowed {
 							appendWhaleTrade(ev, "skip", "tier_filtered:"+wTier)
 							slog.Info("copytrade_tier_filtered", "wallet", ev.Label, "tier", wTier, "min_tier", minTierFilter, "market", ev.Question)
+							tierAlert := baseAlert
+							tierLabel := ev.Label
+							if tierLabel == "" {
+								tierLabel = ev.Wallet
+							}
+							tierAlert.Label = fmt.Sprintf("⚠️👀 [观察] %s (Tier %s)", tierLabel, wTier)
+							notifier.WhaleAlert(tierAlert)
 							return
 						}
 					}
