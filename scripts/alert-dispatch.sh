@@ -25,6 +25,7 @@ quiet=$(sed -n 's/.*"quiet_window": *\([0-9]*\).*/\1/p' "$STATE" | head -1)
 
 [ -z "$alert" ] && exit 0
 [ "${quiet:-0}" = "1" ] && exit 0
+[ "$alert" = "stalled-12h" ] && exit 0
 
 # cooldown 2h
 mkdir -p "$ROOT/logs"
@@ -44,7 +45,6 @@ fi
 # 组装消息
 case "$alert" in
   build-failing)         title="🔴 polymarket-go build 失败" ;;
-  stalled-12h)           title="🟡 polymarket-go 停滞 12h+ 未 commit" ;;
   daemon-restart-failed) title="🔴 polymarket-go daemon 重启失败，需要人工干预" ;;
   *)                     title="⚠️ polymarket-go: $alert" ;;
 esac

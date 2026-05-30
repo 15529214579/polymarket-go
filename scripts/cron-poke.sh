@@ -79,10 +79,8 @@ else
   ticks_no_progress=0
 fi
 
-# 超过 24 个 tick（30min × 24 = 12h）没 commit 且 quiet 结束后，告警
-if [ "$ticks_no_progress" -gt 24 ] && [ "$quiet" = "0" ] && [ -z "$alert" ]; then
-  alert="stalled-12h"
-fi
+# Keep tracking ticks_no_progress for state visibility, but do not page on a
+# stale commit alone. This repo can run unattended while paper-trading.
 
 # Check daemon status for state.json
 bot_running=0
