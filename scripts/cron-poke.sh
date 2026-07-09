@@ -6,6 +6,7 @@ set -u
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT" || exit 0
+[ -f "$ROOT/db/project.disabled" ] && exit 0
 mkdir -p "$ROOT/logs"
 
 now_iso=$(date -u '+%Y-%m-%dT%H:%M:%SZ')

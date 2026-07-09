@@ -1,0 +1,31 @@
+0x00bf4648a330c8dd0ff1d36e3d25995ee6d03a0e # tier=B action=prompt smart=100.00 bot=31.10 edge=90.79 positive edge, prompt before auto-follow
+0x00eca75f93d2dba8cd7c7e58cc1f0c26f1b78240 # tier=A action=prompt smart=100.00 bot=20.05 edge=100.00 strong smart-money signal and low bot score
+0x0ec9aabb27995ca97ceb0884b69d0218b8628001 # tier=A action=prompt smart=89.22 bot=18.33 edge=82.80 strong smart-money signal and low bot score
+0x1686b3e512052ba1ff70f8b48bbe0547be52c3f9 # tier=A action=prompt smart=76.45 bot=23.36 edge=90.80 strong smart-money signal and low bot score
+0x19da3815eacb526718fdea727839362fe56153fc # tier=B action=prompt smart=100.00 bot=25.13 edge=93.01 positive edge, prompt before auto-follow
+0x1aeb418a3834e39ca5e31f2fe4717d1b457aeb6c # tier=B action=prompt smart=63.15 bot=31.00 edge=86.20 positive edge, prompt before auto-follow
+0x34c5ca7736ab9f4c4e059ef40fa5e4a679010832 # tier=A action=prompt smart=100.00 bot=19.17 edge=92.68 strong smart-money signal and low bot score
+0x3693ffa9aa7d158826464608f6c83ad09741d79e # tier=B action=prompt smart=100.00 bot=27.84 edge=98.40 positive edge, prompt before auto-follow
+0x3b6d02645588be3897556337acd542190e10f95b # tier=B action=prompt smart=65.87 bot=21.88 edge=82.40 positive edge, prompt before auto-follow
+0x3c8ac6a99d9c7a41860aec2ae7520c7aaa68b45a # tier=B action=prompt smart=100.00 bot=25.35 edge=89.67 positive edge, prompt before auto-follow
+0x43c4a46aa5326dcc479a818779a3860df5125565 # tier=A action=prompt smart=71.16 bot=10.71 edge=63.94 strong smart-money signal and low bot score
+0x4f49a21e8bf3a36731d53337fbf800961b1c57af # tier=B action=prompt smart=72.85 bot=13.34 edge=62.78 positive edge, prompt before auto-follow
+0x5bff9e63c83268d514d9ec186d44ad6d480d2a5d # tier=B action=prompt smart=81.63 bot=32.30 edge=84.40 positive edge, prompt before auto-follow
+0x608b16197375d35db426375ccc2704dc6203fbd6 # tier=B action=prompt smart=95.65 bot=30.10 edge=100.00 positive edge, prompt before auto-follow
+0x620d7e06ce27d16532c061eba9b46c7e1833c67f # tier=A action=prompt smart=91.83 bot=4.67 edge=72.40 strong smart-money signal and low bot score
+0x635cfc3676fcd4bc65d177214eb5f9fdf73645c6 # tier=B action=prompt smart=100.00 bot=25.44 edge=100.00 positive edge, prompt before auto-follow
+0x64649fe6c02d197e4c46b3ffb88460b0b75bad1d # tier=A action=prompt smart=100.00 bot=24.55 edge=93.57 strong smart-money signal and low bot score
+0x662244931c392df70bd064fa91f838eea0bfd7a9 # tier=B action=prompt smart=100.00 bot=33.00 edge=100.00 positive edge, prompt before auto-follow
+0x68b4ac831048b02fc9462cd653adbfeb65abe777 # tier=A action=prompt smart=100.00 bot=8.20 edge=100.00 strong smart-money signal and low bot score
+0x73836f35d84a6080ebe035195be41ba114d4bd0b # tier=B action=prompt smart=91.84 bot=30.91 edge=70.45 positive edge, prompt before auto-follow
+0x768c6fa17d2809b50f0b458550b795dee9bc015d # tier=B action=prompt smart=97.44 bot=26.83 edge=100.00 positive edge, prompt before auto-follow
+0x7d8c02a93418d3d1a0c9a45cb0443e3046f60b5c # tier=A action=prompt smart=76.88 bot=19.81 edge=72.36 strong smart-money signal and low bot score
+0x8ba27b7c9de2b6367f986bff5f9c8049204c1650 # tier=A action=prompt smart=100.00 bot=24.17 edge=100.00 strong smart-money signal and low bot score
+0x8bd3a7b9a1b58ebc3f243d2eb05327163ea3f69a # tier=A action=prompt smart=90.46 bot=5.00 edge=82.54 strong smart-money signal and low bot score
+0x8ca54889af2f5f87be45a516923428249853fd56 # tier=B action=prompt smart=96.79 bot=34.20 edge=99.94 positive edge, prompt before auto-follow
+0x8d5bd49528500b069ec71e4a6cdc31056a61a718 # tier=A action=prompt smart=100.00 bot=22.83 edge=100.00 strong smart-money signal and low bot score
+0x9014e9524af13abd4a10f6f59bc5608f66485b73 # tier=B action=prompt smart=100.00 bot=33.63 edge=93.68 positive edge, prompt before auto-follow
+0xa2a07a7d25cdfdd6e519f18497bf1f4675e7b16b # tier=B action=prompt smart=65.69 bot=27.80 edge=73.77 positive edge, prompt before auto-follow
+0xaa62ded02e2b1344eb7eaba90a4cad02d27eeb28 # tier=B action=prompt smart=74.15 bot=33.18 edge=71.73 positive edge, prompt before auto-follow
+0xe0f4042e3f299eb4242799963ccd1d64c63ce55f # tier=B action=prompt smart=88.14 bot=27.88 edge=89.84 positive edge, prompt before auto-follow
+0xe8d8e7338e571b82a3863e546d2e0900140ebcc9 # tier=A action=prompt smart=72.35 bot=15.33 edge=72.78 strong smart-money signal and low bot score

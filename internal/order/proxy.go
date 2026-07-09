@@ -14,9 +14,9 @@ import (
 )
 
 var (
-	proxyList  []*url.URL
-	proxyIdx   atomic.Int64
-	proxyOnce  sync.Once
+	proxyList   []*url.URL
+	proxyIdx    atomic.Int64
+	proxyOnce   sync.Once
 	proxyInited bool
 )
 
@@ -45,7 +45,11 @@ func rotateProxy(_ *http.Request) (*url.URL, error) {
 }
 
 func loadProxies() []*url.URL {
-	if env := os.Getenv("CLOB_PROXY"); env != "" {
+	if env := strings.TrimSpace(os.Getenv("CLOB_PROXY")); env != "" {
+		switch strings.ToLower(env) {
+		case "direct", "none", "off", "disabled":
+			return nil
+		}
 		if u, err := url.Parse(env); err == nil {
 			return []*url.URL{u}
 		}

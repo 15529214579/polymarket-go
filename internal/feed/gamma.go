@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -63,7 +64,10 @@ func parseStringArray(s string) []string {
 // ListActiveMarkets paginates through active+open markets.
 func (c *GammaClient) ListActiveMarkets(ctx context.Context, pageLimit int) ([]Market, error) {
 	if pageLimit <= 0 {
-		pageLimit = 500
+		pageLimit = 100
+	}
+	if pageLimit > 100 {
+		pageLimit = 100
 	}
 	var all []Market
 	offset := 0
@@ -90,6 +94,9 @@ func (c *GammaClient) ListActiveMarkets(ctx context.Context, pageLimit int) ([]M
 			return nil, err
 		}
 		if resp.StatusCode >= 400 {
+			if resp.StatusCode == http.StatusUnprocessableEntity && len(all) > 0 && strings.Contains(strings.ToLower(string(body)), "offset too large") {
+				break
+			}
 			return nil, fmt.Errorf("gamma %d: %s", resp.StatusCode, truncate(string(body), 200))
 		}
 		var page []Market
@@ -157,20 +164,85 @@ func isAllowedLoLLeague(q, slug string) bool {
 	return false
 }
 
-// isMoneylineQuestion — reject questions that are derivatives (handicap,
-// totals, over/under, prop, parlay). Polymarket surfaces these under the
-// same event slug as the moneyline so the slug-only filter isn't enough.
-func isMoneylineQuestion(q string) bool {
+// IsDerivativeFollowMarketText rejects derivatives (handicap, totals,
+// over/under, prop, parlay). Polymarket surfaces these under the same event
+// slug as the moneyline so the slug-only filter isn't enough.
+func IsDerivativeFollowMarketText(text string) bool {
+	text = strings.ToLower(text)
+	if strings.Contains(text, " and ") || strings.Contains(text, " & ") {
+		return true
+	}
 	for _, bad := range []string{
 		"game handicap", "games total", "total:",
 		"over/under", "o/u", "spread", "prop", "parlay",
 		"exact score", "end in a draw", "leading at halftime",
 		"halftime result", "halftime winner", "first to score",
-		"both teams to score", "correct score",
+		"both teams to score", "correct score", "to win 2-0",
+		"draw (1-1)", "draw at halftime", "match result", "penalty shootout",
+		"neither team to score", "to score first", "score first",
+		"extra time", "second half", "first half",
+		"shots", "goals during", "+ goals", "goalscorer", "goal scorer",
+		"cards", "corners",
+		" score ",
+		"first blood", "roshan", "rampage", "ultra kill",
+		"barracks", "daytime", "total kills", "both teams beat",
 	} {
-		if strings.Contains(q, bad) {
-			return false
+		if strings.Contains(text, bad) {
+			return true
 		}
+	}
+	return false
+}
+
+// IsOutrightFollowMarketText rejects long-horizon championship/futures markets.
+// They can attract large orders but do not fit the short-window whale-follow
+// signals used by the sports/ esports copy-trading system.
+func IsOutrightFollowMarketText(text string) bool {
+	text = strings.ToLower(text)
+	for _, bad := range []string{
+		"world cup winner",
+		"win the world cup",
+		"win the 2026 fifa world cup",
+		"win the fifa world cup",
+		"win the nba finals",
+		"win the stanley cup",
+		"win the super bowl",
+		"win the champions league",
+		"win the premier league",
+		"win dota 2 the international",
+		"win the international",
+		"win lol worlds",
+		"win worlds",
+	} {
+		if strings.Contains(text, bad) {
+			return true
+		}
+	}
+	for _, badSlug := range []string{
+		"world-cup-winner",
+		"win-the-2026-fifa-world-cup",
+		"win-the-fifa-world-cup",
+		"win-the-nba-finals",
+		"win-the-stanley-cup",
+		"win-the-super-bowl",
+		"win-the-champions-league",
+		"win-the-premier-league",
+		"win-dota-2-the-international",
+		"win-the-international",
+		"win-lol-worlds",
+		"win-worlds",
+	} {
+		if strings.Contains(text, badSlug) {
+			return true
+		}
+	}
+	return false
+}
+
+// isMoneylineQuestion keeps only moneyline-style questions.
+func isMoneylineQuestion(q string) bool {
+	if IsDerivativeFollowMarketText(q) || IsOutrightFollowMarketText(q) {
+		return false
 	}
 	return true
 }
@@ -179,18 +251,86 @@ func isMoneylineQuestion(q string) bool {
 // Seasonal futures (e.g. "will-the-lakers-win-the-2026-nba-finals") do not match
 // and are intentionally excluded — they don't move on our 60s momentum horizon.
 var (
-	reNBADaily    = regexp.MustCompile(`^nba-[a-z]{2,4}-[a-z]{2,4}-\d{4}-\d{2}-\d{2}`)
-	reNBAPlayoffs = regexp.MustCompile(`^nba-playoffs-`) // series-winner in-play
-	reEPLDaily    = regexp.MustCompile(`^epl-[a-z]{2,4}-[a-z]{2,4}-\d{4}-\d{2}-\d{2}`)
-	reDota2Daily  = regexp.MustCompile(`^dota2-[a-z0-9]+-[a-z0-9]+-\d{4}-\d{2}-\d{2}`)
-	reWTADaily    = regexp.MustCompile(`^wta-[a-z]+-[a-z]+-\d{4}-\d{2}-\d{2}`)
-	reATPDaily    = regexp.MustCompile(`^atp-[a-z]+-[a-z]+-\d{4}-\d{2}-\d{2}`)
+	reNBADaily                = regexp.MustCompile(`^nba-[a-z]{2,4}-[a-z]{2,4}-\d{4}-\d{2}-\d{2}`)
+	reNBAPlayoffs             = regexp.MustCompile(`^nba-playoffs-`) // series-winner in-play
+	reEPLDaily                = regexp.MustCompile(`^epl-[a-z]{2,4}-[a-z]{2,4}-\d{4}-\d{2}-\d{2}`)
+	reFIFWCDaily              = regexp.MustCompile(`^fifwc-[a-z0-9]+-[a-z0-9]+-\d{4}-\d{2}-\d{2}`)
+	reNationalFootballDaily   = regexp.MustCompile(`^will ([a-z][a-z .'-]+) win on \d{4}-\d{2}-\d{2}\??$`)
+	reNationalFootballAdvance = regexp.MustCompile(`^([a-z][a-z .'-]+) vs\.? ([a-z][a-z .'-]+): team to advance\??$`)
+	reDota2Daily              = regexp.MustCompile(`^dota2-[a-z0-9]+-[a-z0-9]+-\d{4}-\d{2}-\d{2}`)
+	reWTADaily                = regexp.MustCompile(`^wta-[a-z]+-[a-z]+-\d{4}-\d{2}-\d{2}`)
+	reATPDaily                = regexp.MustCompile(`^atp-[a-z]+-[a-z]+-\d{4}-\d{2}-\d{2}`)
 )
+
+var footballNations = map[string]struct{}{
+	"algeria": {}, "argentina": {}, "australia": {}, "austria": {},
+	"belgium": {}, "brazil": {}, "canada": {}, "chile": {}, "china": {},
+	"colombia": {}, "croatia": {}, "denmark": {}, "ecuador": {},
+	"egypt": {}, "england": {}, "france": {}, "germany": {}, "ghana": {},
+	"greece": {}, "hungary": {}, "iran": {}, "ireland": {}, "italy": {},
+	"japan": {}, "mexico": {}, "morocco": {}, "netherlands": {},
+	"new zealand": {}, "nigeria": {}, "norway": {}, "paraguay": {},
+	"peru": {}, "poland": {}, "portugal": {}, "qatar": {}, "romania": {},
+	"saudi arabia": {}, "scotland": {}, "senegal": {}, "serbia": {},
+	"south africa": {}, "south korea": {}, "spain": {}, "sweden": {},
+	"switzerland": {}, "tunisia": {}, "turkey": {}, "ukraine": {},
+	"united states": {}, "uruguay": {}, "usa": {}, "wales": {},
+}
+
+var basketballTeamAliases = [][]string{
+	{"atlanta hawks", "hawks"},
+	{"boston celtics", "celtics"},
+	{"brooklyn nets", "nets"},
+	{"charlotte hornets", "hornets"},
+	{"chicago bulls", "bulls"},
+	{"cleveland cavaliers", "cavaliers", "cavs"},
+	{"dallas mavericks", "mavericks", "mavs"},
+	{"denver nuggets", "nuggets"},
+	{"detroit pistons", "pistons"},
+	{"golden state warriors", "warriors"},
+	{"houston rockets", "rockets"},
+	{"indiana pacers", "pacers"},
+	{"los angeles clippers", "clippers"},
+	{"los angeles lakers", "lakers"},
+	{"memphis grizzlies", "grizzlies"},
+	{"miami heat"},
+	{"milwaukee bucks", "bucks"},
+	{"minnesota timberwolves", "timberwolves", "wolves"},
+	{"new orleans pelicans", "pelicans"},
+	{"new york knicks", "knicks"},
+	{"oklahoma city thunder", "thunder"},
+	{"orlando magic", "magic"},
+	{"philadelphia 76ers", "76ers", "sixers"},
+	{"phoenix suns", "suns"},
+	{"portland trail blazers", "trail blazers"},
+	{"sacramento kings", "kings"},
+	{"san antonio spurs", "spurs"},
+	{"toronto raptors", "raptors"},
+	{"utah jazz"},
+	{"washington wizards", "wizards"},
+	{"atlanta dream", "dream"},
+	{"chicago sky"},
+	{"connecticut sun"},
+	{"dallas wings", "wings"},
+	{"golden state valkyries", "valkyries"},
+	{"indiana fever", "fever"},
+	{"las vegas aces", "aces"},
+	{"los angeles sparks", "sparks"},
+	{"minnesota lynx", "lynx"},
+	{"new york liberty", "liberty"},
+	{"phoenix mercury", "mercury"},
+	{"seattle storm", "storm"},
+	{"toronto tempo", "tempo"},
+	{"washington mystics", "mystics"},
+}
 
 // isMoneylineSlug — exclude derivatives (spread / total / over-under / prop)
 // so we only take clean win-probability markets where momentum semantics hold.
 func isMoneylineSlug(slug string) bool {
-	for _, bad := range []string{"-spread-", "-total-", "-ou-", "-over-", "-under-", "-prop-", "-parlay-"} {
+	if IsOutrightFollowMarketText(slug) {
+		return false
+	}
+	for _, bad := range []string{"-spread-", "-total-", "-ou-", "-over-", "-under-", "-prop-", "-parlay-", "-match-result-"} {
 		if strings.Contains(slug, bad) {
 			return false
 		}
@@ -205,17 +345,63 @@ func IsBasketballMarket(m Market) bool {
 	if !isMoneylineSlug(slug) || !isMoneylineQuestion(q) {
 		return false
 	}
-	return reNBADaily.MatchString(slug) || reNBAPlayoffs.MatchString(slug)
+	return reNBADaily.MatchString(slug) || reNBAPlayoffs.MatchString(slug) || isBasketballTeamMatchQuestion(q)
 }
 
-// IsFootballMarket — soccer daily matchups (EPL only for now), moneyline only.
+func isBasketballTeamMatchQuestion(q string) bool {
+	if !(strings.Contains(q, " vs ") || strings.Contains(q, " vs. ") || strings.Contains(q, " at ")) {
+		return false
+	}
+	teams := 0
+	for _, aliases := range basketballTeamAliases {
+		for _, alias := range aliases {
+			if containsPhrase(q, alias) {
+				teams++
+				break
+			}
+		}
+		if teams >= 2 {
+			return true
+		}
+	}
+	return false
+}
+
+func containsPhrase(text, phrase string) bool {
+	if phrase == "" {
+		return false
+	}
+	return strings.Contains(" "+text+" ", " "+phrase+" ")
+}
+
+// IsFootballMarket — soccer daily matchups, moneyline only.
 func IsFootballMarket(m Market) bool {
 	q := strings.ToLower(m.Question)
 	slug := strings.ToLower(m.Slug)
 	if !isMoneylineSlug(slug) || !isMoneylineQuestion(q) {
 		return false
 	}
-	return reEPLDaily.MatchString(slug)
+	return reEPLDaily.MatchString(slug) || reFIFWCDaily.MatchString(slug) || isNationalFootballWinQuestion(q) || isNationalFootballAdvanceQuestion(q)
+}
+
+func isNationalFootballWinQuestion(q string) bool {
+	match := reNationalFootballDaily.FindStringSubmatch(strings.TrimSpace(q))
+	if len(match) != 2 {
+		return false
+	}
+	team := strings.TrimSpace(match[1])
+	_, ok := footballNations[team]
+	return ok
+}
+
+func isNationalFootballAdvanceQuestion(q string) bool {
+	match := reNationalFootballAdvance.FindStringSubmatch(strings.TrimSpace(q))
+	if len(match) != 3 {
+		return false
+	}
+	_, okA := footballNations[strings.TrimSpace(match[1])]
+	_, okB := footballNations[strings.TrimSpace(match[2])]
+	return okA && okB
 }
 
 // IsDota2Market — Dota 2 daily matchups, moneyline only.
@@ -239,9 +425,16 @@ func IsTennisMarket(m Market) bool {
 }
 
 // IsSportsMarket — union of LoL + basketball + football (soccer) + Dota 2 + tennis.
-// Used for subscription targeting. Keep narrow: only in-play daily / series markets.
+// Used by older scanners. Keep narrow: only in-play daily / series markets.
 func IsSportsMarket(m Market) bool {
 	return IsLoLMarket(m) || IsBasketballMarket(m) || IsFootballMarket(m) || IsDota2Market(m) || IsTennisMarket(m)
+}
+
+// IsFollowTargetMarket is the stricter universe for smart-money whale following:
+// basketball, soccer/football, and esports. Tennis and other sports stay out
+// because they are not part of the current copy-trading mandate.
+func IsFollowTargetMarket(m Market) bool {
+	return IsLoLMarket(m) || IsBasketballMarket(m) || IsFootballMarket(m) || IsDota2Market(m)
 }
 
 // FilterLoL returns only LoL markets from a list.
@@ -252,6 +445,45 @@ func FilterLoL(ms []Market) []Market {
 // FilterSports — LoL + NBA (daily+playoffs) + EPL daily.
 func FilterSports(ms []Market) []Market {
 	return filterBy(ms, IsSportsMarket)
+}
+
+func FilterFollowTargets(ms []Market) []Market {
+	return filterBy(ms, IsFollowTargetMarket)
+}
+
+// FilterTradablePriceBand removes markets whose displayed outcome prices are
+// all outside the configured entry band. Markets without parseable prices are
+// kept so discovery does not drop valid targets when Gamma omits price fields.
+func FilterTradablePriceBand(ms []Market, minPrice, maxPrice float64) []Market {
+	if minPrice <= 0 && maxPrice >= 1 {
+		return ms
+	}
+	out := make([]Market, 0, len(ms))
+	for _, m := range ms {
+		if marketHasTradableOutcomePrice(m, minPrice, maxPrice) {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+func marketHasTradableOutcomePrice(m Market, minPrice, maxPrice float64) bool {
+	prices := m.OutcomePrices()
+	if len(prices) == 0 {
+		return true
+	}
+	parseable := 0
+	for _, raw := range prices {
+		p, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+		if err != nil {
+			continue
+		}
+		parseable++
+		if p >= minPrice && p <= maxPrice {
+			return true
+		}
+	}
+	return parseable == 0
 }
 
 // GetByConditionIDs fetches a batch of markets by their conditionId. The gamma
@@ -270,6 +502,29 @@ func (c *GammaClient) GetByConditionIDs(ctx context.Context, ids []string) ([]Ma
 		q.Add("condition_ids", id)
 	}
 	q.Set("limit", fmt.Sprintf("%d", len(ids)+5))
+	return c.getMarkets(ctx, q)
+}
+
+// GetByClobTokenIDs fetches markets containing the given CLOB token ids. Gamma
+// supports repeated `clob_token_ids=<token>` params, which lets report tooling
+// backfill conditionId/outcomePrices for older trade logs that only stored the
+// token id.
+func (c *GammaClient) GetByClobTokenIDs(ctx context.Context, ids []string) ([]Market, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	q := url.Values{}
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		q.Add("clob_token_ids", id)
+	}
+	q.Set("limit", fmt.Sprintf("%d", len(ids)+5))
+	return c.getMarkets(ctx, q)
+}
+
+func (c *GammaClient) getMarkets(ctx context.Context, q url.Values) ([]Market, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", c.base+"/markets?"+q.Encode(), nil)
 	if err != nil {
 		return nil, err

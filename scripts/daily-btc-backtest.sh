@@ -12,6 +12,7 @@ DATE=$(date -u +%Y-%m-%d)
 TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 cd "$WORKDIR"
+[ -f "$WORKDIR/db/project.disabled" ] && exit 0
 
 echo "" >> "$LOG"
 echo "═══════════════════════════════════════════════════" >> "$LOG"

@@ -30,12 +30,12 @@ type OddsEntry struct {
 }
 
 type Signal struct {
-	Market    Market
-	BookProb  float64 // bookmaker implied probability
-	PMPrice   float64 // PM Yes price
-	Edge      float64 // BookProb - PMPrice
-	Side      string  // "YES" or "NO"
-	Source    string
+	Market   Market
+	BookProb float64 // bookmaker implied probability
+	PMPrice  float64 // PM Yes price
+	Edge     float64 // BookProb - PMPrice
+	Side     string  // "YES" or "NO"
+	Source   string
 }
 
 // FetchEurovisionMarkets gets active Eurovision markets from PM gamma.
@@ -115,65 +115,11 @@ func parsePrices(raw string) (yes, no float64) {
 	return
 }
 
-// FetchEurovisionOdds fetches Eurovision winner odds from the-odds-api.
+// FetchEurovisionOdds is disabled because live third-party bookmaker odds access was removed.
 func FetchEurovisionOdds(ctx context.Context, apiKey string) ([]OddsEntry, error) {
-	// The Odds API Eurovision sport key
-	url := fmt.Sprintf("https://api.the-odds-api.com/v4/sports/entertainment_eurovision/odds?apiKey=%s&regions=eu&markets=outrights&oddsFormat=decimal",
-		apiKey)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("odds api: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("odds api HTTP %d: %s", resp.StatusCode, body)
-	}
-
-	var events []struct {
-		Bookmakers []struct {
-			Key     string `json:"key"`
-			Title   string `json:"title"`
-			Markets []struct {
-				Key      string `json:"key"`
-				Outcomes []struct {
-					Name  string  `json:"name"`
-					Price float64 `json:"price"`
-				} `json:"outcomes"`
-			} `json:"markets"`
-		} `json:"bookmakers"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&events); err != nil {
-		return nil, fmt.Errorf("decode odds: %w", err)
-	}
-
-	var entries []OddsEntry
-	for _, ev := range events {
-		for _, bk := range ev.Bookmakers {
-			for _, mkt := range bk.Markets {
-				if mkt.Key != "outrights" {
-					continue
-				}
-				for _, o := range mkt.Outcomes {
-					implied := 0.0
-					if o.Price > 0 {
-						implied = 1.0 / o.Price
-					}
-					entries = append(entries, OddsEntry{
-						Country:     o.Name,
-						ImpliedProb: implied,
-						BookOdds:    o.Price,
-						Source:      bk.Title,
-					})
-				}
-			}
-		}
-	}
-	return entries, nil
+	_ = ctx
+	_ = apiKey
+	return nil, fmt.Errorf("eurovision odds disabled: third-party bookmaker odds API removed")
 }
 
 // ConsensusOdds averages implied probabilities across bookmakers for each country.

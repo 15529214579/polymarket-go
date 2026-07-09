@@ -1,0 +1,1 @@
+0x4cb5a6cf70340f068148a740f9ec96cbea75ef29 # list=scout tier=C smart=100.00 bot=44.38 copyROI=0.0% copyPnL=$+0.00 copyT=0 copyWin=0.0% avgNotional=$4587 sources=existing,leaderboard_profit_30d,leaderboard_profit_7d

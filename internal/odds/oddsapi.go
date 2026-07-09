@@ -1,6 +1,8 @@
-// Package odds fetches live bookmaker odds from The Odds API,
-// converts decimal odds to juice-removed implied probabilities,
-// and caches results to stay within the 500 req/month free tier.
+// Package odds keeps historical bookmaker-odds types available for reports.
+//
+// Live third-party bookmaker API access is disabled. The prior paid/free odds
+// integrations are intentionally left as no-op fetchers so old call sites fail
+// safely without spending quota or depending on expired subscriptions.
 package odds
 
 import (
@@ -67,17 +69,14 @@ type Client struct {
 	usage APIUsage
 }
 
-// NewClient creates an odds API client. apiKey defaults to ODDS_API_KEY env var.
+// NewClient creates a disabled odds API client. The apiKey argument is ignored.
 // cacheDir defaults to db/.odds_cache under the working directory.
 func NewClient(apiKey, cacheDir string) *Client {
-	if apiKey == "" {
-		apiKey = os.Getenv("ODDS_API_KEY")
-	}
 	if cacheDir == "" {
 		cacheDir = filepath.Join("db", ".odds_cache")
 	}
 	return &Client{
-		apiKey:   apiKey,
+		apiKey:   "",
 		cacheDir: cacheDir,
 		cacheTTL: time.Hour,
 		http:     &http.Client{Timeout: 15 * time.Second},
@@ -92,26 +91,18 @@ func (c *Client) Usage() APIUsage {
 
 // FetchH2H fetches head-to-head odds for the given sport keys.
 func (c *Client) FetchH2H(ctx context.Context, sportKeys []string) ([]BookmakerOdds, error) {
-	if c.apiKey == "" {
-		slog.Warn("odds_api_key_missing")
-		return nil, nil
-	}
-	if len(sportKeys) == 0 {
-		sportKeys = DefaultH2HSportKeys
-	}
-	return c.fetchOdds(ctx, sportKeys, "h2h", "us,eu,uk")
+	_ = ctx
+	_ = sportKeys
+	slog.Warn("odds_api_disabled", "reason", "third-party bookmaker odds API removed")
+	return nil, nil
 }
 
 // FetchOutrights fetches outright/futures odds.
 func (c *Client) FetchOutrights(ctx context.Context, sportKeys []string) ([]BookmakerOdds, error) {
-	if c.apiKey == "" {
-		slog.Warn("odds_api_key_missing")
-		return nil, nil
-	}
-	if len(sportKeys) == 0 {
-		sportKeys = OutrightSportKeys
-	}
-	return c.fetchOdds(ctx, sportKeys, "outrights", "us,eu,uk")
+	_ = ctx
+	_ = sportKeys
+	slog.Warn("odds_api_disabled", "reason", "third-party bookmaker odds API removed")
+	return nil, nil
 }
 
 func (c *Client) fetchOdds(ctx context.Context, sportKeys []string, markets, regions string) ([]BookmakerOdds, error) {
@@ -299,13 +290,13 @@ func (c *Client) writeCache(key string, items []BookmakerOdds) {
 // --- API response types ---
 
 type oddsEvent struct {
-	ID           string           `json:"id"`
-	SportKey     string           `json:"sport_key"`
-	SportTitle   string           `json:"sport_title"`
-	CommenceTime string           `json:"commence_time"`
-	HomeTeam     string           `json:"home_team"`
-	AwayTeam     string           `json:"away_team"`
-	Bookmakers   []oddsBookmaker  `json:"bookmakers"`
+	ID           string          `json:"id"`
+	SportKey     string          `json:"sport_key"`
+	SportTitle   string          `json:"sport_title"`
+	CommenceTime string          `json:"commence_time"`
+	HomeTeam     string          `json:"home_team"`
+	AwayTeam     string          `json:"away_team"`
+	Bookmakers   []oddsBookmaker `json:"bookmakers"`
 }
 
 type oddsBookmaker struct {

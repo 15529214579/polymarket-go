@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -68,9 +67,7 @@ type OddsPapiUsage struct {
 }
 
 func NewOddsPapiClient(apiKey, bookmaker, cacheDir string) *OddsPapiClient {
-	if apiKey == "" {
-		apiKey = os.Getenv("ODDSPAPI_API_KEY")
-	}
+	apiKey = ""
 	if bookmaker == "" {
 		bookmaker = "pinnacle"
 	}
@@ -95,100 +92,12 @@ func (c *OddsPapiClient) Usage() OddsPapiUsage {
 	return c.usage
 }
 
-// FetchFootballOdds fetches H2H odds for the specified football leagues.
-// Two-step: /fixtures (team names) + /odds-by-tournaments (bookmaker odds), merged by fixtureId.
+// FetchFootballOdds is disabled because live third-party bookmaker odds access was removed.
 func (c *OddsPapiClient) FetchFootballOdds(ctx context.Context, sportKeys []string) ([]BookmakerOdds, error) {
-	if c.apiKey == "" {
-		slog.Warn("oddspapi_key_missing")
-		return nil, nil
-	}
-	if len(sportKeys) == 0 {
-		sportKeys = []string{
-			"soccer_epl",
-			"soccer_spain_la_liga",
-			"soccer_uefa_champs_league",
-		}
-	}
-
-	ids, err := c.resolveTournamentIDs(ctx, sportKeys)
-	if err != nil {
-		return nil, fmt.Errorf("resolve tournament IDs: %w", err)
-	}
-	if len(ids) == 0 {
-		slog.Warn("oddspapi_no_tournament_ids", "keys", sportKeys)
-		return nil, nil
-	}
-
-	idStrs := make([]string, 0, len(ids))
-	for _, id := range ids {
-		idStrs = append(idStrs, strconv.Itoa(id))
-	}
-	tournamentList := strings.Join(idStrs, ",")
-
-	cacheKey := fmt.Sprintf("oddspapi_%s_%s", c.bookmaker, tournamentList)
-	if cached := c.readCache(cacheKey); cached != nil {
-		return cached, nil
-	}
-
-	// Step 1: Fetch fixtures to get team names.
-	nameMap, err := c.fetchFixtureNames(ctx, ids)
-	if err != nil {
-		slog.Warn("oddspapi_fixtures_failed", "err", err)
-		// Non-fatal: proceed with empty names.
-	}
-
-	// Step 2: Fetch odds via /odds-by-tournaments (single API call for all tournaments).
-	u, _ := url.Parse(oddsPapiBase + "/odds-by-tournaments")
-	q := u.Query()
-	q.Set("apiKey", c.apiKey)
-	q.Set("bookmaker", c.bookmaker)
-	q.Set("tournamentIds", tournamentList)
-	q.Set("oddsFormat", "decimal")
-	u.RawQuery = q.Encode()
-
-	req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("oddspapi fetch: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("oddspapi http %d: %s", resp.StatusCode, truncBody(body))
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("oddspapi read body: %w", err)
-	}
-
-	var fixtures []oddsPapiFixture
-	if err := json.Unmarshal(body, &fixtures); err != nil {
-		return nil, fmt.Errorf("oddspapi decode: %w", err)
-	}
-
-	tidToSport := make(map[int]string)
-	for sport, tid := range ids {
-		tidToSport[tid] = sport
-	}
-
-	result := c.convertFixtures(fixtures, tidToSport, nameMap)
-	slog.Info("oddspapi_fetched",
-		"bookmaker", c.bookmaker,
-		"fixtures", len(fixtures),
-		"outcomes", len(result),
-		"tournaments", tournamentList,
-	)
-
-	if len(result) > 0 {
-		c.writeCache(cacheKey, result)
-	}
-	return result, nil
+	_ = ctx
+	_ = sportKeys
+	slog.Warn("oddspapi_disabled", "reason", "third-party bookmaker odds API removed")
+	return nil, nil
 }
 
 // fetchFixtureNames calls /fixtures to get participant names keyed by fixtureId.

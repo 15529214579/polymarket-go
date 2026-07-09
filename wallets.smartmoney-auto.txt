@@ -1,0 +1,4 @@
+0x15692550650de5817af4202681a4e38dcf34bf0c # tier=A action=auto-small smart=100.00 bot=12.89 edge=77.51 strong smart-money signal and low bot score
+0x499f138156d196abcb34f98a1cac73f48d37ccaf # tier=A action=auto-small smart=100.00 bot=10.19 edge=100.00 strong smart-money signal and low bot score
+0xd7acb3a203ade83e04cf47f3b11c60ed2f3bf764 # tier=A action=auto-small smart=100.00 bot=13.54 edge=87.01 strong smart-money signal and low bot score
+0xf89214be3b3b5f2374d2ec85700c9b9ae1967f58 # tier=A action=auto-small smart=100.00 bot=10.83 edge=100.00 strong smart-money signal and low bot score

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"flag"
@@ -11,26 +12,24 @@ import (
 	nethttp "net/http"
 	neturl "net/url"
 	"os"
-	"sort"
 	"os/signal"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
-	"github.com/15529214579/polymarket-go/internal/arb"
 	"github.com/15529214579/polymarket-go/internal/btc"
 	"github.com/15529214579/polymarket-go/internal/config"
 	"github.com/15529214579/polymarket-go/internal/elon"
-	"github.com/15529214579/polymarket-go/internal/eurovision"
 	"github.com/15529214579/polymarket-go/internal/feed"
-	"github.com/15529214579/polymarket-go/internal/iterate"
 	"github.com/15529214579/polymarket-go/internal/injury"
+	"github.com/15529214579/polymarket-go/internal/iterate"
 	"github.com/15529214579/polymarket-go/internal/journal"
 	"github.com/15529214579/polymarket-go/internal/notify"
-	"github.com/15529214579/polymarket-go/internal/odds"
 	"github.com/15529214579/polymarket-go/internal/order"
 	"github.com/15529214579/polymarket-go/internal/risk"
 	"github.com/15529214579/polymarket-go/internal/strategy"
@@ -39,7 +38,7 @@ import (
 )
 
 func main() {
-	mode := flag.String("mode", "run", "run | discover | feed | sample | detect | prompt-test | daily-report | daily-iterate | arb-scan")
+	mode := flag.String("mode", "run", "run | discover | feed | sample | detect | prompt-test | daily-report | daily-iterate | arb-scan(disabled)")
 	iterateWindow := flag.Int("iterate_window", 7, "daily-iterate: rolling window days for analysis")
 	maxMarkets := flag.Int("markets", 20, "top-N sports markets (LoL + NBA daily/playoffs + EPL daily) by vol24h to subscribe")
 	windowSec := flag.Int("window", 60, "sampler window in seconds")
@@ -76,15 +75,6 @@ func main() {
 	lotteryLoLMin := flag.Float64("lottery_lol_min", 0.15, "lottery LoL-only floor; skip below (overrides global when higher)")
 	lotterySize := flag.Float64("lottery_size_usd", 1.0, "lottery entry size in USDC")
 	lotteryScan := flag.Duration("lottery_scan_interval", 5*time.Minute, "lottery scanner cadence")
-	arbEnabled := flag.Bool("arb_enabled", true, "enable arb scanner (odds vs Polymarket gap detection)")
-	arbInterval := flag.Duration("arb_interval", 12*time.Hour, "arb scan interval (budget: 500 req/month free tier)")
-	arbMinGapPP := flag.Float64("arb_min_gap_pp", 5.0, "arb minimum net EV in pp to flag")
-	arbDBPath := flag.String("arb_db", "db/odds.db", "SQLite path for odds snapshots")
-	// OddsPapi high-frequency sharp-line scanner (Pinnacle + 350 books).
-	oddsPapiEnabled := flag.Bool("oddspapi_enabled", false, "enable OddsPapi high-freq football scanner (Pinnacle sharp line)")
-	oddsPapiInterval := flag.Duration("oddspapi_interval", 3*time.Hour, "OddsPapi scan interval (budget: 250 req/month free tier)")
-	oddsPapiBookmaker := flag.String("oddspapi_bookmaker", "pinnacle", "OddsPapi bookmaker to fetch (pinnacle, bet365, etc)")
-	oddsPapiSports := flag.String("oddspapi_sports", "soccer_epl,soccer_spain_la_liga,soccer_uefa_champs_league", "comma-separated sport keys for OddsPapi")
 	injuryEnabled := flag.Bool("injury_enabled", false, "enable NBA injury report scanner (ESPN API)")
 	injuryInterval := flag.Duration("injury_interval", 30*time.Minute, "injury scan interval")
 	injuryStarOnly := flag.Bool("injury_star_only", true, "only alert on star players (top ~3-4 per team)")
@@ -100,6 +90,7 @@ func main() {
 	whaleProfile := flag.String("whale_profile", "", "(legacy) whale's Polymarket profile URL")
 	whaleMinUSD := flag.Float64("whale_min_usd", 1000, "(legacy) minimum notional USD to trigger alert")
 	whaleInterval := flag.Duration("whale_interval", 30*time.Second, "whale trade poll interval")
+	whaleReplayWindow := flag.Duration("whale_replay_window", 0, "startup replay window for recent whale trades; 0 disables replay")
 	btcEnabled := flag.Bool("btc_enabled", false, "enable BTC prediction strategy (BS first-passage vs PM gap)")
 	btcInterval := flag.Duration("btc_interval", 1*time.Hour, "BTC strategy scan interval")
 	btcMinGapPP := flag.Float64("btc_min_gap_pp", 7.0, "BTC minimum gap in pp to signal")
@@ -191,53 +182,47 @@ func main() {
 			ProfileURL:   *whaleProfile,
 			MinSizeUSD:   *whaleMinUSD,
 			PollInterval: *whaleInterval,
+			ReplayWindow: *whaleReplayWindow,
 		}
 		if *walletsFile != "" {
-			fileWallets, err := whale.LoadWalletsFile(*walletsFile, whaleCfg.MinSizeUSD)
+			listMinUSD := parseWhaleListMinUSD(os.Getenv("WHALE_LIST_MIN_USD"))
+			fileWallets, err := whale.LoadWalletsFileWithListMins(*walletsFile, whaleCfg.MinSizeUSD, listMinUSD)
 			if err != nil {
 				slog.Error("copytrade.wallets_load_fail", "file", *walletsFile, "err", err)
 				os.Exit(1)
 			}
 			whaleCfg.Wallets = fileWallets
 			whaleCfg.Enabled = true
-			slog.Info("copytrade.wallets_loaded", "file", *walletsFile, "count", len(fileWallets))
-		}
-		oddsPapiCfg := odds.OddsPapiConfig{
-			Enabled:   *oddsPapiEnabled,
-			Interval:  *oddsPapiInterval,
-			Bookmaker: *oddsPapiBookmaker,
-		}
-		if *oddsPapiSports != "" {
-			oddsPapiCfg.SportKeys = strings.Split(*oddsPapiSports, ",")
+			slog.Info("copytrade.wallets_loaded", "file", *walletsFile, "count", len(fileWallets), "list_min_usd", listMinUSD)
 		}
 		btcCfg := btc.StrategyConfig{
-				Enabled:      *btcEnabled,
-				ScanInterval: *btcInterval,
-				MinGapPP:     *btcMinGapPP,
-				TopN:         *btcTopN,
-				SizeUSD:      *btcSizeUSD,
-				DBPath:       *btcDBPath,
-			}
-			updownCfg := btc.UpDownConfig{
-				Enabled:       *updownEnabled,
-				ScanInterval:  *updownInterval,
-				MinConfidence: *updownConfidence,
-				SizeUSD:       *updownSize,
-				MaxDailyBets:  *updownMaxDaily,
-				DBPath:        *updownDB,
-			}
-			p10 := phase10Config{
-				BTCDailyEnabled:    *btcDailyEnabled,
-				BTCDailyInterval:   *btcDailyInterval,
-				BTCDailyMinEdge:    *btcDailyMinEdge,
-				ElonEnabled:        *elonEnabled,
-				ElonInterval:       *elonInterval,
-				ElonMinEdge:        *elonMinEdge,
-				EurovisionEnabled:  *eurovisionEnabled,
-				EurovisionInterval: *eurovisionInterval,
-				EurovisionMinEdge:  *eurovisionMinEdge,
-			}
-			if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, *arbEnabled, *arbInterval, *arbMinGapPP, *arbDBPath, injCfg, whaleCfg, oddsPapiCfg, *confirmDelay, btcCfg, updownCfg, p10, *liveTrading, *fadeMode, *walletsFile, *copytradeSize, *walletTiersFile, *initialCapital, *minTier); err != nil && ctx.Err() == nil {
+			Enabled:      *btcEnabled,
+			ScanInterval: *btcInterval,
+			MinGapPP:     *btcMinGapPP,
+			TopN:         *btcTopN,
+			SizeUSD:      *btcSizeUSD,
+			DBPath:       *btcDBPath,
+		}
+		updownCfg := btc.UpDownConfig{
+			Enabled:       *updownEnabled,
+			ScanInterval:  *updownInterval,
+			MinConfidence: *updownConfidence,
+			SizeUSD:       *updownSize,
+			MaxDailyBets:  *updownMaxDaily,
+			DBPath:        *updownDB,
+		}
+		p10 := phase10Config{
+			BTCDailyEnabled:    *btcDailyEnabled,
+			BTCDailyInterval:   *btcDailyInterval,
+			BTCDailyMinEdge:    *btcDailyMinEdge,
+			ElonEnabled:        *elonEnabled,
+			ElonInterval:       *elonInterval,
+			ElonMinEdge:        *elonMinEdge,
+			EurovisionEnabled:  *eurovisionEnabled,
+			EurovisionInterval: *eurovisionInterval,
+			EurovisionMinEdge:  *eurovisionMinEdge,
+		}
+		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, injCfg, whaleCfg, *confirmDelay, btcCfg, updownCfg, p10, *liveTrading, *fadeMode, *walletsFile, *copytradeSize, *walletTiersFile, *initialCapital, *minTier); err != nil && ctx.Err() == nil {
 			slog.Error("detect failed", "err", err)
 			os.Exit(1)
 		}
@@ -252,7 +237,7 @@ func main() {
 			os.Exit(1)
 		}
 	case "arb-scan":
-		if err := runArbScan(ctx, *arbDBPath, *arbMinGapPP); err != nil {
+		if err := runArbScan(ctx); err != nil {
 			slog.Error("arb-scan failed", "err", err)
 			os.Exit(1)
 		}
@@ -278,12 +263,15 @@ func runDiscover(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	mkts := feed.FilterSports(all)
+	followMkts := feed.FilterFollowTargets(all)
+	mkts := feed.FilterTradablePriceBand(followMkts, followMinEntryPrice, followMaxEntryPrice)
 	slog.Info("gamma.discover",
 		"total_active", len(all),
-		"sports", len(mkts),
+		"follow_targets", len(mkts),
 		"lol", len(feed.FilterLoL(all)),
-		"nba_epl_playoffs", len(mkts)-len(feed.FilterLoL(all)),
+		"basketball", countBy(mkts, feed.IsBasketballMarket),
+		"football", countBy(mkts, feed.IsFootballMarket),
+		"dota2", countBy(mkts, feed.IsDota2Market),
 	)
 	for _, m := range mkts {
 		tokens := m.ClobTokenIDs()
@@ -306,9 +294,10 @@ func runFeed(ctx context.Context, topN int) error {
 	if err != nil {
 		return err
 	}
-	mkts := feed.FilterSports(all)
+	followMkts := feed.FilterFollowTargets(all)
+	mkts := feed.FilterTradablePriceBand(followMkts, followMinEntryPrice, followMaxEntryPrice)
 	if len(mkts) == 0 {
-		return fmt.Errorf("no active sports markets")
+		return fmt.Errorf("no active follow-target sports markets")
 	}
 	if topN > len(mkts) {
 		topN = len(mkts)
@@ -379,9 +368,10 @@ func runSample(ctx context.Context, topN, windowSec int) error {
 	if err != nil {
 		return err
 	}
-	mkts := feed.FilterSports(all)
+	followMkts := feed.FilterFollowTargets(all)
+	mkts := feed.FilterTradablePriceBand(followMkts, followMinEntryPrice, followMaxEntryPrice)
 	if len(mkts) == 0 {
-		return fmt.Errorf("no active sports markets")
+		return fmt.Errorf("no active follow-target sports markets")
 	}
 	if topN > len(mkts) {
 		topN = len(mkts)
@@ -469,26 +459,79 @@ type phase10Config struct {
 	EurovisionMinEdge  float64
 }
 
-func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, arbEnabled bool, arbInterval time.Duration, arbMinGapPP float64, arbDBPath string, injCfg injury.Config, whaleCfg whale.Config, oddsPapiCfg odds.OddsPapiConfig, confirmDelay time.Duration, btcCfg btc.StrategyConfig, updownCfg btc.UpDownConfig, p10 phase10Config, liveTrading bool, fadeMode bool, walletsFile string, copytradeSize float64, walletTiersFile string, initialCapital float64, minTierFilter string) error {
+type walletFileMeta struct {
+	List            string
+	Tier            string
+	SmartMoneyScore float64
+	BotScore        float64
+}
+
+func momentumSignalsEnabledForMode(signalMode string) bool {
+	return signalMode != "copytrade" && signalMode != "whale"
+}
+
+func lotteryScannerEnabledForMode(signalMode string, lotteryEnabled bool) bool {
+	return lotteryEnabled && signalMode != "copytrade" && signalMode != "whale"
+}
+
+func drainSamplerTicks(ctx context.Context, sampler *feed.Sampler) {
+	ticks := sampler.Ticks()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case _, ok := <-ticks:
+			if !ok {
+				return
+			}
+		}
+	}
+}
+
+func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, injCfg injury.Config, whaleCfg whale.Config, confirmDelay time.Duration, btcCfg btc.StrategyConfig, updownCfg btc.UpDownConfig, p10 phase10Config, liveTrading bool, fadeMode bool, walletsFile string, copytradeSize float64, walletTiersFile string, initialCapital float64, minTierFilter string) error {
 	if signalMode != "auto" && signalMode != "prompt" && signalMode != "whale" && signalMode != "copytrade" {
 		return fmt.Errorf("invalid signal_mode %q (want auto|prompt|whale|copytrade)", signalMode)
 	}
 	if exitMode != "hold" && exitMode != "auto" && exitMode != "ladder" {
 		return fmt.Errorf("invalid exit_mode %q (want hold|auto|ladder)", exitMode)
 	}
-	// Load wallet tiers for copytrade gradient sizing
+	momentumSignalsEnabled := momentumSignalsEnabledForMode(signalMode)
+	lotteryScannerEnabled := lotteryScannerEnabledForMode(signalMode, lotteryEnabled)
+	// Load wallet metadata for copytrade gradient sizing and bot/smart-money gates.
+	type walletMeta struct {
+		Tier            string   `json:"tier"`
+		FollowAction    string   `json:"follow_action"`
+		SmartMoneyScore float64  `json:"smart_money_score"`
+		BotScore        float64  `json:"bot_score"`
+		RiskFlags       []string `json:"risk_flags"`
+	}
 	walletTiers := map[string]string{}
+	walletMetas := map[string]walletMeta{}
 	if walletTiersFile != "" {
 		raw, err := os.ReadFile(walletTiersFile)
 		if err != nil {
 			slog.Warn("wallet_tiers_load_fail", "file", walletTiersFile, "err", err)
 		} else {
-			var parsed map[string]struct{ Tier string `json:"tier"` }
+			var parsed map[string]struct {
+				Tier            string   `json:"tier"`
+				FollowAction    string   `json:"follow_action"`
+				SmartMoneyScore float64  `json:"smart_money_score"`
+				BotScore        float64  `json:"bot_score"`
+				RiskFlags       []string `json:"risk_flags"`
+			}
 			if err := json.Unmarshal(raw, &parsed); err != nil {
 				slog.Warn("wallet_tiers_parse_fail", "err", err)
 			} else {
 				for addr, info := range parsed {
-					walletTiers[strings.ToLower(addr)] = info.Tier
+					key := strings.ToLower(addr)
+					walletTiers[key] = info.Tier
+					walletMetas[key] = walletMeta{
+						Tier:            info.Tier,
+						FollowAction:    info.FollowAction,
+						SmartMoneyScore: info.SmartMoneyScore,
+						BotScore:        info.BotScore,
+						RiskFlags:       info.RiskFlags,
+					}
 				}
 				tierCounts := map[string]int{}
 				for _, t := range walletTiers {
@@ -498,13 +541,51 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 			}
 		}
 	}
+	walletFileMetas := map[string]walletFileMeta{}
+	if walletsFile != "" {
+		metas, err := loadWalletFileMetas(walletsFile)
+		if err != nil {
+			slog.Warn("wallet_file_meta_load_fail", "file", walletsFile, "err", err)
+		} else {
+			walletFileMetas = metas
+			listCounts := map[string]int{}
+			for _, meta := range metas {
+				listCounts[meta.List]++
+			}
+			slog.Info("wallet_file_meta_loaded",
+				"file", walletsFile,
+				"core", listCounts["core"],
+				"watch", listCounts["watch"],
+				"sports", listCounts["sports"],
+				"scout", listCounts["scout"],
+				"target", listCounts["target"],
+				"flow", listCounts["flow"],
+				"tape", listCounts["tape"],
+				"other", listCounts[""],
+			)
+		}
+	}
+	copytradeAutoAllowed := func(wallet string) (bool, string) {
+		meta := walletMetas[strings.ToLower(wallet)]
+		if meta.FollowAction == "" {
+			return true, "legacy_tier_file"
+		}
+		if meta.FollowAction == "auto-small" {
+			return true, meta.FollowAction
+		}
+		return false, meta.FollowAction
+	}
 	copytradeForWallet := func(wallet string) float64 {
 		tier := walletTiers[strings.ToLower(wallet)]
+		meta := walletMetas[strings.ToLower(wallet)]
+		if meta.FollowAction == "auto-small" && meta.SmartMoneyScore >= 80 {
+			return 20.0
+		}
 		switch tier {
 		case "A":
-			return 20.0
-		case "B":
 			return 10.0
+		case "B":
+			return 5.0
 		default:
 			return copytradeSize
 		}
@@ -533,9 +614,10 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 	if err != nil {
 		return err
 	}
-	mkts := feed.FilterSports(all)
+	followMkts := feed.FilterFollowTargets(all)
+	mkts := feed.FilterTradablePriceBand(followMkts, followMinEntryPrice, followMaxEntryPrice)
 	if len(mkts) == 0 {
-		return fmt.Errorf("no active sports markets")
+		return fmt.Errorf("no active follow-target sports markets")
 	}
 	if topN > len(mkts) {
 		topN = len(mkts)
@@ -560,6 +642,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 	}
 	slog.Info("detect.start",
 		"markets", len(mkts),
+		"follow_targets_before_price", len(followMkts),
 		"lol", countBy(mkts, feed.IsLoLMarket),
 		"dota2", countBy(mkts, feed.IsDota2Market),
 		"basketball", countBy(mkts, feed.IsBasketballMarket),
@@ -708,7 +791,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 		"large_fill_usd", largeFillUSD,
 	)
 	slog.Info("signal_mode.ready", "mode", signalMode)
-	if lotteryEnabled {
+	if lotteryScannerEnabled {
 		slog.Info("lottery.ready",
 			"min_price", lotteryCfg.MinPrice,
 			"max_price", lotteryCfg.MaxPrice,
@@ -716,6 +799,8 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 			"size_usd", lotteryCfg.SizeUSD,
 			"scan_interval", lotteryCfg.ScanInterval.String(),
 		)
+	} else if lotteryEnabled {
+		slog.Info("lottery.disabled_for_signal_mode", "mode", signalMode)
 	}
 	slog.Info("exit_mode.ready",
 		"mode", exitMode,
@@ -737,7 +822,14 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 	if sidecarChat == "" {
 		sidecarChat = os.Getenv("TELEGRAM_CHAT_ID")
 	}
-	if sidecarToken != "" && sidecarChat != "" {
+	enableSidecarLongPoll := signalMode != "copytrade" && signalMode != "whale"
+	if signalMode == "copytrade" && os.Getenv("COPYTRADE_LONGPOLL") == "1" {
+		enableSidecarLongPoll = true
+	}
+	if signalMode == "whale" && os.Getenv("WHALE_LONGPOLL") == "1" {
+		enableSidecarLongPoll = true
+	}
+	if sidecarToken != "" && sidecarChat != "" && enableSidecarLongPoll {
 		chatID, err := strconv.ParseInt(sidecarChat, 10, 64)
 		if err != nil {
 			slog.Warn("sidecar_chat_id_parse_fail", "err", err.Error())
@@ -771,6 +863,8 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				}
 			}()
 		}
+	} else if (signalMode == "copytrade" || signalMode == "whale") && !enableSidecarLongPoll {
+		slog.Info("sidecar_longpoll.skip", "mode", signalMode, "reason", "push_only")
 	} else if signalMode == "prompt" {
 		slog.Warn("signal_mode_prompt_without_sidecar",
 			"hint", "prompt mode needs SIDECAR_BOT_TOKEN + chat_id — buttons will arrive but clicks won't be consumed")
@@ -849,8 +943,8 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					_ = os.Remove(adminResume)
 					rm.Resume()
 					if err := rm.SaveState(riskStatePath); err != nil {
-							slog.Warn("risk_save_err", "err", err)
-						}
+						slog.Warn("risk_save_err", "err", err)
+					}
 					slog.Info("risk_admin_resume", "by", "trigger_file")
 					notifier.RiskResume(notify.RiskResumeEvent{})
 				}
@@ -863,11 +957,16 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 			slog.Error("sampler exited", "err", err)
 		}
 	}()
-	go func() {
-		if err := det.Run(ctx); err != nil && ctx.Err() == nil {
-			slog.Error("detector exited", "err", err)
-		}
-	}()
+	if momentumSignalsEnabled {
+		go func() {
+			if err := det.Run(ctx); err != nil && ctx.Err() == nil {
+				slog.Error("detector exited", "err", err)
+			}
+		}()
+	} else {
+		slog.Info("momentum_detector.disabled_for_signal_mode", "mode", signalMode)
+		go drainSamplerTicks(ctx, sampler)
+	}
 
 	// Fan-out ticks to the exit tracker (only tracks opened positions).
 	// Uses a fresh Sampler subscription via a side goroutine: we tap the detector's
@@ -956,8 +1055,8 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 								})
 							}
 							if err := rm.SaveState(riskStatePath); err != nil {
-							slog.Warn("risk_save_err", "err", err)
-						}
+								slog.Warn("risk_save_err", "err", err)
+							}
 						}
 						if netPnL <= -largeFillUSD || netPnL >= largeFillUSD {
 							notifier.LargeFill(notify.LargeFillEvent{
@@ -1125,8 +1224,8 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 								})
 							}
 							if err := rm.SaveState(riskStatePath); err != nil {
-							slog.Warn("risk_save_err", "err", err)
-						}
+								slog.Warn("risk_save_err", "err", err)
+							}
 						}
 						if netPnL <= -largeFillUSD || netPnL >= largeFillUSD {
 							notifier.LargeFill(notify.LargeFillEvent{
@@ -1257,8 +1356,8 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				if !ok {
 					return
 				}
-				if signalMode == "copytrade" {
-					slog.Debug("momentum_skip_copytrade", "asset", short(sig.AssetID))
+				if !momentumSignalsEnabled {
+					slog.Debug("momentum_skip_signal_mode", "mode", signalMode, "asset", short(sig.AssetID))
 					continue
 				}
 				slog.Info("signal",
@@ -1271,7 +1370,6 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					"buy_ratio", sig.BuyRatio,
 					"reason", sig.Reason,
 				)
-				// Whale + momentum run as union — both signal sources active.
 				// Risk gate first — daily-loss breaker / feed-silence / manual pause.
 				if err := rm.AllowOpen(time.Now()); err != nil {
 					st := rm.State()
@@ -1575,7 +1673,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 	for _, p := range pm.Snapshot() {
 		lotteryOpen[p.AssetID] = true
 	}
-	if lotteryEnabled && signalMode != "copytrade" {
+	if lotteryScannerEnabled {
 		go func() {
 			tk := time.NewTicker(lotteryCfg.ScanInterval)
 			defer tk.Stop()
@@ -1659,8 +1757,8 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 							continue
 						}
 						if err := pm.SetOpenFee(pos.ID, res.FeeUSD); err != nil {
-					slog.Warn("set_open_fee_err", "pos", pos.ID, "err", err)
-				}
+							slog.Warn("set_open_fee_err", "pos", pos.ID, "err", err)
+						}
 						savePositions()
 						lotteryOpen[c.AssetID] = true
 						src.Mark(pos.ID, "lottery", res.OrderID)
@@ -1682,177 +1780,6 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				}
 			}
 		}()
-	}
-
-	// Arb scanner: periodic cross-venue price comparison (Polymarket vs bookmaker odds).
-	// Runs on arbInterval cadence, stores snapshots to SQLite, logs opportunities.
-	if arbEnabled {
-		arbStore, arbErr := arb.NewStore(arbDBPath)
-		if arbErr != nil {
-			slog.Warn("arb_store_init_fail", "err", arbErr.Error(), "path", arbDBPath)
-		} else {
-			oddsClient := odds.NewClient("", "")
-			scanCfg := arb.DefaultScanConfig()
-			scanCfg.MinGapPP = arbMinGapPP
-			scanner := arb.NewScanner(oddsClient, arbStore, scanCfg)
-			go func() {
-				defer arbStore.Close()
-				// Run one scan immediately on startup.
-				slog.Info("arb_scanner.ready", "interval", arbInterval.String(), "min_gap_pp", arbMinGapPP, "db", arbDBPath)
-				opps, err := scanner.Scan(ctx)
-				if err != nil {
-					slog.Warn("arb_scan_fail", "err", err.Error())
-				} else {
-					usage := oddsClient.Usage()
-					slog.Info("arb_scan_done", "opportunities", len(opps),
-						"api_remaining", usage.RequestsRemaining, "api_used", usage.RequestsUsed,
-						"db_rows", arbStore.Count())
-					for _, o := range opps {
-						slog.Info("arb_opportunity",
-							"sport", o.Sport,
-							"event", o.EventName,
-							"dir", o.Direction,
-							"gap_pp", o.GapPP,
-							"net_ev_pp", o.NetEvPP,
-							"poly", o.PolymarketPrice,
-							"bk_prob", o.BookmakerProb,
-							"market", o.MarketTitle,
-						)
-					}
-				}
-				tk := time.NewTicker(arbInterval)
-				defer tk.Stop()
-				for {
-					select {
-					case <-ctx.Done():
-						return
-					case <-tk.C:
-						opps, err := scanner.Scan(ctx)
-						if err != nil {
-							slog.Warn("arb_scan_fail", "err", err.Error())
-							continue
-						}
-						usage := oddsClient.Usage()
-						slog.Info("arb_scan_done", "opportunities", len(opps),
-							"api_remaining", usage.RequestsRemaining, "api_used", usage.RequestsUsed,
-							"db_rows", arbStore.Count())
-						for _, o := range opps {
-							slog.Info("arb_opportunity",
-								"sport", o.Sport,
-								"event", o.EventName,
-								"dir", o.Direction,
-								"gap_pp", o.GapPP,
-								"net_ev_pp", o.NetEvPP,
-								"poly", o.PolymarketPrice,
-								"bk_prob", o.BookmakerProb,
-								"market", o.MarketTitle,
-							)
-						}
-					}
-				}
-			}()
-		}
-	}
-
-	// OddsPapi high-frequency sharp-line scanner (Pinnacle / bet365).
-	// Runs independently from the Odds API scanner at higher frequency,
-	// targeting football (EPL, UCL, La Liga) with sharp bookmaker lines.
-	if oddsPapiCfg.Enabled {
-		papiClient := odds.NewOddsPapiClient("", oddsPapiCfg.Bookmaker, "")
-		if !papiClient.HasKey() {
-			slog.Warn("oddspapi_disabled_no_key", "env", "ODDSPAPI_API_KEY")
-		} else {
-			arbStoreP, arbErrP := arb.NewStore(arbDBPath)
-			if arbErrP != nil {
-				slog.Warn("oddspapi_store_init_fail", "err", arbErrP.Error())
-			} else {
-				scanCfgP := arb.DefaultScanConfig()
-				scanCfgP.MinGapPP = arbMinGapPP
-				scanCfgP.MinBookCount = 1 // single bookmaker, no consensus needed
-				scannerP := arb.NewScanner(nil, arbStoreP, scanCfgP)
-				go func() {
-					defer arbStoreP.Close()
-					slog.Info("oddspapi_scanner.ready",
-						"interval", oddsPapiCfg.Interval.String(),
-						"bookmaker", oddsPapiCfg.Bookmaker,
-						"sports", oddsPapiCfg.SportKeys,
-					)
-					// Immediate scan on startup.
-					papiOdds, err := papiClient.FetchFootballOdds(ctx, oddsPapiCfg.SportKeys)
-					if err != nil {
-						slog.Warn("oddspapi_scan_fail", "err", err.Error())
-					} else if len(papiOdds) > 0 {
-						opps, err := scannerP.ScanWithOdds(ctx, papiOdds, "oddspapi/"+oddsPapiCfg.Bookmaker)
-						if err != nil {
-							slog.Warn("oddspapi_match_fail", "err", err.Error())
-						} else {
-							usage := papiClient.Usage()
-							slog.Info("oddspapi_scan_done",
-								"opportunities", len(opps),
-								"odds_items", len(papiOdds),
-								"api_remaining", usage.RequestsRemaining,
-								"api_used", usage.RequestsUsed,
-							)
-							for _, o := range opps {
-								slog.Info("oddspapi_opportunity",
-									"sport", o.Sport,
-									"event", o.EventName,
-									"dir", o.Direction,
-									"gap_pp", o.GapPP,
-									"net_ev_pp", o.NetEvPP,
-									"poly", o.PolymarketPrice,
-									"bk_prob", o.BookmakerProb,
-									"bk", o.Bookmaker,
-									"market", o.MarketTitle,
-								)
-							}
-						}
-					}
-					tk := time.NewTicker(oddsPapiCfg.Interval)
-					defer tk.Stop()
-					for {
-						select {
-						case <-ctx.Done():
-							return
-						case <-tk.C:
-							papiOdds, err := papiClient.FetchFootballOdds(ctx, oddsPapiCfg.SportKeys)
-							if err != nil {
-								slog.Warn("oddspapi_scan_fail", "err", err.Error())
-								continue
-							}
-							if len(papiOdds) == 0 {
-								continue
-							}
-							opps, err := scannerP.ScanWithOdds(ctx, papiOdds, "oddspapi/"+oddsPapiCfg.Bookmaker)
-							if err != nil {
-								slog.Warn("oddspapi_match_fail", "err", err.Error())
-								continue
-							}
-							usage := papiClient.Usage()
-							slog.Info("oddspapi_scan_done",
-								"opportunities", len(opps),
-								"odds_items", len(papiOdds),
-								"api_remaining", usage.RequestsRemaining,
-								"api_used", usage.RequestsUsed,
-							)
-							for _, o := range opps {
-								slog.Info("oddspapi_opportunity",
-									"sport", o.Sport,
-									"event", o.EventName,
-									"dir", o.Direction,
-									"gap_pp", o.GapPP,
-									"net_ev_pp", o.NetEvPP,
-									"poly", o.PolymarketPrice,
-									"bk_prob", o.BookmakerProb,
-									"bk", o.Bookmaker,
-									"market", o.MarketTitle,
-								)
-							}
-						}
-					}
-				}()
-			}
-		}
 	}
 
 	// NBA injury scanner: periodic ESPN API poll + DM notification.
@@ -1951,20 +1878,33 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 	var whaleLogMu sync.Mutex
 	whaleLogPath := filepath.Join(journalDir, "whale_trades.jsonl")
 	appendWhaleTrade := func(ev whale.AlertEvent, action, reason string) {
+		walletKey := strings.ToLower(ev.Wallet)
+		fileMeta := walletFileMetas[walletKey]
+		tier := fileMeta.Tier
+		if tier == "" {
+			tier = walletTiers[walletKey]
+		}
 		rec := map[string]interface{}{
-			"ts":       ev.Timestamp.In(journal.SGT).Format(time.RFC3339),
-			"wallet":   ev.Wallet,
-			"label":    ev.Label,
-			"side":     ev.Side,
-			"market":   ev.Question,
-			"outcome":  ev.Outcome,
-			"price":    ev.Price,
-			"size":     ev.Notional,
-			"units":    ev.SizeUnits,
-			"asset_id": ev.AssetID,
-			"trade_id": ev.TradeID,
-			"action":   action,
-			"reason":   reason,
+			"ts":           ev.Timestamp.In(journal.SGT).Format(time.RFC3339),
+			"wallet":       ev.Wallet,
+			"label":        ev.Label,
+			"side":         ev.Side,
+			"market":       ev.Question,
+			"outcome":      ev.Outcome,
+			"price":        ev.Price,
+			"size":         ev.Notional,
+			"units":        ev.SizeUnits,
+			"asset_id":     ev.AssetID,
+			"condition_id": ev.ConditionID,
+			"trade_id":     ev.TradeID,
+			"action":       action,
+			"reason":       reason,
+			"mode":         signalMode,
+			"wallets":      walletsFile,
+			"list":         fileMeta.List,
+			"tier":         tier,
+			"smart":        fileMeta.SmartMoneyScore,
+			"bot":          fileMeta.BotScore,
 		}
 		line, _ := json.Marshal(rec)
 		whaleLogMu.Lock()
@@ -2014,7 +1954,208 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 	// In whale signal_mode: BUY → SignalPrompt with buttons (boss clicks to follow);
 	// SELL → auto-close matching positions.
 	if whaleCfg.Enabled {
+		whaleRepeatCooldown := 3 * time.Minute
+		if raw := strings.TrimSpace(os.Getenv("WHALE_REPEAT_COOLDOWN")); raw != "" {
+			d, err := time.ParseDuration(raw)
+			if err != nil {
+				slog.Warn("invalid WHALE_REPEAT_COOLDOWN", "value", raw, "err", err)
+			} else {
+				whaleRepeatCooldown = d
+			}
+		}
+		whaleRepeatMinUSD := 0.0
+		if raw := strings.TrimSpace(os.Getenv("WHALE_REPEAT_MIN_USD")); raw != "" {
+			v, err := strconv.ParseFloat(raw, 64)
+			if err != nil {
+				slog.Warn("invalid WHALE_REPEAT_MIN_USD", "value", raw, "err", err)
+			} else {
+				whaleRepeatMinUSD = v
+			}
+		}
+		whaleEventCooldown := 6 * time.Hour
+		if raw := strings.TrimSpace(os.Getenv("WHALE_EVENT_COOLDOWN")); raw != "" {
+			d, err := time.ParseDuration(raw)
+			if err != nil {
+				slog.Warn("invalid WHALE_EVENT_COOLDOWN", "value", raw, "err", err)
+			} else {
+				whaleEventCooldown = d
+			}
+		}
+		whaleEventRepeatMinUSD := 50000.0
+		if raw := strings.TrimSpace(os.Getenv("WHALE_EVENT_REPEAT_MIN_USD")); raw != "" {
+			v, err := strconv.ParseFloat(raw, 64)
+			if err != nil {
+				slog.Warn("invalid WHALE_EVENT_REPEAT_MIN_USD", "value", raw, "err", err)
+			} else {
+				whaleEventRepeatMinUSD = v
+			}
+		}
+		whaleConfirmLists := parseCSVSet(os.Getenv("WHALE_CONFIRM_LISTS"))
+		if len(whaleConfirmLists) == 0 {
+			whaleConfirmLists = parseCSVSet("watch,scout,target,tape,sports")
+		}
+		whaleConfirmWindow := 30 * time.Minute
+		if raw := strings.TrimSpace(os.Getenv("WHALE_CONFIRM_WINDOW")); raw != "" {
+			d, err := time.ParseDuration(raw)
+			if err != nil {
+				slog.Warn("invalid WHALE_CONFIRM_WINDOW", "value", raw, "err", err)
+			} else {
+				whaleConfirmWindow = d
+			}
+		}
+		whaleConfirmMinWallets := 2
+		if raw := strings.TrimSpace(os.Getenv("WHALE_CONFIRM_MIN_WALLETS")); raw != "" {
+			v, err := strconv.Atoi(raw)
+			if err != nil {
+				slog.Warn("invalid WHALE_CONFIRM_MIN_WALLETS", "value", raw, "err", err)
+			} else {
+				whaleConfirmMinWallets = v
+			}
+		}
+		whaleConfirmBypassUSD := 5000.0
+		if raw := strings.TrimSpace(os.Getenv("WHALE_CONFIRM_BYPASS_USD")); raw != "" {
+			v, err := strconv.ParseFloat(raw, 64)
+			if err != nil {
+				slog.Warn("invalid WHALE_CONFIRM_BYPASS_USD", "value", raw, "err", err)
+			} else {
+				whaleConfirmBypassUSD = v
+			}
+		}
+		whaleConfirmMaxWorsePrice := 0.02
+		if raw := strings.TrimSpace(os.Getenv("WHALE_CONFIRM_MAX_WORSE_PRICE")); raw != "" {
+			v, err := strconv.ParseFloat(raw, 64)
+			if err != nil {
+				slog.Warn("invalid WHALE_CONFIRM_MAX_WORSE_PRICE", "value", raw, "err", err)
+			} else {
+				whaleConfirmMaxWorsePrice = v
+			}
+		}
+		slog.Info("whale_consensus_config",
+			"lists", sortedSetKeys(whaleConfirmLists),
+			"window", whaleConfirmWindow.String(),
+			"min_wallets", whaleConfirmMinWallets,
+			"bypass_usd", whaleConfirmBypassUSD,
+			"max_worse_price", whaleConfirmMaxWorsePrice,
+		)
+		whaleEdgeSnapshots := strings.TrimSpace(os.Getenv("WHALE_EDGE_SNAPSHOTS"))
+		if whaleEdgeSnapshots == "" {
+			whaleEdgeSnapshots = "db/strategy_iteration/whale_edge_snapshots.jsonl"
+		}
+		whaleEdgeTTL := 60 * time.Second
+		if raw := strings.TrimSpace(os.Getenv("WHALE_EDGE_BLOCK_REFRESH")); raw != "" {
+			d, err := time.ParseDuration(raw)
+			if err != nil {
+				slog.Warn("invalid WHALE_EDGE_BLOCK_REFRESH", "value", raw, "err", err)
+			} else {
+				whaleEdgeTTL = d
+			}
+		}
+		whaleEdgeBlocker := newWhaleEdgeBlockCache(whaleEdgeSnapshots, whaleEdgeBlockConfig{
+			Min15mSamples:  parseWhaleEnvInt("WHALE_EDGE_BLOCK_15M_SAMPLES", 2),
+			Max15mAvgPP:    parseWhaleEnvFloat("WHALE_EDGE_BLOCK_15M_MAX_AVG_PP", -1),
+			Min1hSamples:   parseWhaleEnvInt("WHALE_EDGE_BLOCK_1H_SAMPLES", 1),
+			Max1hAvgPP:     parseWhaleEnvFloat("WHALE_EDGE_BLOCK_1H_MAX_AVG_PP", -5),
+			HotMinUSD:      parseWhaleEnvFloat("WHALE_EDGE_HOT_MIN_USD", 750),
+			HotMinSamples:  parseWhaleEnvInt("WHALE_EDGE_HOT_MIN_SAMPLES", 2),
+			HotMinAvgPP:    parseWhaleEnvFloat("WHALE_EDGE_HOT_MIN_AVG_PP", 2),
+			HotMinWinRate:  parseWhaleEnvFloat("WHALE_EDGE_HOT_MIN_WIN_RATE", 60),
+			HotMin5mAvgPP:  parseWhaleEnvFloat("WHALE_EDGE_HOT_MIN_5M_AVG_PP", 0.5),
+			HotMin15mAvgPP: parseWhaleEnvFloat("WHALE_EDGE_HOT_MIN_15M_AVG_PP", 0),
+			HotMax1hNegPP:  parseWhaleEnvFloat("WHALE_EDGE_HOT_MAX_1H_NEG_PP", -5),
+			Refresh:        whaleEdgeTTL,
+		})
+		if reason, ok := whaleEdgeBlocker.Reason(""); ok {
+			slog.Warn("whale_edge_block_init", "reason", reason)
+		} else {
+			slog.Info("whale_edge_block_config",
+				"snapshots", whaleEdgeSnapshots,
+				"refresh", whaleEdgeTTL.String(),
+				"block_15m_samples", whaleEdgeBlocker.cfg.Min15mSamples,
+				"block_15m_max_avg_pp", whaleEdgeBlocker.cfg.Max15mAvgPP,
+				"block_1h_samples", whaleEdgeBlocker.cfg.Min1hSamples,
+				"block_1h_max_avg_pp", whaleEdgeBlocker.cfg.Max1hAvgPP,
+				"hot_min_usd", whaleEdgeBlocker.cfg.HotMinUSD,
+				"hot_min_samples", whaleEdgeBlocker.cfg.HotMinSamples,
+				"hot_min_avg_pp", whaleEdgeBlocker.cfg.HotMinAvgPP,
+				"hot_min_win_rate", whaleEdgeBlocker.cfg.HotMinWinRate,
+				"hot_min_5m_avg_pp", whaleEdgeBlocker.cfg.HotMin5mAvgPP,
+				"hot_min_15m_avg_pp", whaleEdgeBlocker.cfg.HotMin15mAvgPP,
+				"hot_max_1h_neg_pp", whaleEdgeBlocker.cfg.HotMax1hNegPP,
+			)
+		}
+		var whaleRepeatMu sync.Mutex
+		whaleRepeatLast := map[string]time.Time{}
+		shouldSuppressWhaleRepeat := func(ev whale.AlertEvent, side string) bool {
+			if signalMode != "whale" || side != "BUY" || whaleRepeatCooldown <= 0 {
+				return false
+			}
+			key := strings.ToLower(ev.Wallet) + "|" + ev.AssetID
+			whaleRepeatMu.Lock()
+			defer whaleRepeatMu.Unlock()
+			if whaleRepeatBypassesCooldown(ev.Notional, whaleRepeatMinUSD) {
+				whaleRepeatLast[key] = ev.Timestamp
+				return false
+			}
+			if last, ok := whaleRepeatLast[key]; ok && ev.Timestamp.Sub(last) < whaleRepeatCooldown {
+				return true
+			}
+			whaleRepeatLast[key] = ev.Timestamp
+			return false
+		}
+		var whaleEventMu sync.Mutex
+		whaleEventLast := map[string]time.Time{}
+		var whaleSeenMu sync.Mutex
+		whaleSeenTrades := loadWhaleSeenTradeIDs(whaleLogPath)
+		markWhaleTradeSeen := func(ev whale.AlertEvent) bool {
+			tradeID := strings.ToLower(strings.TrimSpace(ev.TradeID))
+			if tradeID == "" {
+				return true
+			}
+			key := strings.ToLower(strings.TrimSpace(ev.Wallet)) + "|" + tradeID
+			whaleSeenMu.Lock()
+			defer whaleSeenMu.Unlock()
+			if _, ok := whaleSeenTrades[key]; ok {
+				return false
+			}
+			whaleSeenTrades[key] = struct{}{}
+			return true
+		}
+		{
+			repeatSeed, eventSeed, repeatN, eventN := loadWhaleCooldownSeeds(whaleLogPath, whaleRepeatCooldown, whaleEventCooldown)
+			for k, v := range repeatSeed {
+				whaleRepeatLast[k] = v
+			}
+			for k, v := range eventSeed {
+				whaleEventLast[k] = v
+			}
+			if repeatN > 0 || eventN > 0 {
+				slog.Info("whale_cooldown_seeded", "repeat_keys", repeatN, "event_keys", eventN, "log", whaleLogPath)
+			}
+		}
+		shouldSuppressWhaleEventRepeat := func(ev whale.AlertEvent, side string) (bool, string) {
+			if signalMode != "whale" || side != "BUY" || whaleEventCooldown <= 0 {
+				return false, ""
+			}
+			event := whaleEventKey(ev.Question)
+			key := strings.ToLower(ev.Wallet) + "|" + event
+			whaleEventMu.Lock()
+			defer whaleEventMu.Unlock()
+			if whaleNotionalAtLeast(ev.Notional, whaleEventRepeatMinUSD) {
+				whaleEventLast[key] = ev.Timestamp
+				return false, event
+			}
+			if last, ok := whaleEventLast[key]; ok && ev.Timestamp.Sub(last) < whaleEventCooldown {
+				return true, event
+			}
+			whaleEventLast[key] = ev.Timestamp
+			return false, event
+		}
+		whaleConfirmGate := newWhaleConfirmGate(whaleConfirmWindow, whaleConfirmMinWallets, whaleConfirmBypassUSD, whaleConfirmMaxWorsePrice)
 		wt := whale.NewTracker(whaleCfg, func(ev whale.AlertEvent) {
+			if !markWhaleTradeSeen(ev) {
+				slog.Debug("whale_duplicate_trade_suppressed", "wallet", ev.Label, "trade_id", ev.TradeID, "market", ev.Question)
+				return
+			}
 			side := strings.ToUpper(ev.Side)
 
 			if signalMode == "copytrade" {
@@ -2036,57 +2177,10 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					PctSold:     ev.PctSold,
 				}
 
-				if ev.Price < 0.05 || ev.Price > 0.95 {
+				if ev.Price < followMinEntryPrice || ev.Price > followMaxEntryPrice {
 					appendWhaleTrade(ev, "skip", "price_filtered")
 					slog.Info("copytrade_price_filtered", "wallet", ev.Label, "price", ev.Price, "market", ev.Question)
 					return
-				}
-
-				isAllowedMarket := func(q string) bool {
-					lower := strings.ToLower(q)
-					keywords := []string{
-						// Basketball
-						"nba", "wnba",
-						// Soccer/Football
-						"epl", "la liga", "bundesliga", "serie a", "ligue 1",
-						"premier league", "champions league", "ucl", "uefa", "fifa",
-						"copa ", "concacaf", "conmebol", "eredivisie", "liga mx",
-						"fútbol", "futbol", "football", "soccer", "mls",
-						// Tennis
-						"atp", "wta", "grand slam", "roland garros", "wimbledon",
-						// Esports
-						"lol", "lck", "lpl", "lec", "lcs", "dota", "cs2", "csgo", "valorant", "esport",
-						"handicap",
-						// UFC/MMA
-						"ufc", "mma", "boxing", "bellator", "pfl", "one championship",
-						// NFL
-						"nfl", "afc", "nfc", "touchdown", "quarterback",
-						// MLB
-						"mlb", "baseball",
-						// NHL
-						"nhl", "hockey",
-						// F1 / Motorsport
-						"formula 1", "f1 ", "grand prix", "motogp", "nascar", "indycar",
-						// Golf
-						"golf", "pga", "masters", "the open", "ryder cup",
-						// Cricket
-						"cricket", "ipl", "t20", "test match", "ashes",
-						// Rugby
-						"rugby", "six nations", "world rugby",
-						// Sports formats
-						"spread:", "total points",
-						"world series", "super bowl", "stanley cup", "world cup",
-					}
-					for _, k := range keywords {
-						if strings.Contains(lower, k) {
-							return true
-						}
-					}
-					// "Will X win on YYYY-MM-DD?" — common PM daily sports format
-					if strings.Contains(lower, " win on 2") {
-						return true
-					}
-					return false
 				}
 
 				switch side {
@@ -2115,13 +2209,37 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 							return
 						}
 					}
-					// A-tier wallet passed filter — mark alert with strong recommendation
+					autoAllowed, followAction := copytradeAutoAllowed(ev.Wallet)
+					if !autoAllowed {
+						appendWhaleTrade(ev, "skip", "follow_action:"+followAction)
+						slog.Info("copytrade_follow_action_filtered",
+							"wallet", ev.Label,
+							"action", followAction,
+							"tier", walletTiers[strings.ToLower(ev.Wallet)],
+							"market", ev.Question,
+						)
+						alert := baseAlert
+						label := ev.Label
+						if label == "" {
+							label = ev.Wallet
+						}
+						alert.Label = fmt.Sprintf("👀 [%s] %s", followAction, label)
+						notifier.WhaleAlert(alert)
+						return
+					}
+					if ok, filterReason := targetFollowMarketDecision(ev.Question, ev.Slug); !ok {
+						appendWhaleTrade(ev, "skip", filterReason)
+						slog.Info("copytrade_market_filtered", "wallet", ev.Label, "reason", filterReason, "market", ev.Question, "slug", ev.Slug)
+						return
+					}
+					// A-tier wallet passed smart-money gates — mark alert with strong recommendation.
 					{
 						aLabel := ev.Label
 						if aLabel == "" {
 							aLabel = ev.Wallet
 						}
-						baseAlert.Label = fmt.Sprintf("🔥💰 [强烈推荐买入] %s (Tier A)", aLabel)
+						meta := walletMetas[strings.ToLower(ev.Wallet)]
+						baseAlert.Label = fmt.Sprintf("🔥💰 [自动小额] %s (Tier A · smart %.1f)", aLabel, meta.SmartMoneyScore)
 					}
 					// Extra DM via sidecar bot so A-tier alerts don't get buried
 					aTierMsg := fmt.Sprintf("🔥💰 A级鲸鱼下单\n%s · %s\n💰 %.0f shares @ %.4f = $%.0f\n🐋 %s\n%s",
@@ -2129,12 +2247,6 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						ev.SizeUnits, ev.Price, ev.Notional,
 						baseAlert.Label, ev.LinkURL)
 					notifier.SidecarAlert(aTierMsg)
-					notifier.MonitorAlert(aTierMsg)
-					if !isAllowedMarket(ev.Question) {
-						appendWhaleTrade(ev, "skip", "category_filtered")
-						slog.Info("copytrade_category_filtered", "wallet", ev.Label, "market", ev.Question)
-						return
-					}
 					isNegRisk := true
 					if meta, ok := lookupMarketMeta(ev.ConditionID); ok {
 						isNegRisk = meta.NegRisk
@@ -2381,6 +2493,104 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				}
 			}
 
+			meta := walletFileMetas[strings.ToLower(ev.Wallet)]
+			if ok, filterReason := whaleMarketDecision(ev.Question, ev.Slug, meta.List); !ok {
+				appendWhaleTrade(ev, "skip", filterReason)
+				slog.Info("whale_market_filtered", "wallet", ev.Label, "reason", filterReason, "market", ev.Question, "slug", ev.Slug)
+				return
+			}
+			if ok, filterReason := whalePriceDecision(side, ev.Price); !ok {
+				appendWhaleTrade(ev, "skip", filterReason)
+				slog.Info("whale_price_filtered", "wallet", ev.Label, "side", side, "price", ev.Price, "market", ev.Question)
+				return
+			}
+			if side == "BUY" && signalMode == "whale" {
+				if reason, blocked := whaleEdgeBlocker.Reason(ev.Wallet); blocked {
+					appendWhaleTrade(ev, "skip", "edge_blocked:"+reason)
+					slog.Info("whale_edge_blocked",
+						"wallet", ev.Label,
+						"reason", reason,
+						"market", ev.Question,
+						"notional", ev.Notional,
+					)
+					return
+				}
+			}
+
+			if shouldSuppressWhaleRepeat(ev, side) {
+				appendWhaleTrade(ev, "cooldown", fmt.Sprintf("repeat_within:%s", whaleRepeatCooldown))
+				slog.Info("whale_repeat_suppressed",
+					"wallet", ev.Label,
+					"asset", short(ev.AssetID),
+					"notional", ev.Notional,
+					"cooldown", whaleRepeatCooldown.String(),
+					"repeat_min_usd", whaleRepeatMinUSD,
+				)
+				return
+			}
+
+			if suppressed, event := shouldSuppressWhaleEventRepeat(ev, side); suppressed {
+				appendWhaleTrade(ev, "event_cooldown", fmt.Sprintf("event_repeat_within:%s event=%s", whaleEventCooldown, event))
+				slog.Info("whale_event_repeat_suppressed",
+					"wallet", ev.Label,
+					"event", event,
+					"asset", short(ev.AssetID),
+					"notional", ev.Notional,
+					"cooldown", whaleEventCooldown.String(),
+					"repeat_min_usd", whaleEventRepeatMinUSD,
+					"market", ev.Question,
+				)
+				return
+			}
+
+			confirmNote := ""
+			if side == "BUY" && signalMode == "whale" {
+				confirmNote = whaleDirectGateNote(meta.List)
+				if _, needsConfirmation := whaleConfirmLists[strings.ToLower(meta.List)]; needsConfirmation {
+					if hotReason, hot := whaleEdgeBlocker.HotReason(ev.Wallet); hot && whaleNotionalAtLeast(ev.Notional, whaleEdgeBlocker.cfg.HotMinUSD) {
+						confirmNote = "gate edge-hot " + hotReason
+						slog.Info("whale_consensus_edge_hot_bypass",
+							"wallet", ev.Label,
+							"list", meta.List,
+							"reason", hotReason,
+							"notional", ev.Notional,
+							"min_usd", whaleEdgeBlocker.cfg.HotMinUSD,
+							"market", ev.Question,
+						)
+					} else {
+						decision := whaleConfirmGate.Observe(ev, meta.List)
+						if !decision.Ready {
+							appendWhaleTrade(ev, "pending_consensus", decision.Reason)
+							slog.Info("whale_consensus_pending",
+								"wallet", ev.Label,
+								"list", meta.List,
+								"event", decision.Event,
+								"outcome", ev.Outcome,
+								"wallets", decision.Wallets,
+								"need", decision.Need,
+								"notional", ev.Notional,
+								"price", ev.Price,
+							)
+							return
+						}
+						confirmNote = whaleConfirmDecisionNote(decision)
+						if decision.Reason != "" {
+							slog.Info("whale_consensus_ready",
+								"wallet", ev.Label,
+								"list", meta.List,
+								"event", decision.Event,
+								"outcome", ev.Outcome,
+								"wallets", decision.Wallets,
+								"need", decision.Need,
+								"reason", decision.Reason,
+								"notional", ev.Notional,
+								"price", ev.Price,
+							)
+						}
+					}
+				}
+			}
+
 			appendWhaleTrade(ev, "alert", signalMode)
 
 			if signalMode != "whale" {
@@ -2428,13 +2638,14 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				if whaleTag == "" {
 					whaleTag = "鲸鱼"
 				}
-				ctxLine := fmt.Sprintf("🐋 %s 跟单 · $%.0f · %.0f shares", whaleTag, ev.Notional, ev.SizeUnits)
-				if ev.TotalShares > 0 {
-					ctxLine += fmt.Sprintf("\n持仓: %.0f shares (均价 $%.4f)", ev.TotalShares, ev.AvgPrice)
+				if meta := walletFileMetas[strings.ToLower(ev.Wallet)]; meta.List != "" {
+					tier := meta.Tier
+					if tier == "" {
+						tier = "?"
+					}
+					whaleTag = fmt.Sprintf("[%s · Tier %s] %s", meta.List, tier, whaleTag)
 				}
-				if ev.LinkURL != "" {
-					ctxLine += "\n" + ev.LinkURL
-				}
+				ctxLine := formatWhalePromptContext(ev, walletFileMetas[strings.ToLower(ev.Wallet)], confirmNote)
 
 				nonceSnap := p.Nonce
 				notifier.SignalPrompt(notify.SignalPromptEvent{
@@ -2742,41 +2953,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 
 	// Phase 10: Eurovision odds scanner
 	if p10.EurovisionEnabled {
-		go func() {
-			oddsKey := os.Getenv("ODDS_API_KEY")
-			if oddsKey == "" {
-				slog.Warn("eurovision_scanner.disabled", "reason", "ODDS_API_KEY not set")
-				return
-			}
-			slog.Info("eurovision_scanner.start", "interval", p10.EurovisionInterval.String(), "min_edge_pp", p10.EurovisionMinEdge)
-			tk := time.NewTicker(p10.EurovisionInterval)
-			defer tk.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-tk.C:
-					markets, err := eurovision.FetchEurovisionMarkets(ctx)
-					if err != nil {
-						slog.Warn("eurovision_fetch_err", "err", err.Error())
-						continue
-					}
-					oddsEntries, err := eurovision.FetchEurovisionOdds(ctx, oddsKey)
-					if err != nil {
-						slog.Warn("eurovision_odds_err", "err", err.Error())
-						continue
-					}
-					consensus := eurovision.ConsensusOdds(oddsEntries)
-					sigs := eurovision.EvalSignals(markets, consensus, p10.EurovisionMinEdge)
-					slog.Info("eurovision_scan", "markets", len(markets), "odds_entries", len(oddsEntries), "signals", len(sigs))
-					for _, s := range sigs {
-						msg := eurovision.FormatSignal(s)
-						slog.Info("eurovision_signal", "country", s.Market.Country, "side", s.Side, "edge_pp", fmt.Sprintf("%.1f", s.Edge*100))
-						notifier.TextAlert(msg)
-					}
-				}
-			}
-		}()
+		slog.Warn("eurovision_scanner.disabled", "reason", "third-party bookmaker odds API removed")
 	}
 
 	// Feed-silence watchdog + periodic risk snapshot. SPEC §6: >30s WSS
@@ -3087,8 +3264,6 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 			sb.WriteString(fmt.Sprintf("📊 P&L · %s SGT\n\n", time.Now().In(sgt).Format("15:04")))
 
 			if walletAddress == "" {
-				sb.WriteString("⚠️ 非实盘模式，无链上仓位\n")
-				notifier.SidecarAlert(sb.String())
 				return
 			}
 
@@ -3327,6 +3502,15 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 		}()
 	}
 
+	if signalMode == "copytrade" {
+		go func() {
+			if err := ws.Run(ctx); err != nil && ctx.Err() == nil {
+				slog.Warn("wss_run_exit", "err", err)
+			}
+		}()
+		<-ctx.Done()
+		return ctx.Err()
+	}
 	return ws.Run(ctx)
 }
 
@@ -3676,22 +3860,22 @@ func runPromptTest(ctx context.Context, _ float64) error {
 // Executes synchronously on the longpoll goroutine; Telegram dispatch of the
 // resulting DM is async via notifier.
 type buyHandler struct {
-	pm             *strategy.PositionManager
-	exit           *strategy.ExitTracker
-	ladder         *strategy.LadderTracker
-	paper          order.Client
-	rm             *risk.Manager
-	pending        *notify.PendingStore
-	closePending   *notify.CloseStore
-	notifier       notify.Notifier
-	meta           map[string]*assetMeta
-	src            *sourceTracker
-	recorder       *tickrec.Recorder
-	jrn            *journal.Journal
-	largeFillUSD   float64
-	exitMode       string
-	riskStatePath  string
-	savePositions  func()
+	pm            *strategy.PositionManager
+	exit          *strategy.ExitTracker
+	ladder        *strategy.LadderTracker
+	paper         order.Client
+	rm            *risk.Manager
+	pending       *notify.PendingStore
+	closePending  *notify.CloseStore
+	notifier      notify.Notifier
+	meta          map[string]*assetMeta
+	src           *sourceTracker
+	recorder      *tickrec.Recorder
+	jrn           *journal.Journal
+	largeFillUSD  float64
+	exitMode      string
+	riskStatePath string
+	savePositions func()
 }
 
 func (h *buyHandler) OnBuy(ctx context.Context, nonce string, slot int, sizeUSD float64, mode string, messageID int64) (string, error) {
@@ -3880,8 +4064,8 @@ func (h *buyHandler) OnClose(ctx context.Context, nonce string, messageID int64)
 				})
 			}
 			if err := h.rm.SaveState(h.riskStatePath); err != nil {
-					slog.Warn("risk_save_err", "err", err)
-				}
+				slog.Warn("risk_save_err", "err", err)
+			}
 		}
 		if netPnL <= -h.largeFillUSD || netPnL >= h.largeFillUSD {
 			h.notifier.LargeFill(notify.LargeFillEvent{
@@ -3949,7 +4133,6 @@ func (h *buyHandler) OnClose(ctx context.Context, nonce string, messageID int64)
 
 // buildNotifier returns a Telegram notifier when TELEGRAM_BOT_TOKEN + _CHAT_ID
 // are present, otherwise a Nop so the trading loop is unconditional.
-//
 func parseAvailableBalance(errMsg string) float64 {
 	// Parse: "balance: 22011730, sum of matched orders: 19986400, order amount..."
 	balIdx := strings.Index(errMsg, "balance: ")
@@ -4033,35 +4216,10 @@ func (s *sourceTracker) Take(posID string) (string, string) {
 	return e.source, e.openOrderID
 }
 
-// runArbScan runs a single arb scan cycle (one-shot CLI mode).
-func runArbScan(ctx context.Context, dbPath string, minGapPP float64) error {
-	store, err := arb.NewStore(dbPath)
-	if err != nil {
-		return fmt.Errorf("arb store: %w", err)
-	}
-	defer store.Close()
-
-	oddsClient := odds.NewClient("", "")
-	cfg := arb.DefaultScanConfig()
-	cfg.MinGapPP = minGapPP
-	scanner := arb.NewScanner(oddsClient, store, cfg)
-
-	opps, err := scanner.Scan(ctx)
-	if err != nil {
-		return err
-	}
-
-	usage := oddsClient.Usage()
-	fmt.Printf("\narb-scan: %d opportunities (min_gap=%.0fpp)\n", len(opps), minGapPP)
-	fmt.Printf("API usage: %d used, %d remaining\n", usage.RequestsUsed, usage.RequestsRemaining)
-	fmt.Printf("DB rows: %d\n\n", store.Count())
-
-	for _, o := range opps {
-		fmt.Printf("  %s | %s | %s\n", o.Sport, o.EventName, o.Direction)
-		fmt.Printf("    poly=%.3f bk=%.3f gap=%+.1fpp net_ev=%+.1fpp | %s\n",
-			o.PolymarketPrice, o.BookmakerProb, o.GapPP, o.NetEvPP, o.MarketTitle)
-	}
-	return nil
+// runArbScan used to call paid third-party bookmaker odds APIs. Keep the CLI
+// entrypoint as a clear no-op so old scripts fail safely without spending quota.
+func runArbScan(_ context.Context) error {
+	return fmt.Errorf("arb-scan disabled: third-party bookmaker odds API removed")
 }
 
 // Peek is like Take but leaves the entry in place — used for non-final
@@ -4502,4 +4660,692 @@ func injuryPushOpponentPrompt(a injury.InjuryAlert, meta map[string]*assetMeta, 
 		)
 		break
 	}
+}
+
+type whaleConfirmDecision struct {
+	Ready   bool
+	Reason  string
+	Event   string
+	Wallets int
+	Need    int
+}
+
+type whaleConfirmGate struct {
+	mu            sync.Mutex
+	window        time.Duration
+	minWallets    int
+	bypassUSD     float64
+	maxWorsePrice float64
+	events        map[string]*whaleConfirmState
+}
+
+type whaleConfirmState struct {
+	firstTime time.Time
+	minPrice  float64
+	wallets   map[string]struct{}
+}
+
+func newWhaleConfirmGate(window time.Duration, minWallets int, bypassUSD, maxWorsePrice float64) *whaleConfirmGate {
+	if minWallets <= 0 {
+		minWallets = 1
+	}
+	return &whaleConfirmGate{
+		window:        window,
+		minWallets:    minWallets,
+		bypassUSD:     bypassUSD,
+		maxWorsePrice: maxWorsePrice,
+		events:        map[string]*whaleConfirmState{},
+	}
+}
+
+func whaleDirectGateNote(list string) string {
+	list = strings.TrimSpace(strings.ToLower(list))
+	if list == "" {
+		return "gate direct"
+	}
+	return "gate " + list + " direct"
+}
+
+func whaleConfirmDecisionNote(decision whaleConfirmDecision) string {
+	if strings.Contains(decision.Reason, "bypass_notional") {
+		return "gate 5k+ bypass"
+	}
+	if decision.Ready && decision.Wallets > 0 && decision.Need > 0 && decision.Wallets >= decision.Need {
+		return fmt.Sprintf("gate %d-wallet confirmed", decision.Wallets)
+	}
+	if decision.Reason == "confirmation_disabled" {
+		return "gate disabled"
+	}
+	if decision.Reason != "" {
+		return "gate " + decision.Reason
+	}
+	return "gate confirmed"
+}
+
+func formatWhalePromptContext(ev whale.AlertEvent, meta walletFileMeta, gateNote string) string {
+	parts := []string{
+		fmt.Sprintf("$%.0f", ev.Notional),
+		fmt.Sprintf("%.0f shares", ev.SizeUnits),
+	}
+	if gateNote != "" {
+		parts = append(parts, gateNote)
+	}
+	if meta.List == "scout" {
+		parts = append(parts, "scout observe")
+	}
+	if meta.SmartMoneyScore > 0 || meta.BotScore > 0 {
+		parts = append(parts, fmt.Sprintf("S%.0f/B%.0f", meta.SmartMoneyScore, meta.BotScore))
+	}
+	if ev.TotalShares > 0 {
+		parts = append(parts, fmt.Sprintf("pos %.0f @ %.4f", ev.TotalShares, ev.AvgPrice))
+	}
+	return "🐋 " + strings.Join(parts, " · ")
+}
+
+func (g *whaleConfirmGate) Observe(ev whale.AlertEvent, list string) whaleConfirmDecision {
+	event := whaleEventKey(ev.Question)
+	need := g.minWallets
+	if need <= 1 || g.window <= 0 {
+		return whaleConfirmDecision{Ready: true, Reason: "confirmation_disabled", Event: event, Wallets: 1, Need: need}
+	}
+	if g.bypassUSD > 0 && whaleNotionalAtLeast(ev.Notional, g.bypassUSD) {
+		return whaleConfirmDecision{Ready: true, Reason: fmt.Sprintf("bypass_notional:$%.0f", ev.Notional), Event: event, Wallets: 1, Need: need}
+	}
+	outcome := strings.ToLower(strings.TrimSpace(ev.Outcome))
+	key := event + "|" + outcome
+	now := ev.Timestamp
+	if now.IsZero() {
+		now = time.Now()
+	}
+	wallet := strings.ToLower(strings.TrimSpace(ev.Wallet))
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	st := g.events[key]
+	if st == nil || (!st.firstTime.IsZero() && now.Sub(st.firstTime) > g.window) {
+		st = &whaleConfirmState{
+			firstTime: now,
+			minPrice:  ev.Price,
+			wallets:   map[string]struct{}{},
+		}
+		g.events[key] = st
+	}
+	if st.minPrice <= 0 || ev.Price < st.minPrice {
+		st.minPrice = ev.Price
+	}
+	if wallet != "" {
+		st.wallets[wallet] = struct{}{}
+	}
+	wallets := len(st.wallets)
+	if wallets < need {
+		return whaleConfirmDecision{
+			Event:   event,
+			Wallets: wallets,
+			Need:    need,
+			Reason:  fmt.Sprintf("confirm_wallets:%d/%d event=%s list=%s", wallets, need, event, list),
+		}
+	}
+	if g.maxWorsePrice >= 0 && ev.Price > st.minPrice+g.maxWorsePrice {
+		return whaleConfirmDecision{
+			Event:   event,
+			Wallets: wallets,
+			Need:    need,
+			Reason:  fmt.Sprintf("confirm_price_worse:%.4f>%.4f event=%s", ev.Price, st.minPrice+g.maxWorsePrice, event),
+		}
+	}
+	return whaleConfirmDecision{
+		Ready:   true,
+		Event:   event,
+		Wallets: wallets,
+		Need:    need,
+		Reason:  fmt.Sprintf("confirmed_wallets:%d/%d event=%s", wallets, need, event),
+	}
+}
+
+func parseCSVSet(raw string) map[string]struct{} {
+	out := map[string]struct{}{}
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.ToLower(strings.TrimSpace(part))
+		if part != "" {
+			out[part] = struct{}{}
+		}
+	}
+	return out
+}
+
+func parseWhaleListMinUSD(raw string) map[string]float64 {
+	out := map[string]float64{}
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		k, v, ok := strings.Cut(part, "=")
+		if !ok {
+			slog.Warn("invalid WHALE_LIST_MIN_USD entry", "entry", part)
+			continue
+		}
+		key := strings.ToLower(strings.TrimSpace(k))
+		if key == "" {
+			slog.Warn("invalid WHALE_LIST_MIN_USD entry", "entry", part)
+			continue
+		}
+		minUSD, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		if err != nil || minUSD < 0 {
+			slog.Warn("invalid WHALE_LIST_MIN_USD value", "entry", part, "err", err)
+			continue
+		}
+		out[key] = minUSD
+	}
+	return out
+}
+
+func sortedSetKeys(set map[string]struct{}) []string {
+	out := make([]string, 0, len(set))
+	for k := range set {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func whaleNotionalAtLeast(notional, threshold float64) bool {
+	if threshold <= 0 {
+		return true
+	}
+	const centsTolerance = 0.01
+	return notional+centsTolerance >= threshold
+}
+
+func whaleRepeatBypassesCooldown(notional, threshold float64) bool {
+	return threshold > 0 && whaleNotionalAtLeast(notional, threshold)
+}
+
+type whaleEdgeBlockConfig struct {
+	Min15mSamples  int
+	Max15mAvgPP    float64
+	Min1hSamples   int
+	Max1hAvgPP     float64
+	HotMinUSD      float64
+	HotMinSamples  int
+	HotMinAvgPP    float64
+	HotMinWinRate  float64
+	HotMin5mAvgPP  float64
+	HotMin15mAvgPP float64
+	HotMax1hNegPP  float64
+	Refresh        time.Duration
+}
+
+type whaleEdgeBlockCache struct {
+	path     string
+	cfg      whaleEdgeBlockConfig
+	mu       sync.Mutex
+	loadedAt time.Time
+	blocks   map[string]string
+	hot      map[string]string
+	lastErr  error
+}
+
+func newWhaleEdgeBlockCache(path string, cfg whaleEdgeBlockConfig) *whaleEdgeBlockCache {
+	return &whaleEdgeBlockCache{path: path, cfg: cfg, blocks: map[string]string{}, hot: map[string]string{}}
+}
+
+func (c *whaleEdgeBlockCache) Reason(wallet string) (string, bool) {
+	if c == nil {
+		return "", false
+	}
+	key := strings.ToLower(strings.TrimSpace(wallet))
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.shouldReloadLocked() {
+		now := time.Now()
+		blocks, hot, err := loadWhaleEdgeSignals(c.path, c.cfg)
+		if err != nil {
+			c.lastErr = err
+			c.loadedAt = now
+			slog.Warn("whale_edge_blocks_reload_fail", "path", c.path, "err", err)
+		} else {
+			c.blocks = blocks
+			c.hot = hot
+			c.lastErr = nil
+			c.loadedAt = now
+		}
+	}
+	if key == "" {
+		return "", false
+	}
+	reason, ok := c.blocks[key]
+	return reason, ok
+}
+
+func (c *whaleEdgeBlockCache) HotReason(wallet string) (string, bool) {
+	if c == nil {
+		return "", false
+	}
+	key := strings.ToLower(strings.TrimSpace(wallet))
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.shouldReloadLocked() {
+		now := time.Now()
+		blocks, hot, err := loadWhaleEdgeSignals(c.path, c.cfg)
+		if err != nil {
+			c.lastErr = err
+			c.loadedAt = now
+			slog.Warn("whale_edge_hot_reload_fail", "path", c.path, "err", err)
+		} else {
+			c.blocks = blocks
+			c.hot = hot
+			c.lastErr = nil
+			c.loadedAt = now
+		}
+	}
+	if key == "" {
+		return "", false
+	}
+	reason, ok := c.hot[key]
+	return reason, ok
+}
+
+func (c *whaleEdgeBlockCache) shouldReloadLocked() bool {
+	if c.path == "" {
+		return false
+	}
+	if c.loadedAt.IsZero() {
+		return true
+	}
+	if c.cfg.Refresh <= 0 {
+		return false
+	}
+	return time.Since(c.loadedAt) >= c.cfg.Refresh
+}
+
+type whaleEdgeSnapshot struct {
+	Wallet     string  `json:"wallet"`
+	HorizonSec int64   `json:"horizon_sec"`
+	DeltaPP    float64 `json:"delta_pp"`
+}
+
+type whaleEdgeStats struct {
+	Samples int
+	SumPP   float64
+	Wins    int
+}
+
+func loadWhaleNegativeEdgeBlocks(path string, cfg whaleEdgeBlockConfig) (map[string]string, error) {
+	blocks, _, err := loadWhaleEdgeSignals(path, cfg)
+	return blocks, err
+}
+
+func loadWhaleEdgeSignals(path string, cfg whaleEdgeBlockConfig) (map[string]string, map[string]string, error) {
+	out := map[string]string{}
+	hot := map[string]string{}
+	if strings.TrimSpace(path) == "" {
+		return out, hot, nil
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return out, hot, nil
+		}
+		return nil, nil, err
+	}
+	defer f.Close()
+
+	metrics := map[string]map[int64]*whaleEdgeStats{}
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 1024*1024), 8*1024*1024)
+	for sc.Scan() {
+		var snap whaleEdgeSnapshot
+		if err := json.Unmarshal(sc.Bytes(), &snap); err != nil {
+			continue
+		}
+		wallet := strings.ToLower(strings.TrimSpace(snap.Wallet))
+		if wallet == "" {
+			continue
+		}
+		byHorizon := metrics[wallet]
+		if byHorizon == nil {
+			byHorizon = map[int64]*whaleEdgeStats{}
+			metrics[wallet] = byHorizon
+		}
+		st := byHorizon[snap.HorizonSec]
+		if st == nil {
+			st = &whaleEdgeStats{}
+			byHorizon[snap.HorizonSec] = st
+		}
+		st.Samples++
+		st.SumPP += snap.DeltaPP
+		if snap.DeltaPP > 0 {
+			st.Wins++
+		}
+	}
+	if err := sc.Err(); err != nil {
+		return nil, nil, err
+	}
+
+	for wallet, byHorizon := range metrics {
+		if st := byHorizon[int64((15 * time.Minute).Seconds())]; st != nil && cfg.Min15mSamples > 0 && st.Samples >= cfg.Min15mSamples {
+			avg := st.SumPP / float64(st.Samples)
+			if avg <= cfg.Max15mAvgPP {
+				out[wallet] = fmt.Sprintf("15m edge %.2fpp over %d samples", avg, st.Samples)
+				continue
+			}
+		}
+		if st := byHorizon[int64((time.Hour).Seconds())]; st != nil && cfg.Min1hSamples > 0 && st.Samples >= cfg.Min1hSamples {
+			avg := st.SumPP / float64(st.Samples)
+			if avg <= cfg.Max1hAvgPP {
+				out[wallet] = fmt.Sprintf("1h edge %.2fpp over %d samples", avg, st.Samples)
+			}
+		}
+		if _, blocked := out[wallet]; blocked {
+			continue
+		}
+		if reason, ok := whaleEdgeHotReason(byHorizon, cfg); ok {
+			hot[wallet] = reason
+		}
+	}
+	return out, hot, nil
+}
+
+func whaleEdgeHotReason(byHorizon map[int64]*whaleEdgeStats, cfg whaleEdgeBlockConfig) (string, bool) {
+	var total whaleEdgeStats
+	for horizon, st := range byHorizon {
+		if horizon <= 0 || st == nil {
+			continue
+		}
+		total.Samples += st.Samples
+		total.SumPP += st.SumPP
+		total.Wins += st.Wins
+	}
+	if total.Samples == 0 {
+		return "", false
+	}
+	avg := total.SumPP / float64(total.Samples)
+	winRate := float64(total.Wins) / float64(total.Samples) * 100
+	if cfg.HotMinSamples > 0 && total.Samples < cfg.HotMinSamples {
+		return "", false
+	}
+	if avg < cfg.HotMinAvgPP {
+		return "", false
+	}
+	if winRate < cfg.HotMinWinRate {
+		return "", false
+	}
+	if st := byHorizon[int64((5 * time.Minute).Seconds())]; st == nil || st.Samples == 0 || st.SumPP/float64(st.Samples) < cfg.HotMin5mAvgPP {
+		return "", false
+	}
+	if st := byHorizon[int64((15 * time.Minute).Seconds())]; st == nil || st.Samples == 0 || st.SumPP/float64(st.Samples) < cfg.HotMin15mAvgPP {
+		return "", false
+	}
+	if st := byHorizon[int64((time.Hour).Seconds())]; st != nil && st.Samples > 0 {
+		if st.SumPP/float64(st.Samples) <= cfg.HotMax1hNegPP {
+			return "", false
+		}
+	}
+	return fmt.Sprintf("avg %.2fpp win %.0f%% over %d samples", avg, winRate, total.Samples), true
+}
+
+func parseWhaleEnvInt(name string, fallback int) int {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return fallback
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil {
+		slog.Warn("invalid "+name, "value", raw, "err", err)
+		return fallback
+	}
+	return v
+}
+
+func parseWhaleEnvFloat(name string, fallback float64) float64 {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return fallback
+	}
+	v, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		slog.Warn("invalid "+name, "value", raw, "err", err)
+		return fallback
+	}
+	return v
+}
+
+func loadWalletFileMetas(path string) (map[string]walletFileMeta, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	out := map[string]walletFileMeta{}
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.SplitN(line, "#", 2)
+		addr := strings.Fields(strings.TrimSpace(parts[0]))
+		if len(addr) == 0 {
+			continue
+		}
+		key := strings.ToLower(addr[0])
+		if !strings.HasPrefix(key, "0x") || len(key) != 42 {
+			continue
+		}
+		meta := walletFileMeta{}
+		if len(parts) > 1 {
+			for _, field := range strings.Fields(parts[1]) {
+				k, v, ok := strings.Cut(field, "=")
+				if !ok {
+					continue
+				}
+				switch k {
+				case "list":
+					meta.List = v
+				case "tier":
+					meta.Tier = v
+				case "smart":
+					meta.SmartMoneyScore, _ = strconv.ParseFloat(v, 64)
+				case "bot":
+					meta.BotScore, _ = strconv.ParseFloat(v, 64)
+				}
+			}
+		}
+		out[key] = meta
+	}
+	if err := sc.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+var (
+	whaleEventParenRE = regexp.MustCompile(`\s*\([^)]*\b(?:bo[0-9]+|game|map)\b[^)]*\)`)
+	whaleEventGameRE  = regexp.MustCompile(`\s*-\s*(?:game|map)\s*[0-9]+\s+winner\b.*$`)
+	whaleEventSpaceRE = regexp.MustCompile(`\s+`)
+)
+
+const (
+	followMinEntryPrice = 0.05
+	followMaxEntryPrice = 0.95
+)
+
+func isTargetFollowMarket(q, slug string) bool {
+	ok, _ := targetFollowMarketDecision(q, slug)
+	return ok
+}
+
+func whaleMarketDecision(q, slug, _ string) (bool, string) {
+	return targetFollowMarketDecision(q, slug)
+}
+
+func targetFollowMarketDecision(q, slug string) (bool, string) {
+	text := strings.ToLower(q + " " + slug)
+	slug = strings.ToLower(slug)
+	if isDerivativeFollowMarketText(text) {
+		return false, "derivative_filtered"
+	}
+	if feed.IsOutrightFollowMarketText(text) {
+		return false, "outright_filtered"
+	}
+	if strings.Contains(text, "tennis") ||
+		strings.Contains(text, "wimbledon") ||
+		strings.Contains(text, " atp") ||
+		strings.Contains(text, " wta") ||
+		strings.HasPrefix(slug, "atp-") ||
+		strings.HasPrefix(slug, "wta-") {
+		return false, "category_filtered"
+	}
+	if feed.IsFollowTargetMarket(feed.Market{Question: q, Slug: slug}) {
+		return true, ""
+	}
+	basketball := []string{"nba", "wnba", "basketball"}
+	soccer := []string{
+		"epl", "premier league", "la liga", "bundesliga", "serie a", "ligue 1",
+		"champions league", "ucl", "uefa", "fifa", "fifwc", "fifa world cup",
+		"copa ", "concacaf", "conmebol", "eredivisie", "liga mx", "mls",
+		"soccer", "fútbol", "futbol",
+	}
+	esports := []string{
+		"lol", "league of legends", "lck", "lpl", "msi", "worlds",
+		"dota", "dota2", "cs2", "csgo", "valorant", "esport",
+	}
+	for _, group := range [][]string{basketball, soccer, esports} {
+		for _, k := range group {
+			if strings.Contains(text, k) {
+				return true, ""
+			}
+		}
+	}
+	return false, "category_filtered"
+}
+
+func whalePriceDecision(side string, price float64) (bool, string) {
+	if strings.ToUpper(strings.TrimSpace(side)) != "BUY" {
+		return true, ""
+	}
+	if price < followMinEntryPrice || price > followMaxEntryPrice {
+		return false, "price_filtered"
+	}
+	return true, ""
+}
+
+func isDerivativeFollowMarketText(text string) bool {
+	return feed.IsDerivativeFollowMarketText(text)
+}
+
+func whaleEventKey(market string) string {
+	s := strings.ToLower(strings.TrimSpace(market))
+	s = strings.ReplaceAll(s, "–", "-")
+	s = strings.ReplaceAll(s, "—", "-")
+	s = whaleEventGameRE.ReplaceAllString(s, "")
+	if idx := strings.Index(s, " - "); idx >= 0 {
+		s = s[:idx]
+	}
+	if vs := strings.Index(s, " vs"); vs >= 0 {
+		if colon := strings.Index(s[vs:], ":"); colon >= 0 {
+			s = s[:vs+colon]
+		}
+	}
+	s = whaleEventParenRE.ReplaceAllString(s, "")
+	s = strings.TrimSuffix(s, " winner")
+	s = strings.TrimSuffix(s, " match winner")
+	s = strings.TrimSpace(strings.Trim(s, "-:"))
+	s = whaleEventSpaceRE.ReplaceAllString(s, " ")
+	if s == "" {
+		return "unknown"
+	}
+	return s
+}
+
+func loadWhaleCooldownSeeds(path string, repeatCooldown, eventCooldown time.Duration) (map[string]time.Time, map[string]time.Time, int, int) {
+	repeat := map[string]time.Time{}
+	events := map[string]time.Time{}
+	f, err := os.Open(path)
+	if err != nil {
+		return repeat, events, 0, 0
+	}
+	defer f.Close()
+
+	now := time.Now()
+	sc := bufio.NewScanner(f)
+	buf := make([]byte, 0, 1024*1024)
+	sc.Buffer(buf, 8*1024*1024)
+	for sc.Scan() {
+		var rec struct {
+			TS      string  `json:"ts"`
+			Wallet  string  `json:"wallet"`
+			Side    string  `json:"side"`
+			Market  string  `json:"market"`
+			AssetID string  `json:"asset_id"`
+			Action  string  `json:"action"`
+			Size    float64 `json:"size"`
+		}
+		if err := json.Unmarshal(sc.Bytes(), &rec); err != nil {
+			continue
+		}
+		action := strings.ToLower(strings.TrimSpace(rec.Action))
+		if action != "alert" && action != "followed" {
+			continue
+		}
+		if strings.ToUpper(strings.TrimSpace(rec.Side)) != "BUY" {
+			continue
+		}
+		wallet := strings.ToLower(strings.TrimSpace(rec.Wallet))
+		if wallet == "" {
+			continue
+		}
+		ts, err := time.Parse(time.RFC3339, rec.TS)
+		if err != nil {
+			continue
+		}
+		if repeatCooldown > 0 && rec.AssetID != "" && now.Sub(ts) < repeatCooldown {
+			key := wallet + "|" + rec.AssetID
+			if ts.After(repeat[key]) {
+				repeat[key] = ts
+			}
+		}
+		if eventCooldown > 0 && rec.Market != "" && now.Sub(ts) < eventCooldown {
+			key := wallet + "|" + whaleEventKey(rec.Market)
+			if ts.After(events[key]) {
+				events[key] = ts
+			}
+		}
+	}
+	return repeat, events, len(repeat), len(events)
+}
+
+func loadWhaleSeenTradeIDs(path string) map[string]struct{} {
+	seen := map[string]struct{}{}
+	f, err := os.Open(path)
+	if err != nil {
+		return seen
+	}
+	defer f.Close()
+
+	sc := bufio.NewScanner(f)
+	buf := make([]byte, 0, 1024*1024)
+	sc.Buffer(buf, 8*1024*1024)
+	for sc.Scan() {
+		var rec struct {
+			Action  string `json:"action"`
+			Wallet  string `json:"wallet"`
+			TradeID string `json:"trade_id"`
+		}
+		if err := json.Unmarshal(sc.Bytes(), &rec); err != nil {
+			continue
+		}
+		if strings.ToLower(strings.TrimSpace(rec.Action)) == "skip" {
+			continue
+		}
+		wallet := strings.ToLower(strings.TrimSpace(rec.Wallet))
+		tradeID := strings.ToLower(strings.TrimSpace(rec.TradeID))
+		if wallet == "" || tradeID == "" {
+			continue
+		}
+		seen[wallet+"|"+tradeID] = struct{}{}
+	}
+	return seen
 }

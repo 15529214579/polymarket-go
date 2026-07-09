@@ -1,0 +1,21 @@
+{
+  "generated_at": "2026-07-08T21:22:50+08:00",
+  "log_path": "/Users/murphyma/work/polymarket-go/db/journal/whale_trades.jsonl",
+  "wallets_path": "wallets.strategy-watch.txt",
+  "report_path": "reports/whale_performance_watch.md",
+  "stake_usd": 10,
+  "min_notional": 100,
+  "repeat_cooldown": "3m0s",
+  "repeat_min_notional": 5000,
+  "raw_buys": 0,
+  "suppressed_repeats": 0,
+  "evaluated_signals": 0,
+  "closed": 0,
+  "marked": 0,
+  "open": 0,
+  "wins": 0,
+  "pnl_usd": 0,
+  "stake_evaluated_usd": 0,
+  "return_pct": 0,
+  "win_rate_pct": 0
+}

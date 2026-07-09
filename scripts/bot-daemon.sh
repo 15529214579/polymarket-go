@@ -41,7 +41,7 @@ start() {
   # manually selected wallet. Tiered sizing: A=$20, B=$10, C/D=$5.
   # Min trade $100. Poll 60s. Ladder exit SL 20% / timeout 10m.
   LIVE_FLAG="${POLYMARKET_LIVE:-""}"
-  args=(-mode=detect -signal_mode=copytrade -exit_mode=ladder -markets=20 -window=60 -fee_bp=0 -ladder_sl_pct=0.20 -ladder_max_hold=10m ${LIVE_FLAG} -injury_enabled -injury_interval=1m -whale_enabled -whale_min_usd=100 -whale_interval=60s -wallets_file="$ROOT/wallets.push-only.txt" -copytrade_size=5 -wallet_tiers="$ROOT/db/copytrade_tiers_push_only.json" -min_tier=A -oddspapi_enabled -oddspapi_interval=3h -oddspapi_bookmaker=pinnacle -oddspapi_sports=soccer_epl,soccer_spain_la_liga,soccer_uefa_champs_league)
+  args=(-mode=detect -signal_mode=copytrade -exit_mode=ladder -markets=20 -window=60 -fee_bp=0 -ladder_sl_pct=0.20 -ladder_max_hold=10m ${LIVE_FLAG} -injury_enabled -injury_interval=1m -whale_enabled -whale_min_usd=100 -whale_interval=10s -wallets_file="$ROOT/wallets.push-only.txt" -copytrade_size=5 -wallet_tiers="$ROOT/db/copytrade_tiers_push_only.json" -min_tier=A)
   if [ "${#shift_args[@]}" -gt 0 ]; then
     args=("${shift_args[@]}")
   fi

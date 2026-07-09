@@ -1,0 +1,3 @@
+0x1c8ff58712619753bca2a413bb69fd9cf3824d12 # list=target tier=C liveROI=0.0% eventROI=-99.9% eventT=1 closed=0 pnl=$+0.00 reason=event-capped ROI -99.9% < -30.0% over 1 entries
+0x3078b391f843153c6859702cee974ca7f660a2cb # list=watch tier=B reason=quarantine contaminated by combo-market sports_tape source
+0xaa0b2154ba8c195136810580e66d178283792deb # list=watch tier=B liveROI=0.0% eventROI=-38.1% eventT=1 closed=0 pnl=$+0.00 reason=event-capped ROI -38.1% < -30.0% over 1 entries

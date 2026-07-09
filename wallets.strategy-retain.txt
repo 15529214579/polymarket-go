@@ -1,0 +1,1 @@
+0x2391d84eec47a23fd0cd99fb1a3e7456f713554f # retain=target source=sports_tape reason=targetCopyROI=88.7% targetCopyT=23 bot=40.6 avgNotional=$1479

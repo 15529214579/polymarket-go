@@ -1,8 +1,11 @@
 #!/bin/bash
 # Embiid injury monitor - check every run, alert on status change
 STATE_FILE="/Users/murphyma/work/polymarket-go/db/embiid_state.txt"
+DISABLED_FILE="/Users/murphyma/work/polymarket-go/db/project.disabled"
 PUSH_BOT="8405812595:AAEwrI7MdS-miIQtbE_MClwdcqfsjjHMfLo"
 CHAT_ID="6695538819"
+
+[ -f "$DISABLED_FILE" ] && exit 0
 
 # Get current status
 RESULT=$(curl -s "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries" | python3 -c "

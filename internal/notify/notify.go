@@ -97,10 +97,10 @@ type SignalPromptEvent struct {
 	TailLen  int
 	BuyRatio float64
 
-	Slug       string // market slug for newshare link
-	WhaleLabel string // if set, this is a whale-follow signal (shows 🐋 instead of ⚡)
-	SizesUSD  []float64     // default {10, 20, ..., 100}
-	ExpiresIn time.Duration // visual-only hint in the DM body
+	Slug       string        // market slug for newshare link
+	WhaleLabel string        // if set, this is a whale-follow signal (shows 🐋 instead of ⚡)
+	SizesUSD   []float64     // default {10, 20, ..., 100}
+	ExpiresIn  time.Duration // visual-only hint in the DM body
 
 	// OnSent, if set, is called asynchronously by the Telegram backend after
 	// the prompt has been delivered. messageID is the Telegram message_id of
@@ -149,20 +149,20 @@ type LargeFillEvent struct {
 // InjuryAlert method from Notifier.
 type InjuryAlertEvent struct {
 	Team           string
-	StarPlayer     string         // primary trigger (kept for backward compat)
-	Status         string         // "Out" / "Doubtful"
+	StarPlayer     string // primary trigger (kept for backward compat)
+	Status         string // "Out" / "Doubtful"
 	Reason         string
-	Impact         string         // "franchise_player_out" / "co_star_out" / "rotation_star_out"
-	TriggerPlayers []InjuryInfo   // ALL newly-detected injured players (may be >1 per game)
-	TeamInjuries   []InjuryInfo   // all injuries on the affected team
+	Impact         string       // "franchise_player_out" / "co_star_out" / "rotation_star_out"
+	TriggerPlayers []InjuryInfo // ALL newly-detected injured players (may be >1 per game)
+	TeamInjuries   []InjuryInfo // all injuries on the affected team
 	OpponentName   string
-	OpponentInj    []InjuryInfo   // all injuries on the opponent
-	MatchTitle     string         // "Lakers vs Rockets" — the game matchup
-	GameContext    string         // "Game 5 · 季后赛第一轮" etc.
-	GameTime      time.Time      // tipoff / market end time
-	TeamPrice      float64        // PM price for the injured team (0 if unknown)
-	OpponentPrice  float64        // PM price for the opponent team (0 if unknown)
-	Slug           string         // PM market slug for newshare link
+	OpponentInj    []InjuryInfo // all injuries on the opponent
+	MatchTitle     string       // "Lakers vs Rockets" — the game matchup
+	GameContext    string       // "Game 5 · 季后赛第一轮" etc.
+	GameTime       time.Time    // tipoff / market end time
+	TeamPrice      float64      // PM price for the injured team (0 if unknown)
+	OpponentPrice  float64      // PM price for the opponent team (0 if unknown)
+	Slug           string       // PM market slug for newshare link
 }
 
 type InjuryInfo struct {
@@ -176,14 +176,14 @@ type InjuryInfo struct {
 // WhaleAlertEvent carries a large trade from a tracked smart-money wallet.
 // Guarded by -whale_enabled flag.
 type WhaleAlertEvent struct {
-	Wallet    string
-	Label     string // human-readable whale name (e.g. "drpufferfish", "countryside")
-	Side      string // BUY / SELL
-	SizeUnits float64
-	Price     float64
-	Notional  float64
-	Market    string
-	Outcome   string
+	Wallet     string
+	Label      string // human-readable whale name (e.g. "drpufferfish", "countryside")
+	Side       string // BUY / SELL
+	SizeUnits  float64
+	Price      float64
+	Notional   float64
+	Market     string
+	Outcome    string
 	TradeID    string
 	LinkURL    string
 	ProfileURL string // whale's Polymarket profile page (e.g. https://polymarket.com/@handle)
@@ -197,11 +197,11 @@ type WhaleAlertEvent struct {
 // ClosePromptEvent is the payload for a whale-sell close prompt. The boss
 // sees matching open positions and decides whether to close or ignore.
 type ClosePromptEvent struct {
-	Nonce     string
-	Market    string // question/title
-	Outcome   string
-	AssetID   string
-	WhaleLabel string // human-readable whale name
+	Nonce      string
+	Market     string // question/title
+	Outcome    string
+	AssetID    string
+	WhaleLabel string  // human-readable whale name
 	WhaleSize  float64 // whale's sell size in shares
 	WhaleNotl  float64 // whale's sell notional USD
 	WhalePrice float64
@@ -299,7 +299,11 @@ func FormatSignalPrompt(ev SignalPromptEvent) string {
 	// Collapse context · endIn · Δ · buy into one line.
 	parts := make([]string, 0, 4)
 	if ev.Context != "" {
-		parts = append(parts, truncateStr(ev.Context, 40))
+		contextLimit := 40
+		if ev.WhaleLabel != "" {
+			contextLimit = 96
+		}
+		parts = append(parts, truncateStr(ev.Context, contextLimit))
 	}
 	if ev.EndIn != "" {
 		parts = append(parts, ev.EndIn)

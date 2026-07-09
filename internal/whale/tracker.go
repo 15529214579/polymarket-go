@@ -34,6 +34,7 @@ type Config struct {
 	Enabled      bool
 	Wallets      []WalletEntry
 	PollInterval time.Duration
+	ReplayWindow time.Duration
 
 	// Legacy single-wallet fields (used when Wallets is empty).
 	Wallet     string
@@ -45,6 +46,7 @@ func DefaultConfig() Config {
 	return Config{
 		MinSizeUSD:   1000,
 		PollInterval: 30 * time.Second,
+		ReplayWindow: 0,
 	}
 }
 
@@ -230,12 +232,28 @@ func (t *Tracker) seed(ctx context.Context, w WalletEntry) error {
 			seen[tr.TransactionHash] = struct{}{}
 		}
 	}
+	replayed := 0
+	if t.cfg.ReplayWindow > 0 {
+		cutoff := time.Now().Add(-t.cfg.ReplayWindow).Unix()
+		sort.Slice(trades, func(i, j int) bool {
+			return trades[i].Timestamp < trades[j].Timestamp
+		})
+		for i := range trades {
+			tr := &trades[i]
+			if tr.Timestamp < cutoff {
+				continue
+			}
+			if t.emitTradeAlert(ctx, w, tr) {
+				replayed++
+			}
+		}
+	}
 	st := t.states[strings.ToLower(w.Address)]
 	st.mu.Lock()
 	st.lastTS = maxTS
 	st.lastSeen = seen
 	st.mu.Unlock()
-	t.logger.Info("whale_seed_done", "wallet", w.Label, "trades_seen", len(trades), "last_ts", maxTS)
+	t.logger.Info("whale_seed_done", "wallet", w.Label, "trades_seen", len(trades), "last_ts", maxTS, "replayed", replayed, "replay_window", t.cfg.ReplayWindow.String())
 	return nil
 }
 
@@ -280,70 +298,7 @@ func (t *Tracker) poll(ctx context.Context, w WalletEntry) error {
 			newSeen[tr.TransactionHash] = struct{}{}
 		}
 
-		side := strings.ToUpper(tr.Side)
-		if side != "BUY" && side != "SELL" {
-			continue
-		}
-
-		notional := tr.notionalUSD()
-		if notional < w.MinSizeUSD {
-			continue
-		}
-
-		slug := tr.EventSlug
-		if slug == "" {
-			slug = tr.Slug
-		}
-		linkURL := fmt.Sprintf(
-			"https://newshare.bwb.online/zh/polymarket/event?slug=%s&_nobar=true&_needChain=matic",
-			url.QueryEscape(slug),
-		)
-
-		ts := time.Unix(tr.Timestamp, 0)
-
-		ev := AlertEvent{
-			Wallet:      w.Address,
-			Label:       w.Label,
-			ProfileURL:  w.ProfileURL,
-			Side:        strings.ToUpper(tr.Side),
-			SizeUnits:   tr.Size,
-			Price:       tr.Price,
-			Notional:    notional,
-			Question:    tr.Title,
-			Slug:        slug,
-			Outcome:     tr.Outcome,
-			TradeID:     tr.TransactionHash,
-			Timestamp:   ts,
-			LinkURL:     linkURL,
-			AssetID:     tr.Asset,
-			ConditionID: tr.ConditionID,
-		}
-
-		if positions, err := t.FetchPositions(ctx, w.Address, tr.Asset); err == nil {
-			for _, p := range positions {
-				if p.Asset == tr.Asset {
-					ev.TotalShares = p.Size
-					ev.AvgPrice = p.AvgPrice
-					if strings.ToUpper(tr.Side) == "SELL" && p.Size+tr.Size > 0 {
-						ev.PctSold = (tr.Size / (p.Size + tr.Size)) * 100
-					}
-					break
-				}
-			}
-		} else {
-			t.logger.Warn("whale_position_fetch_fail", "wallet", w.Label, "err", err.Error())
-		}
-
-		t.alert(ev)
-
-		t.logger.Info("whale_alert_fired",
-			"wallet", w.Label,
-			"tx", truncate(tr.TransactionHash, 16),
-			"side", tr.Side,
-			"notional_usd", notional,
-			"market", tr.Title,
-			"outcome", tr.Outcome,
-		)
+		t.emitTradeAlert(ctx, w, tr)
 	}
 
 	if newTS > 0 {
@@ -359,6 +314,72 @@ func (t *Tracker) poll(ctx context.Context, w WalletEntry) error {
 		st.mu.Unlock()
 	}
 	return nil
+}
+
+func (t *Tracker) emitTradeAlert(ctx context.Context, w WalletEntry, tr *trade) bool {
+	side := strings.ToUpper(tr.Side)
+	if side != "BUY" && side != "SELL" {
+		return false
+	}
+
+	notional := tr.notionalUSD()
+	if notional < w.MinSizeUSD {
+		return false
+	}
+
+	slug := tr.EventSlug
+	if slug == "" {
+		slug = tr.Slug
+	}
+	linkURL := fmt.Sprintf(
+		"https://newshare.bwb.online/zh/polymarket/event?slug=%s&_nobar=true&_needChain=matic",
+		url.QueryEscape(slug),
+	)
+
+	ev := AlertEvent{
+		Wallet:      w.Address,
+		Label:       w.Label,
+		ProfileURL:  w.ProfileURL,
+		Side:        side,
+		SizeUnits:   tr.Size,
+		Price:       tr.Price,
+		Notional:    notional,
+		Question:    tr.Title,
+		Slug:        slug,
+		Outcome:     tr.Outcome,
+		TradeID:     tr.TransactionHash,
+		Timestamp:   time.Unix(tr.Timestamp, 0),
+		LinkURL:     linkURL,
+		AssetID:     tr.Asset,
+		ConditionID: tr.ConditionID,
+	}
+
+	if positions, err := t.FetchPositions(ctx, w.Address, tr.Asset); err == nil {
+		for _, p := range positions {
+			if p.Asset == tr.Asset {
+				ev.TotalShares = p.Size
+				ev.AvgPrice = p.AvgPrice
+				if side == "SELL" && p.Size+tr.Size > 0 {
+					ev.PctSold = (tr.Size / (p.Size + tr.Size)) * 100
+				}
+				break
+			}
+		}
+	} else {
+		t.logger.Warn("whale_position_fetch_fail", "wallet", w.Label, "err", err.Error())
+	}
+
+	t.alert(ev)
+
+	t.logger.Info("whale_trade_detected",
+		"wallet", w.Label,
+		"tx", truncate(tr.TransactionHash, 16),
+		"side", tr.Side,
+		"notional_usd", notional,
+		"market", tr.Title,
+		"outcome", tr.Outcome,
+	)
+	return true
 }
 
 func (t *Tracker) fetchTrades(ctx context.Context, wallet string) ([]trade, error) {
@@ -489,9 +510,19 @@ func ParseWallets(s string) ([]WalletEntry, error) {
 // LoadWalletsFile reads addresses from a newline-delimited file and returns a
 // WalletEntry list ready to drop into Config.Wallets. Each non-empty,
 // non-comment line is one 0x… address; the label is auto-derived
-// "w_<first6>…<last4>". MinSizeUSD is applied uniformly to every wallet —
-// callers tuning per-wallet thresholds should keep using ParseWallets.
+// "w_<first6>…<last4>". MinSizeUSD is applied uniformly to every wallet.
 func LoadWalletsFile(path string, minSizeUSD float64) ([]WalletEntry, error) {
+	return LoadWalletsFileWithListMins(path, minSizeUSD, nil)
+}
+
+// LoadWalletsFileWithListMins is LoadWalletsFile plus optional thresholds by
+// wallet-list metadata. Lines generated by strategy-lab look like:
+//
+//	0xabc... # list=sports tier=A ...
+//
+// When listMinSizeUSD has a matching "sports" entry, that value becomes the
+// wallet's MinSizeUSD. Wallets without list metadata keep minSizeUSD.
+func LoadWalletsFileWithListMins(path string, minSizeUSD float64, listMinSizeUSD map[string]float64) ([]WalletEntry, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open wallets file %s: %w", path, err)
@@ -506,14 +537,20 @@ func LoadWalletsFile(path string, minSizeUSD float64) ([]WalletEntry, error) {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		// Strip inline comments so "0xabc... # alice" still works.
+		comment := ""
 		if i := strings.Index(line, "#"); i >= 0 {
+			comment = strings.TrimSpace(line[i+1:])
 			line = strings.TrimSpace(line[:i])
 		}
 		// Take the first whitespace-delimited token in case the line has
 		// trailing tags ("0xabc... alice").
-		if i := strings.IndexAny(line, " \t"); i >= 0 {
-			line = line[:i]
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		line = fields[0]
+		if comment == "" && len(fields) > 1 {
+			comment = strings.Join(fields[1:], " ")
 		}
 		if line == "" {
 			continue
@@ -523,16 +560,33 @@ func LoadWalletsFile(path string, minSizeUSD float64) ([]WalletEntry, error) {
 			continue
 		}
 		seen[addr] = struct{}{}
+		effectiveMin := minSizeUSD
+		if list := walletListTag(comment); list != "" {
+			if v, ok := listMinSizeUSD[list]; ok {
+				effectiveMin = v
+			}
+		}
 		wallets = append(wallets, WalletEntry{
 			Address:    line,
 			Label:      walletLabel(line),
-			MinSizeUSD: minSizeUSD,
+			MinSizeUSD: effectiveMin,
 		})
 	}
 	if err := sc.Err(); err != nil {
 		return nil, fmt.Errorf("read wallets file %s: %w", path, err)
 	}
 	return wallets, nil
+}
+
+func walletListTag(comment string) string {
+	for _, field := range strings.Fields(comment) {
+		k, v, ok := strings.Cut(field, "=")
+		if !ok || strings.ToLower(strings.TrimSpace(k)) != "list" {
+			continue
+		}
+		return strings.ToLower(strings.TrimSpace(v))
+	}
+	return ""
 }
 
 // walletLabel returns the auto-generated short label used for file-loaded

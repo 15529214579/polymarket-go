@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"math/big"
+	nethttp "net/http"
 	"os"
 	"os/exec"
 	"strings"
@@ -27,9 +29,10 @@ func main() {
 	rpcURL := flag.String("rpc", "", "Polygon RPC URL (default: polygon-rpc.com)")
 	hexKey := flag.String("key", "", "hex private key (bypasses Bitwarden mnemonic)")
 	queryOpenOrders := flag.Bool("open-orders", false, "query CLOB open orders and exit")
+	redeemAll := flag.Bool("redeem-all", false, "redeem all redeemable positions and exit")
 	flag.Parse()
 
-	if !*queryOpenOrders && (*assetID == "" || *limitPx <= 0) {
+	if !*queryOpenOrders && !*redeemAll && (*assetID == "" || *limitPx <= 0) {
 		fmt.Fprintf(os.Stderr, "Usage: trade -asset <tokenID> -price <0..1> [-size <usd>] [-negrisk] [-dry-run]\n")
 		os.Exit(1)
 	}
@@ -88,6 +91,16 @@ func main() {
 		if err := client.CancelAllOpen(ctx); err != nil {
 			slog.Warn("cancel_all_failed", "err", err)
 		}
+		return
+	}
+
+	if *redeemAll {
+		oc, err := order.NewOnChain(*rpcURL, wallet)
+		if err != nil {
+			slog.Error("onchain_init_failed", "err", err)
+			os.Exit(1)
+		}
+		runRedeemAll(oc, wallet.Address().Hex())
 		return
 	}
 
@@ -224,6 +237,98 @@ func loadMnemonic() (string, error) {
 		}
 	}
 	return "", fmt.Errorf("mnemonic not found in Polymarket-Go Wallet notes")
+}
+
+type dataAPIPosition struct {
+	Size         float64 `json:"size"`
+	CurPrice     float64 `json:"curPrice"`
+	Title        string  `json:"title"`
+	Outcome      string  `json:"outcome"`
+	Asset        string  `json:"asset"`
+	ConditionID  string  `json:"conditionId"`
+	Redeemable   bool    `json:"redeemable"`
+	NegativeRisk bool    `json:"negativeRisk"`
+	OutcomeIndex int     `json:"outcomeIndex"`
+}
+
+func runRedeemAll(oc *order.OnChain, walletAddr string) {
+	reqURL := "https://data-api.polymarket.com/positions?user=" + strings.ToLower(walletAddr) + "&sizeThreshold=0.01&limit=200"
+	resp, err := nethttp.Get(reqURL)
+	if err != nil {
+		slog.Error("data_api_failed", "err", err)
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode >= 400 {
+		slog.Error("data_api_error", "status", resp.StatusCode, "body", string(body[:min(len(body), 200)]))
+		os.Exit(1)
+	}
+	var positions []dataAPIPosition
+	if err := json.Unmarshal(body, &positions); err != nil {
+		slog.Error("data_api_decode", "err", err)
+		os.Exit(1)
+	}
+
+	redeemed := map[string]bool{}
+	if raw, err := os.ReadFile("db/redeemed.json"); err == nil {
+		json.Unmarshal(raw, &redeemed)
+	}
+
+	var toRedeem []dataAPIPosition
+	for _, p := range positions {
+		if !p.Redeemable || p.Size < 0.01 {
+			continue
+		}
+		if redeemed[p.Asset] {
+			slog.Info("already_redeemed", "asset", p.Asset[:20], "title", p.Title[:min(len(p.Title), 40)])
+			continue
+		}
+		toRedeem = append(toRedeem, p)
+	}
+
+	if len(toRedeem) == 0 {
+		fmt.Println("No positions to redeem.")
+		bal, err := oc.PUSDBalance(context.Background())
+		if err == nil {
+			f, _ := new(big.Float).Quo(new(big.Float).SetInt(bal), new(big.Float).SetFloat64(1e6)).Float64()
+			fmt.Printf("pUSD balance: $%.2f\n", f)
+		}
+		return
+	}
+
+	fmt.Printf("Found %d positions to redeem:\n", len(toRedeem))
+	for _, p := range toRedeem {
+		val := p.Size * p.CurPrice
+		fmt.Printf("  %s · %s · %.1f shares · cur=$%.3f · val=$%.2f · neg=%v\n",
+			p.Title[:min(len(p.Title), 50)], p.Outcome, p.Size, p.CurPrice, val, p.NegativeRisk)
+	}
+	fmt.Println()
+
+	redeemed_count := 0
+	for _, p := range toRedeem {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		err := oc.RedeemPosition(ctx, p.ConditionID, p.OutcomeIndex, p.Size, p.NegativeRisk)
+		cancel()
+		if err != nil {
+			slog.Error("redeem_failed", "title", p.Title[:min(len(p.Title), 40)], "err", err)
+			continue
+		}
+		redeemed[p.Asset] = true
+		redeemed_count++
+		val := p.Size * p.CurPrice
+		fmt.Printf("✅ Redeemed: %s · %s · $%.2f\n", p.Title[:min(len(p.Title), 50)], p.Outcome, val)
+	}
+
+	if out, err := json.MarshalIndent(redeemed, "", "  "); err == nil {
+		os.WriteFile("db/redeemed.json", out, 0644)
+	}
+
+	bal, err := oc.PUSDBalance(context.Background())
+	if err == nil {
+		f, _ := new(big.Float).Quo(new(big.Float).SetInt(bal), new(big.Float).SetFloat64(1e6)).Float64()
+		fmt.Printf("\nRedeemed %d positions. pUSD balance: $%.2f\n", redeemed_count, f)
+	}
 }
 
 func checkBalance(creds *order.APICredentials, addr string) {

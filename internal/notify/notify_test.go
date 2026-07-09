@@ -98,3 +98,24 @@ func TestFormatSignalPrompt_ShowsSignalOnly(t *testing.T) {
 		}
 	}
 }
+
+func TestFormatSignalPrompt_WhaleContextKeepsNotional(t *testing.T) {
+	s := FormatSignalPrompt(SignalPromptEvent{
+		Nonce:      "n",
+		Match:      "Dota 2: Team Spirit vs Team Nemesis - Game 1 Winner",
+		Context:    "🐋 [target · Tier C] w_4133…165b 跟单 · $12850 · 64250 shares",
+		WhaleLabel: "[target · Tier C] w_4133…165b",
+		Choices: []SignalChoice{
+			{Slot: 0, Outcome: "Team Spirit", Mid: 0.2, IsSignal: true},
+		},
+	})
+	for _, want := range []string{
+		"[target · Tier C] w_4133…165b BUY Team Spirit @ 0.2000",
+		"$12850",
+		"64250 shares",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("FormatSignalPrompt missing %q; got:\n%s", want, s)
+		}
+	}
+}

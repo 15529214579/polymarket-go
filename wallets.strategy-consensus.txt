@@ -1,0 +1,9 @@
+0x38337de21ff0bb0a11a40761507d51e318d633d1 # list=consensus_research tier=D bot=48.0 signals=1 marked=1 win=100.0% roi=32.6% pnl=$+3.26 notional=$10336 avgDeltaPP=+24.58 source=sports_consensus
+0x67bb64fac5252df3f61ee2d91a4b1350e40eb6ef # list=consensus_research tier=D bot=56.6 signals=1 marked=1 win=100.0% roi=32.6% pnl=$+3.26 notional=$10336 avgDeltaPP=+24.58 source=sports_consensus
+0x87da2f16cf98af9b3e2f6ba6d9c4c470815b53d1 # list=consensus_research tier=D bot=57.3 signals=1 marked=1 win=100.0% roi=32.6% pnl=$+3.26 notional=$10336 avgDeltaPP=+24.58 source=sports_consensus
+0x93bd19205887ab9fadbf1013ea1a1b7d4cb1bbc5 # list=consensus_research tier=D bot=55.0 signals=1 marked=1 win=100.0% roi=32.6% pnl=$+3.26 notional=$10336 avgDeltaPP=+24.58 source=sports_consensus
+0x967904984f2c0aed5668362fc75d7d3e865f9315 # list=consensus_research tier=D bot=56.3 signals=1 marked=1 win=100.0% roi=32.6% pnl=$+3.26 notional=$10336 avgDeltaPP=+24.58 source=sports_consensus
+0x124eb9aa72183053e0984b6db4d608e540c91c58 # list=consensus_research tier=C bot=40.2 signals=2 marked=2 win=100.0% roi=17.9% pnl=$+3.58 notional=$21741 avgDeltaPP=+14.53 source=sports_consensus
+0xc3656b313a7294600286ee3832ec2d6dc8e42e53 # list=consensus_research tier=C bot=42.1 signals=2 marked=2 win=100.0% roi=17.9% pnl=$+3.58 notional=$21741 avgDeltaPP=+14.53 source=sports_consensus
+0xf20289c42fcfe6bb375969ab6156091b780e9ea8 # list=consensus_research tier=D bot=51.5 signals=2 marked=2 win=100.0% roi=17.9% pnl=$+3.58 notional=$21741 avgDeltaPP=+14.53 source=sports_consensus
+0x71200ff742dde7f1ada753d2e9b0a8b50c717c4e # list=consensus_research tier=D bot=53.5 signals=1 marked=1 win=100.0% roi=13.8% pnl=$+1.38 notional=$11047 avgDeltaPP=+11.68 source=sports_consensus

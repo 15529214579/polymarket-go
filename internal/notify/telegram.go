@@ -245,9 +245,14 @@ func (t *Telegram) EditCloseDone(text string, messageID int64) {
 	})
 }
 
-// WhaleAlert enqueues a smart-money whale trade DM via the push bot.
+// WhaleAlert enqueues a smart-money whale trade DM via the sidecar/prompt bot
+// so copytrade notifications land in @Murphyoderbot with order prompts/fills.
 func (t *Telegram) WhaleAlert(ev WhaleAlertEvent) {
-	t.enqueue(outgoing{text: FormatWhaleAlert(ev), tag: "whale_alert", sendToken: t.pushToken()})
+	tok := t.cfg.PromptBotToken
+	if tok == "" {
+		tok = t.pushToken()
+	}
+	t.enqueue(outgoing{text: FormatWhaleAlert(ev), tag: "whale_alert", sendToken: tok})
 }
 
 // buttonLabel builds a short inline-button caption for ladder-mode buttons.
