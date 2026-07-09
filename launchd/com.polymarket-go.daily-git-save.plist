@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.polymarket-go.daily-git-save</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/murphyma/work/polymarket-go/scripts/daily-git-save.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/murphyma/work/polymarket-go</string>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>23</integer>
+    <key>Minute</key>
+    <integer>55</integer>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/Users/murphyma/work/polymarket-go/logs/daily-git-save.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/murphyma/work/polymarket-go/logs/daily-git-save.err</string>
+</dict>
+</plist>
