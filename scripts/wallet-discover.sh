@@ -159,7 +159,7 @@ exec "$ROOT/bin/strategy-lab" \
   -tape_max_wallets "${TAPE_MAX_WALLETS:-8}" \
   -tape_max_bot "${TAPE_MAX_BOT:-45}" \
   -tape_min_direct_max_buy "${TAPE_MIN_DIRECT_MAX_BUY:-5000}" \
-  -tape_observe_min_buy_notional "${TAPE_OBSERVE_MIN_BUY_NOTIONAL:-${SPORTS_TAPE_ALERT_OBSERVE_BURST_MIN_NOTIONAL:-8000}}" \
+  -tape_observe_min_buy_notional "${TAPE_OBSERVE_MIN_BUY_NOTIONAL:-${SPORTS_TAPE_ALERT_OBSERVE_BURST_MIN_NOTIONAL:-6000}}" \
   -tape_min_scored_max_buy "${TAPE_MIN_SCORED_MAX_BUY:-2500}" \
   -tape_min_smart "${TAPE_MIN_SMART:-70}" \
   -tape_min_target_copy_trades "${TAPE_MIN_TARGET_COPY_TRADES:-2}" \

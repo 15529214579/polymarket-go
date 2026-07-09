@@ -106,9 +106,9 @@ export CLOB_PROXY="${CLOB_PROXY:-direct}"
 export WHALE_CONFIRM_LISTS="${WHALE_CONFIRM_LISTS:-watch,scout,target,tape,sports,leaderboard_watch}"
 export WHALE_CONFIRM_WINDOW="${WHALE_CONFIRM_WINDOW:-30m}"
 export WHALE_CONFIRM_MIN_WALLETS="${WHALE_CONFIRM_MIN_WALLETS:-2}"
-export WHALE_CONFIRM_BYPASS_USD="${WHALE_CONFIRM_BYPASS_USD:-5000}"
+export WHALE_CONFIRM_BYPASS_USD="${WHALE_CONFIRM_BYPASS_USD:-3000}"
 export WHALE_CONFIRM_MAX_WORSE_PRICE="${WHALE_CONFIRM_MAX_WORSE_PRICE:-0.02}"
-export WHALE_LIST_MIN_USD="${WHALE_LIST_MIN_USD:-core=1000,sports=1500,watch=750,scout=750,target=750,tape=1500,flow=1500,leaderboard_push=5000,leaderboard_watch=5000}"
+export WHALE_LIST_MIN_USD="${WHALE_LIST_MIN_USD:-core=750,sports=1000,watch=500,scout=500,target=500,tape=1000,flow=1000,leaderboard_push=3000,leaderboard_watch=3000}"
 
 policy_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 {
@@ -117,7 +117,7 @@ policy_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   printf 'base_wallets_file=%s\n' "$WHALE_BASE_WALLETS_FILE"
   printf 'extra_wallets_files=%s\n' "$WHALE_EXTRA_WALLETS_FILES"
   printf 'exclude_wallets_files=%s\n' "$WHALE_EXCLUDE_WALLETS_FILES"
-  printf 'whale_min_usd=%s\n' "${WHALE_MIN_USD:-750}"
+  printf 'whale_min_usd=%s\n' "${WHALE_MIN_USD:-500}"
   printf 'whale_list_min_usd=%s\n' "$WHALE_LIST_MIN_USD"
   printf 'whale_confirm_lists=%s\n' "$WHALE_CONFIRM_LISTS"
   printf 'whale_confirm_min_wallets=%s\n' "$WHALE_CONFIRM_MIN_WALLETS"
@@ -154,7 +154,7 @@ while :; do
     -ladder_sl_pct=0.20 \
     -ladder_max_hold=10m \
     -whale_enabled \
-    -whale_min_usd="${WHALE_MIN_USD:-750}" \
+    -whale_min_usd="${WHALE_MIN_USD:-500}" \
     -whale_interval="${WHALE_INTERVAL:-10s}" \
     -whale_replay_window="${WHALE_REPLAY_WINDOW:-15m}" \
     -wallets_file="$WHALE_WALLETS_FILE" \

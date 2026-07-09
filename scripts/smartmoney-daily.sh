@@ -51,7 +51,7 @@ case ",$SPORTS_TAPE_ALERT_MODES_EFFECTIVE," in
   *,FLOW-SCOUT,*) ;;
   *) SPORTS_TAPE_ALERT_MODES_EFFECTIVE="$SPORTS_TAPE_ALERT_MODES_EFFECTIVE,FLOW-SCOUT" ;;
 esac
-SPORTS_TAPE_ALERT_OBSERVE_MIN_NOTIONAL_EFFECTIVE="${SPORTS_TAPE_ALERT_OBSERVE_MIN_NOTIONAL:-5000}"
+SPORTS_TAPE_ALERT_OBSERVE_MIN_NOTIONAL_EFFECTIVE="${SPORTS_TAPE_ALERT_OBSERVE_MIN_NOTIONAL:-3000}"
 if [ "${SPORTS_TAPE_ALERT_ENABLE_OBSERVE:-1}" = "0" ]; then
   SPORTS_TAPE_ALERT_OBSERVE_MIN_NOTIONAL_EFFECTIVE="0"
 fi
@@ -421,15 +421,15 @@ run_pipeline() {
     -mode_policy_max_age "${SPORTS_TAPE_MODE_POLICY_MAX_AGE:-2h}" \
     -mode_policy_min_action "${SPORTS_TAPE_MODE_POLICY_MIN_ACTION:-COLLECT_POSITIVE}" \
     -wallet_statuses "$LEADERBOARD_WATCH,$LEADERBOARD_PUSH,$PUSH,$TAPE_FOLLOW,$TAPE_CANDIDATES,$TAPE_EDGEHOT,$TAPE_PROBATION,$TAPE_OBSERVE,$CONSENSUS_RESEARCH,$TAPE_REVERSAL,$REVIEW_NOISE" \
-    -min_notional "${SPORTS_TAPE_ALERT_MIN_NOTIONAL:-5000}" \
+    -min_notional "${SPORTS_TAPE_ALERT_MIN_NOTIONAL:-3000}" \
     -observe_min_notional "$SPORTS_TAPE_ALERT_OBSERVE_MIN_NOTIONAL_EFFECTIVE" \
-    -observe_burst_min_notional "${SPORTS_TAPE_ALERT_OBSERVE_BURST_MIN_NOTIONAL:-8000}" \
+    -observe_burst_min_notional "${SPORTS_TAPE_ALERT_OBSERVE_BURST_MIN_NOTIONAL:-6000}" \
     -observe_max_bot "${SPORTS_TAPE_ALERT_OBSERVE_MAX_BOT:-35}" \
     -observe_require_known="$SPORTS_TAPE_ALERT_OBSERVE_REQUIRE_KNOWN_EFFECTIVE" \
     -observe_min_tier "$SPORTS_TAPE_ALERT_OBSERVE_MIN_TIER_EFFECTIVE" \
     -insider_min_notional "${SPORTS_TAPE_ALERT_INSIDER_MIN_NOTIONAL:-25000}" \
     -insider_max_bot "${SPORTS_TAPE_ALERT_INSIDER_MAX_BOT:-35}" \
-    -edge_hot_min_notional "${SPORTS_TAPE_ALERT_EDGE_HOT_MIN_NOTIONAL:-1000}" \
+    -edge_hot_min_notional "${SPORTS_TAPE_ALERT_EDGE_HOT_MIN_NOTIONAL:-750}" \
     -edge_hot_max_bot "${SPORTS_TAPE_ALERT_EDGE_HOT_MAX_BOT:-45}" \
     -edge_hot_min_samples "${SPORTS_TAPE_ALERT_EDGE_HOT_MIN_SAMPLES:-2}" \
     -edge_hot_min_avg_pp "${SPORTS_TAPE_ALERT_EDGE_HOT_MIN_AVG_PP:-2}" \
@@ -446,21 +446,21 @@ run_pipeline() {
     -max_age "${SPORTS_TAPE_ALERT_MAX_AGE:-10m}" \
     -diagnostic_age "${SPORTS_TAPE_ALERT_DIAGNOSTIC_AGE:-6h}" \
     -consensus_alerts="${SPORTS_TAPE_CONSENSUS_ALERTS:-true}" \
-    -consensus_min_notional "${SPORTS_TAPE_CONSENSUS_MIN_NOTIONAL:-10000}" \
+    -consensus_min_notional "${SPORTS_TAPE_CONSENSUS_MIN_NOTIONAL:-7500}" \
     -consensus_min_wallets "${SPORTS_TAPE_CONSENSUS_MIN_WALLETS:-2}" \
     -consensus_max_bot "${SPORTS_TAPE_CONSENSUS_MAX_BOT:-60}" \
     -consensus_max_age "${SPORTS_TAPE_CONSENSUS_MAX_AGE:-15m}" \
-    -unknown_flow_min_notional "${SPORTS_TAPE_UNKNOWN_FLOW_MIN_NOTIONAL:-6000}" \
+    -unknown_flow_min_notional "${SPORTS_TAPE_UNKNOWN_FLOW_MIN_NOTIONAL:-4000}" \
     -unknown_flow_min_markets "${SPORTS_TAPE_UNKNOWN_FLOW_MIN_MARKETS:-2}" \
     -unknown_flow_max_bot "${SPORTS_TAPE_UNKNOWN_FLOW_MAX_BOT:-45}" \
     -seed_flow_min_notional "${SPORTS_TAPE_SEED_FLOW_MIN_NOTIONAL:-3000}" \
     -seed_flow_min_markets "${SPORTS_TAPE_SEED_FLOW_MIN_MARKETS:-2}" \
-    -scored_flow_min_notional "${SPORTS_TAPE_SCORED_FLOW_MIN_NOTIONAL:-6000}" \
+    -scored_flow_min_notional "${SPORTS_TAPE_SCORED_FLOW_MIN_NOTIONAL:-4000}" \
     -scored_flow_min_markets "${SPORTS_TAPE_SCORED_FLOW_MIN_MARKETS:-2}" \
     -scored_flow_max_bot "${SPORTS_TAPE_SCORED_FLOW_MAX_BOT:-35}" \
     -scored_flow_min_tier "${SPORTS_TAPE_SCORED_FLOW_MIN_TIER:-B}" \
     -position_cooldown "${SPORTS_TAPE_ALERT_POSITION_COOLDOWN:-30m}" \
-    -repeat_min_notional "${SPORTS_TAPE_ALERT_REPEAT_MIN_NOTIONAL:-25000}" \
+    -repeat_min_notional "${SPORTS_TAPE_ALERT_REPEAT_MIN_NOTIONAL:-15000}" \
     -max_alerts 0 \
     -dry_run
 
@@ -1073,7 +1073,7 @@ fi
   printf '## Sports Alert OBSERVE Experiment\n\n'
   printf -- '- Rule: raw low-bot sports/esports whale BUY alerts, including same-wallet split-order bursts; not counted in current policy until promoted\n'
   printf -- '- Default min notional: $%s\n' "$SPORTS_TAPE_ALERT_OBSERVE_MIN_NOTIONAL_EFFECTIVE"
-  printf -- '- Observe-burst min notional: $%s\n' "${SPORTS_TAPE_ALERT_OBSERVE_BURST_MIN_NOTIONAL:-8000}"
+  printf -- '- Observe-burst min notional: $%s\n' "${SPORTS_TAPE_ALERT_OBSERVE_BURST_MIN_NOTIONAL:-6000}"
   printf -- '- Require scored/listed wallet: %s\n' "$SPORTS_TAPE_ALERT_OBSERVE_REQUIRE_KNOWN_EFFECTIVE"
   printf -- '- Minimum tier: %s\n' "$SPORTS_TAPE_ALERT_OBSERVE_MIN_TIER_EFFECTIVE"
   printf -- '- Insider-scout min notional: $%s\n' "${SPORTS_TAPE_ALERT_INSIDER_MIN_NOTIONAL:-25000}"
@@ -1090,7 +1090,7 @@ fi
 
   printf '## Sports Alert OBSERVE-BURST Experiment\n\n'
   printf -- '- Rule: same-wallet split-order sports/esports BUY bursts; observation only until repeated positive ROI is proven\n'
-  printf -- '- Min cumulative notional: $%s\n' "${SPORTS_TAPE_ALERT_OBSERVE_BURST_MIN_NOTIONAL:-8000}"
+  printf -- '- Min cumulative notional: $%s\n' "${SPORTS_TAPE_ALERT_OBSERVE_BURST_MIN_NOTIONAL:-6000}"
   printf -- '- Alerts: %s\n' "$sports_alert_observe_burst_alerts"
   printf -- '- Marked to current midpoint: %s\n' "$sports_alert_observe_burst_marked"
   printf -- '- Win rate incl. midpoint marks: %s\n' "$sports_alert_observe_burst_win"
@@ -1146,7 +1146,7 @@ fi
 
   printf '## Sports Alert SHADOW SCORED-FLOW Experiment\n\n'
   printf -- '- Rule: scored low-bot leaderboard wallets buying multiple sports/esports markets; shadow-only until repeated positive ROI is proven\n'
-  printf -- '- Min cumulative notional: $%s\n' "${SPORTS_TAPE_SCORED_FLOW_MIN_NOTIONAL:-6000}"
+  printf -- '- Min cumulative notional: $%s\n' "${SPORTS_TAPE_SCORED_FLOW_MIN_NOTIONAL:-4000}"
   printf -- '- Min markets: %s\n' "${SPORTS_TAPE_SCORED_FLOW_MIN_MARKETS:-2}"
   printf -- '- Min tier: %s\n' "${SPORTS_TAPE_SCORED_FLOW_MIN_TIER:-B}"
   printf -- '- Max bot: %s\n' "${SPORTS_TAPE_SCORED_FLOW_MAX_BOT:-35}"

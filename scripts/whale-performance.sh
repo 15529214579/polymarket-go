@@ -12,7 +12,7 @@ fi
 REPORT_PATH="${WHALE_PERF_REPORT:-$ROOT/reports/whale_performance.md}"
 SUMMARY_JSON="${WHALE_PERF_SUMMARY_JSON:-${REPORT_PATH%.md}.json}"
 SNAPSHOT_JSONL="${WHALE_PERF_SNAPSHOT_JSONL:-$ROOT/db/strategy_iteration/whale_performance_snapshots.jsonl}"
-WHALE_LIST_MIN_USD_EFFECTIVE="${WHALE_LIST_MIN_USD:-core=1000,sports=1500,watch=750,scout=750,target=750,tape=1500,flow=1500,leaderboard_push=5000,leaderboard_watch=5000}"
+WHALE_LIST_MIN_USD_EFFECTIVE="${WHALE_LIST_MIN_USD:-core=750,sports=1000,watch=500,scout=500,target=500,tape=1000,flow=1000,leaderboard_push=3000,leaderboard_watch=3000}"
 POLICY_START_FILE="${WHALE_POLICY_START_FILE:-$ROOT/db/whale-push.policy-start}"
 WHALE_PERF_SINCE_EFFECTIVE="${WHALE_PERF_SINCE:-}"
 if [ -z "$WHALE_PERF_SINCE_EFFECTIVE" ] && [ -s "$POLICY_START_FILE" ]; then
@@ -28,7 +28,7 @@ args=(
   -summary_json "$SUMMARY_JSON" \
   -snapshot_jsonl "$SNAPSHOT_JSONL" \
   -stake "${WHALE_PERF_STAKE:-10}" \
-  -min_notional "${WHALE_MIN_USD:-750}" \
+  -min_notional "${WHALE_MIN_USD:-500}" \
   -list_min_notional "$WHALE_LIST_MIN_USD_EFFECTIVE" \
   -actions "${WHALE_PERF_ACTIONS:-alert,followed}" \
   -repeat_cooldown "${WHALE_REPEAT_COOLDOWN:-3m}" \
