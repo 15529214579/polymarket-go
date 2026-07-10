@@ -118,6 +118,7 @@ policy_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   printf 'extra_wallets_files=%s\n' "$WHALE_EXTRA_WALLETS_FILES"
   printf 'exclude_wallets_files=%s\n' "$WHALE_EXCLUDE_WALLETS_FILES"
   printf 'whale_min_usd=%s\n' "${WHALE_MIN_USD:-500}"
+  printf 'whale_markets=%s\n' "${WHALE_MARKETS:-120}"
   printf 'whale_list_min_usd=%s\n' "$WHALE_LIST_MIN_USD"
   printf 'whale_confirm_lists=%s\n' "$WHALE_CONFIRM_LISTS"
   printf 'whale_confirm_min_wallets=%s\n' "$WHALE_CONFIRM_MIN_WALLETS"
@@ -147,7 +148,7 @@ while :; do
     -mode=detect \
     -signal_mode=whale \
     -exit_mode=ladder \
-    -markets="${WHALE_MARKETS:-80}" \
+    -markets="${WHALE_MARKETS:-120}" \
     -window=60 \
     -fee_bp=0 \
     -lottery_enabled=false \
