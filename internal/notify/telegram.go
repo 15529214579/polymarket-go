@@ -90,69 +90,22 @@ func (t *Telegram) LargeFill(ev LargeFillEvent) {
 	t.enqueue(outgoing{text: FormatLargeFill(ev), tag: "large_fill", sendToken: t.pushToken()})
 }
 
-// SignalPrompt enqueues a DM with inline-keyboard rows for the signal side:
-//   - 🟢 rows: 10U–100U ladder mode (SL + 4h timeout), 5 buttons per row
-//   - 🔒 rows: 10U–100U hold to settlement (no SL, no timeout), 5 per row
-//
-// callback_data is "buy:<nonce>:<slot>:<sizeUSD>:<mode>" where mode is "l"
-// (ladder) or "h" (hold). The inbound callback handler resolves nonce via
-// the PendingStore and routes to the appropriate exit strategy.
+// SignalPrompt enqueues a push-only signal DM. It deliberately does not attach
+// buy buttons; the bot is currently used for alerting/research, not click-to-buy.
 func (t *Telegram) SignalPrompt(ev SignalPromptEvent) {
-	sizes := ev.SizesUSD
-	if len(sizes) == 0 {
-		sizes = DefaultSizesUSD
-	}
-	sig, ok := signalChoice(ev.Choices)
-	if !ok {
-		sig = SignalChoice{Slot: 0, Outcome: "?", IsSignal: true}
-	}
-
-	const rowCap = 5
-	var rows [][]map[string]string
-	// Ladder rows
-	var cur []map[string]string
-	for _, s := range sizes {
-		cur = append(cur, map[string]string{
-			"text":          buttonLabel(sig.Outcome, s, true),
-			"callback_data": fmt.Sprintf("buy:%s:%d:%g:l", ev.Nonce, sig.Slot, s),
-		})
-		if len(cur) == rowCap {
-			rows = append(rows, cur)
-			cur = nil
-		}
-	}
-	if len(cur) > 0 {
-		rows = append(rows, cur)
-	}
-	// Hold rows
-	cur = nil
-	for _, s := range sizes {
-		cur = append(cur, map[string]string{
-			"text":          holdButtonLabel(s),
-			"callback_data": fmt.Sprintf("buy:%s:%d:%g:h", ev.Nonce, sig.Slot, s),
-		})
-		if len(cur) == rowCap {
-			rows = append(rows, cur)
-			cur = nil
-		}
-	}
-	if len(cur) > 0 {
-		rows = append(rows, cur)
-	}
-	kb := map[string]any{"inline_keyboard": rows}
 	tok := t.cfg.PromptBotToken
 	if tok == "" {
 		tok = t.cfg.BotToken
 	}
 	t.enqueue(outgoing{
 		text: FormatSignalPrompt(ev), tag: "signal_prompt",
-		replyMarkup: kb, sendToken: tok, onSent: ev.OnSent,
+		sendToken: tok, onSent: ev.OnSent,
 	})
 }
 
-// EditSignalExpired rewrites the original prompt to "已过期" + strips buttons.
-// Called from the pending reaper. Uses the prompt bot (the one the boss sees
-// the DM from); falls back to the alert bot when PromptBotToken is unset.
+// EditSignalExpired strips buttons from an old prompt without changing the
+// original signal body. Called from the pending reaper for legacy messages that
+// were sent before SignalPrompt became push-only.
 func (t *Telegram) EditSignalExpired(messageID int64) {
 	if messageID == 0 {
 		return
@@ -162,8 +115,7 @@ func (t *Telegram) EditSignalExpired(messageID int64) {
 		tok = t.cfg.BotToken
 	}
 	t.enqueue(outgoing{
-		tag: "edit_expired", text: FormatSignalExpired(),
-		editMessageID: messageID, stripKeyboard: true, sendToken: tok,
+		tag: "edit_expired", editReplyMarkupID: messageID, stripKeyboard: true, sendToken: tok,
 	})
 }
 
@@ -286,6 +238,10 @@ type outgoing struct {
 	// editMessageText on that existing message. Used to rewrite a prompt to
 	// "已过期" / "已下单" post-hoc.
 	editMessageID int64
+	// editReplyMarkupID, when non-zero, switches the dispatch to
+	// editMessageReplyMarkup on that existing message. Used to remove old
+	// signal buttons while preserving the original push text.
+	editReplyMarkupID int64
 	// stripKeyboard, when true on an edit, replaces reply_markup with an empty
 	// inline_keyboard so the buttons disappear.
 	stripKeyboard bool
@@ -351,7 +307,16 @@ func (t *Telegram) send(o outgoing) {
 		"text":                     o.text,
 		"disable_web_page_preview": true,
 	}
-	if o.editMessageID != 0 {
+	if o.editReplyMarkupID != 0 {
+		endpoint = "editMessageReplyMarkup"
+		body = map[string]any{
+			"chat_id":    t.cfg.ChatID,
+			"message_id": o.editReplyMarkupID,
+		}
+		if o.stripKeyboard {
+			body["reply_markup"] = map[string]any{"inline_keyboard": [][]map[string]string{}}
+		}
+	} else if o.editMessageID != 0 {
 		endpoint = "editMessageText"
 		body["message_id"] = o.editMessageID
 		if o.stripKeyboard {

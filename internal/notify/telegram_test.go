@@ -107,7 +107,7 @@ func TestFormatLargeFill(t *testing.T) {
 	}
 }
 
-func TestTelegram_SignalPromptAttachesInlineKeyboard(t *testing.T) {
+func TestTelegram_SignalPromptIsPushOnly(t *testing.T) {
 	var got atomic.Value
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -149,37 +149,8 @@ func TestTelegram_SignalPromptAttachesInlineKeyboard(t *testing.T) {
 	if strings.Contains(text, "0.5800") || strings.Contains(text, "选 GIANTX") {
 		t.Errorf("contrarian side leaked into prompt body: %q", text)
 	}
-	rm, ok := m["reply_markup"].(map[string]any)
-	if !ok {
-		t.Fatalf("reply_markup missing: %v", m["reply_markup"])
-	}
-	kb, ok := rm["inline_keyboard"].([]any)
-	if !ok || len(kb) != 4 {
-		t.Fatalf("inline_keyboard shape: want 4 rows (2 ladder + 2 hold), got %v", kb)
-	}
-	row0, _ := kb[0].([]any)
-	if len(row0) != 5 {
-		t.Fatalf("row0 (ladder) buttons: got %d", len(row0))
-	}
-	b0, _ := row0[0].(map[string]any)
-	if b0["text"] != "🟢 10U" || b0["callback_data"] != "buy:abcd1234:0:10:l" {
-		t.Errorf("row0.button0: %+v", b0)
-	}
-	b4, _ := row0[4].(map[string]any)
-	if b4["text"] != "🟢 50U" || b4["callback_data"] != "buy:abcd1234:0:50:l" {
-		t.Errorf("row0.button4: %+v", b4)
-	}
-	row2, _ := kb[2].([]any)
-	if len(row2) != 5 {
-		t.Fatalf("row2 (hold) buttons: got %d", len(row2))
-	}
-	h0, _ := row2[0].(map[string]any)
-	if h0["text"] != "🔒 10U" || h0["callback_data"] != "buy:abcd1234:0:10:h" {
-		t.Errorf("row2.button0: %+v", h0)
-	}
-	h4, _ := row2[4].(map[string]any)
-	if h4["text"] != "🔒 50U" || h4["callback_data"] != "buy:abcd1234:0:50:h" {
-		t.Errorf("row2.button4: %+v", h4)
+	if _, ok := m["reply_markup"]; ok {
+		t.Fatalf("push-only signal should not include reply_markup: %v", m["reply_markup"])
 	}
 }
 
@@ -330,15 +301,14 @@ func TestTelegram_EditSignalExpired_StripsKeyboard(t *testing.T) {
 		t.Fatalf("close: %v", err)
 	}
 	h := <-hits
-	if !strings.Contains(h.path, "/botPROMPT/editMessageText") {
-		t.Errorf("expected editMessageText via PROMPT, got %s", h.path)
+	if !strings.Contains(h.path, "/botPROMPT/editMessageReplyMarkup") {
+		t.Errorf("expected editMessageReplyMarkup via PROMPT, got %s", h.path)
 	}
 	if h.body["message_id"].(float64) != 77 {
 		t.Errorf("message_id = %v, want 77", h.body["message_id"])
 	}
-	text, _ := h.body["text"].(string)
-	if !strings.Contains(text, "已过期") {
-		t.Errorf("text missing 已过期: %q", text)
+	if _, ok := h.body["text"]; ok {
+		t.Errorf("expired edit should preserve original text, got text=%v", h.body["text"])
 	}
 	rm, ok := h.body["reply_markup"].(map[string]any)
 	if !ok {

@@ -20,13 +20,11 @@ type Notifier interface {
 	RiskTrip(ev RiskTripEvent)
 	RiskResume(ev RiskResumeEvent)
 	LargeFill(ev LargeFillEvent)
-	// SignalPrompt pushes a signal DM with inline-keyboard rows (10U–100U gradient);
-	// callback_data is "buy:<nonce>:<slot>:<sizeUSD>:<mode>" where slot indexes
-	// into PendingIntent.Choices and mode is "l" (ladder) or "h" (hold).
+	// SignalPrompt pushes a signal DM. It is intentionally push-only: no
+	// buy buttons are attached.
 	SignalPrompt(ev SignalPromptEvent)
-	// EditSignalExpired rewrites the original prompt to "⌛ 已过期 · 未下单" and
-	// strips the inline keyboard, called when the TTL-reaper evicts an unclicked
-	// pending. No-op when messageID == 0 (prompt's send response hadn't landed).
+	// EditSignalExpired strips the inline keyboard from an old prompt while
+	// preserving the original signal text.
 	EditSignalExpired(messageID int64)
 	// EditSignalFilled rewrites the original prompt to "✅ 已下单 …" and strips
 	// the inline keyboard, called after a successful click.
@@ -265,10 +263,10 @@ func FormatRiskResume(ev RiskResumeEvent) string {
 	)
 }
 
-// FormatSignalPrompt renders a compact DM body that accompanies the inline-keyboard.
-// Only the signal side is surfaced — the boss picks amount, not direction.
+// FormatSignalPrompt renders a compact push-only signal DM body.
+// Only the signal side is surfaced.
 //
-// Layout (3 lines, keeps buttons visible on mobile without scrolling):
+// Layout (3 lines, keeps the push compact on mobile):
 //
 //	⚡ <signalOutcome> ↑ @ 0.xxxx
 //	<Match>
