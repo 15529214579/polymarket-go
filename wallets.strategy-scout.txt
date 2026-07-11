@@ -1,4 +1,4 @@
-0x3a8aa345d5db7ec5138298c8c4f4540259be7699 # list=scout tier=C smart=100.00 bot=41.71 copyROI=-30.7% copyPnL=$-141.07 copyT=2 copyWin=0.0% avgNotional=$813 sources=leaderboard_profit_7d
-0x4cb5a6cf70340f068148a740f9ec96cbea75ef29 # list=scout tier=C smart=100.00 bot=44.38 copyROI=0.0% copyPnL=$+0.00 copyT=0 copyWin=0.0% avgNotional=$4587 sources=existing,leaderboard_profit_7d
-0x5e9458202b5817a72cf81105ec8a30e6f3705ba1 # list=scout tier=C smart=100.00 bot=43.22 copyROI=0.0% copyPnL=$+0.00 copyT=0 copyWin=0.0% avgNotional=$506 sources=leaderboard_profit_7d
-0xa71093cafc0c099b4ccab24c3cb8018d817923c4 # list=scout tier=C smart=100.00 bot=41.71 copyROI=0.0% copyPnL=$+0.00 copyT=0 copyWin=0.0% avgNotional=$553 sources=leaderboard_profit_30d,leaderboard_profit_7d
+0x3a8aa345d5db7ec5138298c8c4f4540259be7699 # list=scout tier=C smart=100.00 bot=41.71 copyROI=-30.7% copyPnL=$-141.07 copyT=2 copyWin=0.0% avgNotional=$813 sources=existing,leaderboard_profit_7d
+0x4cb5a6cf70340f068148a740f9ec96cbea75ef29 # list=scout tier=C smart=100.00 bot=44.38 copyROI=0.0% copyPnL=$+0.00 copyT=0 copyWin=0.0% avgNotional=$4587 sources=existing,leaderboard_profit_30d,leaderboard_profit_7d
+0x5e9458202b5817a72cf81105ec8a30e6f3705ba1 # list=scout tier=C smart=100.00 bot=43.22 copyROI=0.0% copyPnL=$+0.00 copyT=0 copyWin=0.0% avgNotional=$506 sources=existing,leaderboard_profit_7d
+0xa71093cafc0c099b4ccab24c3cb8018d817923c4 # list=scout tier=C smart=100.00 bot=41.61 copyROI=0.0% copyPnL=$+0.00 copyT=0 copyWin=0.0% avgNotional=$551 sources=existing,leaderboard_profit_30d,leaderboard_profit_7d

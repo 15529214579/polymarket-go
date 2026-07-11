@@ -21,6 +21,7 @@ func main() {
 	reportPath := flag.String("report", "reports/leaderboard_whales.md", "markdown report path")
 	recommendWalletsPath := flag.String("recommend_wallets", "wallets.leaderboard-watch.txt", "wallet file for clean leaderboard whales worth large-order monitoring")
 	strictPushWalletsPath := flag.String("push_wallets_out", "wallets.leaderboard-push.txt", "wallet file for strict leaderboard whales eligible for whale push monitoring")
+	sportsPushWalletsPath := flag.String("sports_push_wallets_out", "wallets.leaderboard-sports-push.txt", "wallet file for broad leaderboard sports/esports whales eligible for push monitoring")
 	topN := flag.Int("top", 25, "rows per section")
 	minSmart := flag.Float64("min_smart", 70, "minimum smart-money score for recommended leaderboard whales")
 	maxBot := flag.Float64("max_bot", 45, "maximum bot score for recommended leaderboard whales")
@@ -42,6 +43,14 @@ func main() {
 	strictPushMinAvgNotional := flag.Float64("push_min_avg_notional", 1000, "minimum average notional for push_wallets_out")
 	strictPushMinTargetTrades := flag.Int("push_min_target_trades", 5, "minimum target-category trades for push_wallets_out")
 	strictPushMinTargetLarge := flag.Int("push_min_target_large", 1, "minimum target-category large trades for push_wallets_out")
+	sportsPushLimit := flag.Int("sports_push_limit", 200, "maximum wallets written to sports_push_wallets_out")
+	sportsPushMinTier := flag.String("sports_push_min_tier", "C", "minimum wallet tier for sports_push_wallets_out")
+	sportsPushMinSmart := flag.Float64("sports_push_min_smart", 55, "minimum smart-money score for sports_push_wallets_out")
+	sportsPushMaxBot := flag.Float64("sports_push_max_bot", 45, "maximum bot score for sports_push_wallets_out")
+	sportsPushMinLarge := flag.Int("sports_push_min_large", 5, "minimum large trades for sports_push_wallets_out")
+	sportsPushMinAvgNotional := flag.Float64("sports_push_min_avg_notional", 300, "minimum average notional for sports_push_wallets_out")
+	sportsPushMinTargetTrades := flag.Int("sports_push_min_target_trades", 3, "minimum target-category trades for sports_push_wallets_out")
+	sportsPushMinTargetLarge := flag.Int("sports_push_min_target_large", 1, "minimum target-category large trades for sports_push_wallets_out")
 	flag.Parse()
 
 	scores, err := loadScores(*scoresPath)
@@ -59,7 +68,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "leaderboard-whales: load exclude wallets: %v\n", err)
 		os.Exit(1)
 	}
-	scan := renderReport(scores, push, exclude, *scoresPath, *pushWalletsPath, *excludeWalletsPath, *topN, *minSmart, *maxBot, *minLarge, *minAvgNotional, *minTargetTrades, *minTargetLarge, *whaleWatchMinSmart, *whaleWatchMaxBot, *whaleWatchMinLarge, *whaleWatchMinAvgNotional, *whaleWatchMinTargetLarge, *strictPushMinTier, *strictPushMinSmart, *strictPushMaxBot, *strictPushMinLarge, *strictPushMinAvgNotional, *strictPushMinTargetTrades, *strictPushMinTargetLarge)
+	scan := renderReport(scores, push, exclude, *scoresPath, *pushWalletsPath, *excludeWalletsPath, *topN, *minSmart, *maxBot, *minLarge, *minAvgNotional, *minTargetTrades, *minTargetLarge, *whaleWatchMinSmart, *whaleWatchMaxBot, *whaleWatchMinLarge, *whaleWatchMinAvgNotional, *whaleWatchMinTargetLarge, *strictPushMinTier, *strictPushMinSmart, *strictPushMaxBot, *strictPushMinLarge, *strictPushMinAvgNotional, *strictPushMinTargetTrades, *strictPushMinTargetLarge, *sportsPushMinTier, *sportsPushMinSmart, *sportsPushMaxBot, *sportsPushMinLarge, *sportsPushMinAvgNotional, *sportsPushMinTargetTrades, *sportsPushMinTargetLarge)
 	if err := os.MkdirAll(filepath.Dir(*reportPath), 0o755); err != nil {
 		fmt.Fprintf(os.Stderr, "leaderboard-whales: mkdir report: %v\n", err)
 		os.Exit(1)
@@ -76,8 +85,12 @@ func main() {
 		fmt.Fprintf(os.Stderr, "leaderboard-whales: write push wallets: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("leaderboard-whales done: leaderboard=%d pushed=%d excluded=%d strict_push=%d recommended=%d report=%s recommend_wallets=%s push_wallets_out=%s\n",
-		countLeaderboard(scores), countLeaderboardPushed(scores, push), countLeaderboardPushed(scores, exclude), len(scan.StrictPush), len(scan.Recommended)+len(scan.WhaleWatch), *reportPath, *recommendWalletsPath, *strictPushWalletsPath)
+	if err := writeWalletFile(*sportsPushWalletsPath, limitScores(scan.SportsPush, *sportsPushLimit), "leaderboard_sports_push"); err != nil {
+		fmt.Fprintf(os.Stderr, "leaderboard-whales: write sports push wallets: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("leaderboard-whales done: leaderboard=%d pushed=%d excluded=%d strict_push=%d sports_push=%d recommended=%d report=%s recommend_wallets=%s push_wallets_out=%s sports_push_wallets_out=%s\n",
+		countLeaderboard(scores), countLeaderboardPushed(scores, push), countLeaderboardPushed(scores, exclude), len(scan.StrictPush), minInt(len(scan.SportsPush), *sportsPushLimit), len(scan.Recommended)+len(scan.WhaleWatch), *reportPath, *recommendWalletsPath, *strictPushWalletsPath, *sportsPushWalletsPath)
 }
 
 func loadScores(path string) ([]walletdiscover.WalletScore, error) {
@@ -150,15 +163,17 @@ type scanResult struct {
 	Recommended []walletdiscover.WalletScore
 	WhaleWatch  []walletdiscover.WalletScore
 	StrictPush  []walletdiscover.WalletScore
+	SportsPush  []walletdiscover.WalletScore
 }
 
-func renderReport(scores []walletdiscover.WalletScore, push, exclude map[string]string, scoresPath, pushPath, excludePath string, topN int, minSmart, maxBot float64, minLarge int, minAvgNotional float64, minTargetTrades, minTargetLarge int, whaleWatchMinSmart, whaleWatchMaxBot float64, whaleWatchMinLarge int, whaleWatchMinAvgNotional float64, whaleWatchMinTargetLarge int, strictPushMinTier string, strictPushMinSmart, strictPushMaxBot float64, strictPushMinLarge int, strictPushMinAvgNotional float64, strictPushMinTargetTrades, strictPushMinTargetLarge int) scanResult {
+func renderReport(scores []walletdiscover.WalletScore, push, exclude map[string]string, scoresPath, pushPath, excludePath string, topN int, minSmart, maxBot float64, minLarge int, minAvgNotional float64, minTargetTrades, minTargetLarge int, whaleWatchMinSmart, whaleWatchMaxBot float64, whaleWatchMinLarge int, whaleWatchMinAvgNotional float64, whaleWatchMinTargetLarge int, strictPushMinTier string, strictPushMinSmart, strictPushMaxBot float64, strictPushMinLarge int, strictPushMinAvgNotional float64, strictPushMinTargetTrades, strictPushMinTargetLarge int, sportsPushMinTier string, sportsPushMinSmart, sportsPushMaxBot float64, sportsPushMinLarge int, sportsPushMinAvgNotional float64, sportsPushMinTargetTrades, sportsPushMinTargetLarge int) scanResult {
 	var leaderboard []walletdiscover.WalletScore
 	var pushed []walletdiscover.WalletScore
 	var excluded []walletdiscover.WalletScore
 	var recommended []walletdiscover.WalletScore
 	var whaleWatch []walletdiscover.WalletScore
 	var strictPush []walletdiscover.WalletScore
+	var sportsPush []walletdiscover.WalletScore
 	var watch []walletdiscover.WalletScore
 	var bots []walletdiscover.WalletScore
 
@@ -187,6 +202,12 @@ func renderReport(scores []walletdiscover.WalletScore, push, exclude map[string]
 			}
 			continue
 		}
+		if qualifiesLeaderboardSportsPush(s, sportsPushMinTier, sportsPushMinSmart, sportsPushMaxBot, sportsPushMinLarge, sportsPushMinAvgNotional, sportsPushMinTargetTrades, sportsPushMinTargetLarge) {
+			if !inPush {
+				sportsPush = append(sportsPush, s)
+			}
+			continue
+		}
 		if qualifiesLeaderboardWhale(s, minSmart, maxBot, minLarge, minAvgNotional, minTargetTrades, minTargetLarge) {
 			if !inPush {
 				recommended = append(recommended, s)
@@ -207,6 +228,7 @@ func renderReport(scores []walletdiscover.WalletScore, push, exclude map[string]
 	sortScores(pushed, leaderboardWhaleScore)
 	sortScores(excluded, leaderboardWhaleScore)
 	sortScores(strictPush, leaderboardWhaleScore)
+	sortScores(sportsPush, leaderboardSportsScore)
 	sortScores(recommended, leaderboardWhaleScore)
 	sortScores(whaleWatch, leaderboardWhaleScore)
 	sortScores(watch, watchScore)
@@ -228,21 +250,24 @@ func renderReport(scores []walletdiscover.WalletScore, push, exclude map[string]
 	fmt.Fprintf(&b, "- Already in whale push: %d\n", len(pushed))
 	fmt.Fprintf(&b, "- Excluded by quarantine/review-noise: %d\n", len(excluded))
 	fmt.Fprintf(&b, "- New strict push candidates: %d\n", len(strictPush))
+	fmt.Fprintf(&b, "- New sports/esports push candidates: %d\n", len(sportsPush))
 	fmt.Fprintf(&b, "- New recommended watch candidates: %d\n", len(recommended))
 	fmt.Fprintf(&b, "- New leaderboard whale-watch candidates: %d\n", len(whaleWatch))
 	fmt.Fprintf(&b, "- Recommended target-category requirement: targetTrades>=%d targetLarge>=%d\n", minTargetTrades, minTargetLarge)
 	fmt.Fprintf(&b, "- Whale-watch requirement: smart>=%.0f bot<%.0f large>=%d targetLarge>=%d avgNotional>=$%.0f\n", whaleWatchMinSmart, whaleWatchMaxBot, whaleWatchMinLarge, whaleWatchMinTargetLarge, whaleWatchMinAvgNotional)
 	fmt.Fprintf(&b, "- Strict push target-category requirement: targetTrades>=%d targetLarge>=%d\n", strictPushMinTargetTrades, strictPushMinTargetLarge)
+	fmt.Fprintf(&b, "- Sports-push requirement: tier>=%s smart>=%.0f bot<%.0f large>=%d targetTrades>=%d targetLarge>=%d avgNotional>=$%.0f\n", sportsPushMinTier, sportsPushMinSmart, sportsPushMaxBot, sportsPushMinLarge, sportsPushMinTargetTrades, sportsPushMinTargetLarge, sportsPushMinAvgNotional)
 	fmt.Fprintf(&b, "- Bot/flow filtered: %d\n\n", len(bots))
 
 	writeTable(&b, "Leaderboard Whales Already in Push", pushed, push, topN, true)
 	writeTable(&b, "Excluded Leaderboard Whales", excluded, exclude, topN, true)
 	writeTable(&b, "Strict Leaderboard Push Candidates", strictPush, push, topN, false)
+	writeTable(&b, "Sports/Esports Leaderboard Push Candidates", sportsPush, push, topN, false)
 	writeTable(&b, "Recommended Leaderboard Whales", recommended, push, topN, false)
 	writeTable(&b, "Leaderboard Whale Watch", whaleWatch, push, topN, false)
 	writeTable(&b, "High-Value Watch Only", watch, push, topN, false)
 	writeTable(&b, "Filtered Bot-Like Leaderboard Wallets", bots, push, topN, false)
-	return scanResult{Report: b.String(), Recommended: recommended, WhaleWatch: whaleWatch, StrictPush: strictPush}
+	return scanResult{Report: b.String(), Recommended: recommended, WhaleWatch: whaleWatch, StrictPush: strictPush, SportsPush: sportsPush}
 }
 
 func writeTable(b *strings.Builder, title string, rows []walletdiscover.WalletScore, push map[string]string, topN int, includeList bool) {
@@ -331,6 +356,31 @@ func qualifiesStrictLeaderboardPush(s walletdiscover.WalletScore, minTier string
 	return true
 }
 
+func qualifiesLeaderboardSportsPush(s walletdiscover.WalletScore, minTier string, minSmart, maxBot float64, minLarge int, minAvgNotional float64, minTargetTrades, minTargetLarge int) bool {
+	if !hasLeaderboardSource(s.Sources) {
+		return false
+	}
+	if !tierAtLeast(s.Tier, minTier) {
+		return false
+	}
+	if s.SmartMoneyScore < minSmart || s.BotScore >= maxBot {
+		return false
+	}
+	if !hasTargetCategoryActivity(s, minTargetTrades, minTargetLarge) {
+		return false
+	}
+	if s.Stats.LargeTrades < minLarge || s.Stats.AvgTradeNotional < minAvgNotional {
+		return false
+	}
+	if hasRisk(s.RiskFlags, "bot_like_flow", "fixed_amount", "fixed_price", "negative_copy_sim", "opposite_side_same_market") {
+		return false
+	}
+	if s.Stats.CopyClosedTrades >= 3 && (s.Stats.CopyROI < -10 || s.Stats.CopyPnL < -50) {
+		return false
+	}
+	return true
+}
+
 func isBotLike(s walletdiscover.WalletScore) bool {
 	return s.Tier == "BOT" || s.BotScore >= 45 || hasRisk(s.RiskFlags, "bot_like_flow", "fixed_amount", "fixed_price")
 }
@@ -376,6 +426,19 @@ func leaderboardWhaleScore(s walletdiscover.WalletScore) float64 {
 		float64(st.TargetLargeTrades)*0.12 +
 		st.TargetTradeRatio*40 +
 		math.Log1p(math.Max(st.AvgTradeNotional, 0))*10 +
+		copyBonus(st) +
+		sourceBonus(s.Sources)
+}
+
+func leaderboardSportsScore(s walletdiscover.WalletScore) float64 {
+	st := s.Stats
+	return s.SmartMoneyScore*0.8 -
+		s.BotScore*1.4 +
+		float64(st.TargetTrades)*0.10 +
+		float64(st.TargetLargeTrades)*0.30 +
+		float64(st.LargeTrades)*0.04 +
+		st.TargetTradeRatio*60 +
+		math.Log1p(math.Max(st.AvgTradeNotional, 0))*12 +
 		copyBonus(st) +
 		sourceBonus(s.Sources)
 }

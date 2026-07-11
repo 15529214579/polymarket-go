@@ -32,6 +32,8 @@ LAB_REPORT="${SMARTMONEY_LAB_REPORT:-$ROOT/reports/strategy_lab.md}"
 LEADERBOARD_WHALES_REPORT="${SMARTMONEY_LEADERBOARD_WHALES_REPORT:-$ROOT/reports/leaderboard_whales.md}"
 LEADERBOARD_WATCH="${SMARTMONEY_LEADERBOARD_WATCH_WALLETS:-$ROOT/wallets.leaderboard-watch.txt}"
 LEADERBOARD_PUSH="${SMARTMONEY_LEADERBOARD_PUSH_WALLETS:-$ROOT/wallets.leaderboard-push.txt}"
+LEADERBOARD_SPORTS_PUSH="${SMARTMONEY_LEADERBOARD_SPORTS_PUSH_WALLETS:-$ROOT/wallets.leaderboard-sports-push.txt}"
+SPORTS_HOLDERS_PUSH="${SMARTMONEY_SPORTS_HOLDERS_PUSH_WALLETS:-$ROOT/wallets.sports-holders-push.txt}"
 SPORTS_TAPE_REPORT="${SMARTMONEY_SPORTS_TAPE_REPORT:-$ROOT/reports/sports_tape.md}"
 SPORTS_ALERT_PERF_REPORT="${SPORTS_ALERT_PERF_REPORT:-$ROOT/reports/sports_alert_performance.md}"
 SPORTS_ALERT_CANDIDATE_REPORT="${SPORTS_ALERT_CANDIDATE_REPORT:-$ROOT/reports/sports_alert_candidates.md}"
@@ -171,7 +173,7 @@ run_push_performance() {
   if [ ! -s "$push_file" ]; then
     push_file="$CORE"
   fi
-  WHALE_PERF_WALLETS="$push_file,$LEADERBOARD_PUSH,$LEADERBOARD_WATCH" WHALE_PERF_REPORT="$PUSH_PERF_REPORT" WHALE_PERF_SUMMARY_JSON="$PUSH_PERF_JSON" ./scripts/whale-performance.sh
+  WHALE_PERF_WALLETS="$push_file,$LEADERBOARD_PUSH,$LEADERBOARD_WATCH,$LEADERBOARD_SPORTS_PUSH,$SPORTS_HOLDERS_PUSH" WHALE_PERF_REPORT="$PUSH_PERF_REPORT" WHALE_PERF_SUMMARY_JSON="$PUSH_PERF_JSON" ./scripts/whale-performance.sh
 }
 
 run_wallet_maintenance() {
@@ -179,7 +181,7 @@ run_wallet_maintenance() {
   if [ ! -s "$push_file" ]; then
     push_file="$CORE"
   fi
-  local maint_wallets="$push_file,$LEADERBOARD_PUSH,$LEADERBOARD_WATCH,$TAPE,$TAPE_OBSERVE,$TAPE_PROBATION,$TAPE_CANDIDATES,$TAPE_FOLLOW,$TAPE_REVERSAL"
+  local maint_wallets="$push_file,$LEADERBOARD_PUSH,$LEADERBOARD_WATCH,$LEADERBOARD_SPORTS_PUSH,$SPORTS_HOLDERS_PUSH,$TAPE,$TAPE_OBSERVE,$TAPE_PROBATION,$TAPE_CANDIDATES,$TAPE_FOLLOW,$TAPE_REVERSAL"
   go build -o bin/wallet-maintain ./cmd/wallet-maintain
   "$ROOT/bin/wallet-maintain" \
     -log "$ROOT/db/journal/whale_trades.jsonl" \
@@ -365,7 +367,7 @@ run_pipeline() {
     -report "$SPORTS_TAPE_REPORT" \
     -wallets_out "$ROOT/wallets.sports-tape.txt" \
     -push_wallets "$PUSH" \
-    -wallet_statuses "$LEADERBOARD_WATCH,$LEADERBOARD_PUSH,$PUSH,$TAPE,$TAPE_OBSERVE,$TAPE_PROBATION,$TAPE_CANDIDATES,$TAPE_EDGEHOT,$TAPE_FOLLOW,$CONSENSUS_RESEARCH,$TAPE_REVERSAL,$REVIEW_NOISE" \
+    -wallet_statuses "$LEADERBOARD_WATCH,$LEADERBOARD_PUSH,$LEADERBOARD_SPORTS_PUSH,$SPORTS_HOLDERS_PUSH,$PUSH,$TAPE,$TAPE_OBSERVE,$TAPE_PROBATION,$TAPE_CANDIDATES,$TAPE_EDGEHOT,$TAPE_FOLLOW,$CONSENSUS_RESEARCH,$TAPE_REVERSAL,$REVIEW_NOISE" \
     -exclude_wallets "$QUARANTINE,$REVIEW_NOISE" \
     -scores "$ROOT/db/strategy_iteration/wallet_scores.json" \
     -target_categories "${SPORTS_TAPE_TARGET_CATEGORIES:-basketball,soccer,esports}" \
@@ -420,7 +422,7 @@ run_pipeline() {
     -mode_policy "$SPORTS_TAPE_MODE_POLICY" \
     -mode_policy_max_age "${SPORTS_TAPE_MODE_POLICY_MAX_AGE:-2h}" \
     -mode_policy_min_action "${SPORTS_TAPE_MODE_POLICY_MIN_ACTION:-COLLECT_POSITIVE}" \
-    -wallet_statuses "$LEADERBOARD_WATCH,$LEADERBOARD_PUSH,$PUSH,$TAPE_FOLLOW,$TAPE_CANDIDATES,$TAPE_EDGEHOT,$TAPE_PROBATION,$TAPE_OBSERVE,$CONSENSUS_RESEARCH,$TAPE_REVERSAL,$REVIEW_NOISE" \
+    -wallet_statuses "$LEADERBOARD_WATCH,$LEADERBOARD_PUSH,$LEADERBOARD_SPORTS_PUSH,$SPORTS_HOLDERS_PUSH,$PUSH,$TAPE_FOLLOW,$TAPE_CANDIDATES,$TAPE_EDGEHOT,$TAPE_PROBATION,$TAPE_OBSERVE,$CONSENSUS_RESEARCH,$TAPE_REVERSAL,$REVIEW_NOISE" \
     -min_notional "${SPORTS_TAPE_ALERT_MIN_NOTIONAL:-3000}" \
     -observe_min_notional "$SPORTS_TAPE_ALERT_OBSERVE_MIN_NOTIONAL_EFFECTIVE" \
     -observe_burst_min_notional "${SPORTS_TAPE_ALERT_OBSERVE_BURST_MIN_NOTIONAL:-6000}" \
@@ -489,6 +491,7 @@ run_pipeline() {
     -report "$LEADERBOARD_WHALES_REPORT" \
     -recommend_wallets "$LEADERBOARD_WATCH" \
     -push_wallets_out "$LEADERBOARD_PUSH" \
+    -sports_push_wallets_out "$LEADERBOARD_SPORTS_PUSH" \
     -top "${LEADERBOARD_WHALES_TOP:-25}" \
     -min_smart "${LEADERBOARD_WHALES_MIN_SMART:-70}" \
     -max_bot "${LEADERBOARD_WHALES_MAX_BOT:-45}" \
@@ -509,7 +512,26 @@ run_pipeline() {
     -push_min_large "${LEADERBOARD_WHALES_PUSH_MIN_LARGE:-50}" \
     -push_min_avg_notional "${LEADERBOARD_WHALES_PUSH_MIN_AVG_NOTIONAL:-1000}" \
     -push_min_target_trades "${LEADERBOARD_WHALES_PUSH_MIN_TARGET_TRADES:-5}" \
-    -push_min_target_large "${LEADERBOARD_WHALES_PUSH_MIN_TARGET_LARGE:-1}"
+    -push_min_target_large "${LEADERBOARD_WHALES_PUSH_MIN_TARGET_LARGE:-1}" \
+    -sports_push_limit "${LEADERBOARD_SPORTS_PUSH_LIMIT:-200}" \
+    -sports_push_min_tier "${LEADERBOARD_SPORTS_PUSH_MIN_TIER:-C}" \
+    -sports_push_min_smart "${LEADERBOARD_SPORTS_PUSH_MIN_SMART:-55}" \
+    -sports_push_max_bot "${LEADERBOARD_SPORTS_PUSH_MAX_BOT:-45}" \
+    -sports_push_min_large "${LEADERBOARD_SPORTS_PUSH_MIN_LARGE:-5}" \
+    -sports_push_min_avg_notional "${LEADERBOARD_SPORTS_PUSH_MIN_AVG_NOTIONAL:-300}" \
+    -sports_push_min_target_trades "${LEADERBOARD_SPORTS_PUSH_MIN_TARGET_TRADES:-3}" \
+    -sports_push_min_target_large "${LEADERBOARD_SPORTS_PUSH_MIN_TARGET_LARGE:-1}"
+
+  go build -o bin/sports-holders-push ./cmd/sports-holders-push
+  "$ROOT/bin/sports-holders-push" \
+    -out "$SPORTS_HOLDERS_PUSH" \
+    -exclude_wallets "$QUARANTINE,$REVIEW_NOISE" \
+    -target_categories "${SPORTS_HOLDERS_PUSH_TARGET_CATEGORIES:-basketball,soccer,esports}" \
+    -markets "${SPORTS_HOLDERS_PUSH_MARKETS:-300}" \
+    -holders "${SPORTS_HOLDERS_PUSH_HOLDERS:-100}" \
+    -max_wallets "${SPORTS_HOLDERS_PUSH_MAX_WALLETS:-200}" \
+    -min_shares "${SPORTS_HOLDERS_PUSH_MIN_SHARES:-1000}" \
+    -timeout "${SPORTS_HOLDERS_PUSH_TIMEOUT:-5m}"
 
   WHALE_PERF_WALLETS="$CORE" WHALE_PERF_REPORT="$CORE_PERF_REPORT" ./scripts/whale-performance.sh
 

@@ -86,6 +86,8 @@ already_pushed_files = [
     "wallets.strategy-push.txt",
     "wallets.leaderboard-push.txt",
     "wallets.leaderboard-watch.txt",
+    "wallets.leaderboard-sports-push.txt",
+    "wallets.sports-holders-push.txt",
 ]
 
 def wallet_set(paths):
