@@ -1,7 +1,5 @@
-0x21cc6013bbab523a42e791ff14e50992efb954bc # list=sports tier=B smart=100.00 bot=30.79 copyROI=75.4% copyPnL=$+45.23 copyT=6 copyWin=100.0% avgNotional=$151 sources=existing
-0x631ac39d0b00da96cbbfd26d1072ea3252e6a80f # list=sports tier=B smart=100.00 bot=32.88 copyROI=38.4% copyPnL=$+49.94 copyT=13 copyWin=84.6% avgNotional=$128 sources=existing
-0x70206b375d931aaaf99392187d89d0e2735cfd20 # list=sports tier=B smart=100.00 bot=32.54 copyROI=11.9% copyPnL=$+29.67 copyT=11 copyWin=81.8% avgNotional=$411 sources=existing
+0x21cc6013bbab523a42e791ff14e50992efb954bc # list=sports tier=B smart=100.00 bot=31.47 copyROI=61.3% copyPnL=$+110.27 copyT=18 copyWin=100.0% avgNotional=$172 sources=existing
+0x631ac39d0b00da96cbbfd26d1072ea3252e6a80f # list=sports tier=B smart=100.00 bot=33.56 copyROI=61.9% copyPnL=$+142.25 copyT=22 copyWin=86.4% avgNotional=$152 sources=existing
 0xb9072bac905bc51db4edfc7d43905cd870f32c9e # list=sports tier=B smart=100.00 bot=33.69 copyROI=95.7% copyPnL=$+248.88 copyT=21 copyWin=100.0% avgNotional=$199 sources=existing
-0xc6f1e1e8ae814ff217745da5de7a0fbac6095729 # list=sports tier=B smart=100.00 bot=29.84 copyROI=9.0% copyPnL=$+45.68 copyT=49 copyWin=63.3% avgNotional=$829 sources=existing
-0xeec56ea25123680a6c8b5350a9f7061bd24d1862 # list=sports tier=B smart=100.00 bot=31.99 copyROI=154.8% copyPnL=$+232.13 copyT=11 copyWin=36.4% avgNotional=$2030 sources=existing
-0xfe18212f6b21fb94387277b4114d6021800d3980 # list=sports tier=A smart=100.00 bot=24.88 copyROI=22.5% copyPnL=$+87.59 copyT=36 copyWin=27.8% avgNotional=$301 sources=existing,sports_tape
+0xeec56ea25123680a6c8b5350a9f7061bd24d1862 # list=sports tier=B smart=89.55 bot=31.27 copyROI=144.9% copyPnL=$+231.82 copyT=12 copyWin=33.3% avgNotional=$2007 sources=existing
+0xfe18212f6b21fb94387277b4114d6021800d3980 # list=sports tier=A smart=83.96 bot=24.37 copyROI=17.9% copyPnL=$+84.15 copyT=44 copyWin=25.0% avgNotional=$354 sources=existing,sports_tape

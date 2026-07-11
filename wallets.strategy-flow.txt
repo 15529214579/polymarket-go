@@ -1,1 +1,3 @@
-
+0x1d744e6667316d03c39e0df212b45110be40a82b # list=flow tier=B smart=78.93 bot=8.13 copyROI=-1.4% copyPnL=$-0.14 copyT=1 copyWin=0.0% avgNotional=$574 sources=recent_trade
+0x7af7c23b487a7979c71e32a579997fb963ae4c89 # list=flow tier=B smart=90.02 bot=21.67 copyROI=-33.4% copyPnL=$-3.34 copyT=1 copyWin=0.0% avgNotional=$8804 sources=existing,recent_trade,sports_tape
+0xe7ae29b19dae951a2b65f010f59983ce74d8a0cb # list=flow tier=B smart=71.76 bot=3.89 copyROI=-64.0% copyPnL=$-6.40 copyT=1 copyWin=0.0% avgNotional=$1423 sources=recent_trade
