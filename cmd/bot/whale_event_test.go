@@ -139,8 +139,11 @@ func TestWhalePriceDecision_FiltersExtremeBuyPrices(t *testing.T) {
 			t.Fatalf("BUY price %.3f decision=%v/%q, want allowed", price, ok, reason)
 		}
 	}
-	if ok, reason := whalePriceDecision("SELL", 0.999); !ok || reason != "" {
-		t.Fatalf("SELL exit price decision=%v/%q, want allowed", ok, reason)
+	if ok, reason := whalePriceDecision("SELL", 0.999); ok || reason != "settlement_sell_filtered" {
+		t.Fatalf("SELL settlement price decision=%v/%q, want settlement_sell_filtered", ok, reason)
+	}
+	if ok, reason := whalePriceDecision("SELL", 0.75); !ok || reason != "" {
+		t.Fatalf("SELL normal exit price decision=%v/%q, want allowed", ok, reason)
 	}
 }
 

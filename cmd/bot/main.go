@@ -5168,8 +5168,9 @@ var (
 )
 
 const (
-	followMinEntryPrice = 0.05
-	followMaxEntryPrice = 0.95
+	followMinEntryPrice         = 0.05
+	followMaxEntryPrice         = 0.95
+	whaleSettlementSellMinPrice = 0.98
 )
 
 func isTargetFollowMarket(q, slug string) bool {
@@ -5223,11 +5224,15 @@ func targetFollowMarketDecision(q, slug string) (bool, string) {
 }
 
 func whalePriceDecision(side string, price float64) (bool, string) {
-	if strings.ToUpper(strings.TrimSpace(side)) != "BUY" {
-		return true, ""
-	}
-	if price < followMinEntryPrice || price > followMaxEntryPrice {
-		return false, "price_filtered"
+	switch strings.ToUpper(strings.TrimSpace(side)) {
+	case "BUY":
+		if price < followMinEntryPrice || price > followMaxEntryPrice {
+			return false, "price_filtered"
+		}
+	case "SELL":
+		if price >= whaleSettlementSellMinPrice {
+			return false, "settlement_sell_filtered"
+		}
 	}
 	return true, ""
 }
