@@ -1,1 +1,1 @@
-0xd581582bf762aa24731b6a89e69617ea034583b7 # list=flow tier=C smart=100.00 bot=35.68 copyROI=173.6% copyPnL=$+86.79 copyT=5 copyWin=80.0% avgNotional=$542 sources=recent_trade
+
