@@ -46,6 +46,11 @@ func IsNoisyMarket(m Market) bool {
 		"price of bitcoin",
 		"solana up or down",
 		"ethereum up or down",
+		"chelsea clinton",
+		"presidential",
+		"presidential nomination",
+		" election",
+		" nomination",
 	}
 	for _, needle := range noisy {
 		if strings.Contains(text, needle) {
@@ -103,6 +108,9 @@ func TargetCategoryAllowed(category, rawAllowed string) bool {
 
 func targetCategory(text string) string {
 	text = strings.ToLower(text)
+	if isNonSportsTargetText(text) {
+		return "other"
+	}
 	if isDerivativeTargetText(text) || feed.IsOutrightFollowMarketText(text) {
 		return "other"
 	}
@@ -141,6 +149,13 @@ func targetCategory(text string) string {
 	default:
 		return "other"
 	}
+}
+
+func isNonSportsTargetText(text string) bool {
+	return strings.Contains(text, "chelsea clinton") ||
+		strings.Contains(text, "presidential") ||
+		strings.Contains(text, " election") ||
+		strings.Contains(text, " nomination")
 }
 
 func isDerivativeTargetText(text string) bool {

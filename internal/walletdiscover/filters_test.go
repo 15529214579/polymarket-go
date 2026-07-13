@@ -58,6 +58,8 @@ func TestTargetCategoryAllowed_FocusesRequestedSports(t *testing.T) {
 		{"soccer", "EPL Arsenal vs Burnley", "soccer"},
 		{"soccer ucl token", "UCL: Arsenal vs Barcelona", "soccer"},
 		{"soccer clubs only", "Chelsea vs PSG - Club World Cup", "soccer"},
+		{"chelsea clinton is not soccer", "Will Chelsea Clinton win the 2028 Democratic presidential nomination?", "other"},
+		{"brazilian election is not soccer", "Will Geraldo Alckmin win the 2026 Brazilian presidential election?", "other"},
 		{"soccer fifwc slug", "Will Spain win on 2026-07-10? fifwc-esp-bel-2026-07-10", "soccer"},
 		{"soccer national question only", "Will Spain win on 2026-07-10?", "soccer"},
 		{"soccer national england", "Will England win on 2026-07-11?", "soccer"},
