@@ -133,6 +133,7 @@ echo "whale-push.start pid=$$ wallets=$WHALE_WALLETS_FILE policy_started_at=$pol
 
 child_pid=""
 terminate() {
+  echo "whale-push.loop_signal signal=term wrapper_pid=$$ child_pid=${child_pid:-}"
   if [ -n "$child_pid" ]; then
     kill "$child_pid" 2>/dev/null || true
     wait "$child_pid" 2>/dev/null || true
@@ -142,8 +143,12 @@ terminate() {
 }
 trap terminate INT TERM HUP
 
+restart_count=0
 while :; do
-  echo "whale-push.spawn ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  restart_count=$((restart_count + 1))
+  spawn_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  spawn_epoch="$(date +%s)"
+  echo "whale-push.spawn restart=$restart_count ts=$spawn_ts wallets=$WHALE_WALLETS_FILE min_usd=${WHALE_MIN_USD:-500} markets=${WHALE_MARKETS:-120} min_tier=A"
   "$ROOT/bin/bot" \
     -mode=detect \
     -signal_mode=whale \
@@ -163,11 +168,23 @@ while :; do
     -wallet_tiers="$ROOT/db/user_wallet_review/copytrade_backtest_results.generated.json" \
     -min_tier=A &
   child_pid=$!
+  echo "whale-push.child_start restart=$restart_count child_pid=$child_pid"
   echo "$child_pid" > "$CHILD_PIDFILE"
   status=0
   wait "$child_pid" || status=$?
+  end_epoch="$(date +%s)"
+  duration_sec=$((end_epoch - spawn_epoch))
+  exit_kind="exit"
+  signal_num=""
+  if [ "$status" -ge 128 ]; then
+    exit_kind="signal"
+    signal_num=$((status - 128))
+  elif [ "$status" -ne 0 ]; then
+    exit_kind="error"
+  fi
   child_pid=""
   rm -f "$CHILD_PIDFILE"
-  echo "whale-push.exit status=$status restart_delay=${WHALE_RESTART_DELAY:-10}s"
-  sleep "${WHALE_RESTART_DELAY:-10}"
+  restart_delay="${WHALE_RESTART_DELAY:-10}"
+  echo "whale-push.child_exit restart=$restart_count status=$status exit_kind=$exit_kind signal=${signal_num:-} duration_sec=$duration_sec restart_delay=${restart_delay}s"
+  sleep "$restart_delay"
 done

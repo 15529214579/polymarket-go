@@ -110,9 +110,13 @@ run_loop() {
   prepare
   echo $$ > "$PIDFILE"
   echo "smartmoney-paper.loop pid=$$ policy=$POLICY_FILE"
-  trap 'child="$(cat "$CHILD_PIDFILE" 2>/dev/null || true)"; [ -n "$child" ] && kill "$child" 2>/dev/null || true; rm -f "$PIDFILE" "$CHILD_PIDFILE"; exit 0' INT TERM HUP
+  trap 'child="$(cat "$CHILD_PIDFILE" 2>/dev/null || true)"; echo "smartmoney-paper.loop_signal signal=term wrapper_pid=$$ child_pid=${child:-}"; [ -n "$child" ] && kill "$child" 2>/dev/null || true; rm -f "$PIDFILE" "$CHILD_PIDFILE"; exit 0' INT TERM HUP
+  restart_count=0
   while :; do
-    echo "smartmoney-paper.spawn ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    restart_count=$((restart_count + 1))
+    spawn_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    spawn_epoch="$(date +%s)"
+    echo "smartmoney-paper.spawn restart=$restart_count ts=$spawn_ts capital=$INITIAL_CAPITAL min_tier=$MIN_TIER wallets=$WALLET_COUNT markets=$MARKETS max_open_usd=$MAX_OPEN_USD"
     "$ROOT/bin/bot" \
       -mode=detect \
       -signal_mode=copytrade \
@@ -140,12 +144,25 @@ run_loop() {
       -pos_max_total_open_usd="$MAX_OPEN_USD" \
       -pos_max_per_market_usd="$MAX_PER_MARKET_USD" \
       -pos_max_open_positions="$MAX_OPEN_POSITIONS" &
-    echo $! > "$CHILD_PIDFILE"
+    child_pid=$!
+    echo "$child_pid" > "$CHILD_PIDFILE"
+    echo "smartmoney-paper.child_start restart=$restart_count child_pid=$child_pid"
     status=0
-    wait "$(cat "$CHILD_PIDFILE")" || status=$?
+    wait "$child_pid" || status=$?
     rm -f "$CHILD_PIDFILE"
-    echo "smartmoney-paper.exit status=$status restart_delay=${SMARTMONEY_PAPER_RESTART_DELAY:-10}s"
-    sleep "${SMARTMONEY_PAPER_RESTART_DELAY:-10}"
+    end_epoch="$(date +%s)"
+    duration_sec=$((end_epoch - spawn_epoch))
+    exit_kind="exit"
+    signal_num=""
+    if [ "$status" -ge 128 ]; then
+      exit_kind="signal"
+      signal_num=$((status - 128))
+    elif [ "$status" -ne 0 ]; then
+      exit_kind="error"
+    fi
+    restart_delay="${SMARTMONEY_PAPER_RESTART_DELAY:-10}"
+    echo "smartmoney-paper.child_exit restart=$restart_count child_pid=$child_pid status=$status exit_kind=$exit_kind signal=${signal_num:-} duration_sec=$duration_sec restart_delay=${restart_delay}s"
+    sleep "$restart_delay"
   done
 }
 
