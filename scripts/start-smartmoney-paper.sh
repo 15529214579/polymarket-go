@@ -10,6 +10,7 @@ SCRIPT="$ROOT/scripts/start-smartmoney-paper.sh"
 STATE_DIR="$ROOT/db/smartmoney-paper"
 PIDFILE="$STATE_DIR/pid"
 CHILD_PIDFILE="$STATE_DIR/child.pid"
+LOCKDIR="$STATE_DIR/lock"
 WALLETS_FILE="$STATE_DIR/wallets.txt"
 POLICY_FILE="$STATE_DIR/policy-start"
 LOG="$ROOT/logs/smartmoney-paper.log"
@@ -29,6 +30,29 @@ WHALE_MIN_USD="${SMARTMONEY_PAPER_WHALE_MIN_USD:-500}"
 WALLET_TIERS="${SMARTMONEY_PAPER_WALLET_TIERS:-$ROOT/db/strategy_iteration/copytrade_backtest_results.generated.json}"
 SOURCE_WALLETS="${SMARTMONEY_PAPER_SOURCE_WALLETS:-$ROOT/wallets.strategy-push.txt $ROOT/wallets.hourly-push.txt $ROOT/wallets.leaderboard-watch.txt $ROOT/wallets.leaderboard-sports-push.txt}"
 EXCLUDE_WALLETS="${SMARTMONEY_PAPER_EXCLUDE_WALLETS:-$ROOT/wallets.strategy-quarantine.txt $ROOT/wallets.strategy-review-noise.txt $ROOT/db/strategy_iteration/wallets.strategy-exclude.txt}"
+
+acquire_lock() {
+  while ! mkdir "$LOCKDIR" 2>/dev/null; do
+    local lock_pid
+    lock_pid="$(cat "$LOCKDIR/pid" 2>/dev/null || true)"
+    if [ -n "$lock_pid" ] && kill -0 "$lock_pid" 2>/dev/null; then
+      echo "smartmoney-paper.lock_held lock_pid=$lock_pid self=$$ action=exit"
+      exit 0
+    fi
+    echo "smartmoney-paper.lock_stale lock_pid=${lock_pid:-} action=remove"
+    rm -rf "$LOCKDIR"
+  done
+  echo $$ > "$LOCKDIR/pid"
+  echo "smartmoney-paper.lock_acquired pid=$$ lock=$LOCKDIR"
+}
+
+release_lock() {
+  local lock_pid
+  lock_pid="$(cat "$LOCKDIR/pid" 2>/dev/null || true)"
+  if [ "$lock_pid" = "$$" ]; then
+    rm -rf "$LOCKDIR"
+  fi
+}
 
 is_running() {
   [ -s "$PIDFILE" ] || return 1
@@ -107,10 +131,11 @@ prepare() {
 }
 
 run_loop() {
+  acquire_lock
   prepare
   echo $$ > "$PIDFILE"
   echo "smartmoney-paper.loop pid=$$ policy=$POLICY_FILE"
-  trap 'child="$(cat "$CHILD_PIDFILE" 2>/dev/null || true)"; echo "smartmoney-paper.loop_signal signal=term wrapper_pid=$$ child_pid=${child:-}"; [ -n "$child" ] && kill "$child" 2>/dev/null || true; rm -f "$PIDFILE" "$CHILD_PIDFILE"; exit 0' INT TERM HUP
+  trap 'child="$(cat "$CHILD_PIDFILE" 2>/dev/null || true)"; echo "smartmoney-paper.loop_signal signal=term wrapper_pid=$$ child_pid=${child:-}"; [ -n "$child" ] && kill "$child" 2>/dev/null || true; rm -f "$PIDFILE" "$CHILD_PIDFILE"; release_lock; exit 0' INT TERM HUP
   restart_count=0
   while :; do
     restart_count=$((restart_count + 1))

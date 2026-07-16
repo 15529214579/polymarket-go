@@ -8,6 +8,7 @@ ERR="$ROOT/db/agent.err"
 PIDFILE="$ROOT/db/bot.pid"
 WRAPPER_PIDFILE="$ROOT/db/whale-push.pid"
 CHILD_PIDFILE="$ROOT/db/whale-push.child.pid"
+LOCKDIR="$ROOT/db/whale-push.lock"
 POLICY_START_FILE="${WHALE_POLICY_START_FILE:-$ROOT/db/whale-push.policy-start}"
 WHALE_BASE_WALLETS_FILE="${WHALE_WALLETS_FILE:-$ROOT/wallets.strategy-push.txt}"
 WHALE_EXTRA_WALLETS_FILES="${WHALE_EXTRA_WALLETS_FILES:-$ROOT/wallets.leaderboard-push.txt $ROOT/wallets.leaderboard-watch.txt $ROOT/wallets.leaderboard-sports-push.txt $ROOT/wallets.sports-holders-push.txt $ROOT/wallets.hourly-push.txt}"
@@ -17,6 +18,30 @@ WHALE_WALLETS_FILE="$WHALE_BASE_WALLETS_FILE"
 
 mkdir -p "$ROOT/db"
 cd "$ROOT"
+exec >> "$LOG" 2>> "$ERR"
+
+acquire_lock() {
+  while ! mkdir "$LOCKDIR" 2>/dev/null; do
+    local lock_pid
+    lock_pid="$(cat "$LOCKDIR/pid" 2>/dev/null || true)"
+    if [ -n "$lock_pid" ] && kill -0 "$lock_pid" 2>/dev/null; then
+      echo "whale-push.lock_held lock_pid=$lock_pid self=$$ action=exit"
+      exit 0
+    fi
+    echo "whale-push.lock_stale lock_pid=${lock_pid:-} action=remove"
+    rm -rf "$LOCKDIR"
+  done
+  echo $$ > "$LOCKDIR/pid"
+  echo "whale-push.lock_acquired pid=$$ lock=$LOCKDIR"
+}
+
+release_lock() {
+  local lock_pid
+  lock_pid="$(cat "$LOCKDIR/pid" 2>/dev/null || true)"
+  if [ "$lock_pid" = "$$" ]; then
+    rm -rf "$LOCKDIR"
+  fi
+}
 
 merge_wallet_files() {
   local out="$1"
@@ -100,6 +125,7 @@ stop_pidfile() {
 stop_pidfile "$CHILD_PIDFILE"
 stop_pidfile "$WRAPPER_PIDFILE"
 stop_pidfile "$PIDFILE"
+acquire_lock
 
 export RESTART_REASON="${RESTART_REASON:-whale-push}"
 export CLOB_PROXY="${CLOB_PROXY:-direct}"
@@ -127,7 +153,6 @@ policy_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 echo $$ > "$PIDFILE"
 echo $$ > "$WRAPPER_PIDFILE"
-exec >> "$LOG" 2>> "$ERR"
 
 echo "whale-push.start pid=$$ wallets=$WHALE_WALLETS_FILE policy_started_at=$policy_started_at policy_file=$POLICY_START_FILE"
 
@@ -139,6 +164,7 @@ terminate() {
     wait "$child_pid" 2>/dev/null || true
   fi
   rm -f "$CHILD_PIDFILE" "$WRAPPER_PIDFILE"
+  release_lock
   exit 0
 }
 trap terminate INT TERM HUP
