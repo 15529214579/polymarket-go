@@ -526,6 +526,7 @@ run_pipeline() {
   "$ROOT/bin/sports-holders-push" \
     -out "$SPORTS_HOLDERS_PUSH" \
     -exclude_wallets "$QUARANTINE,$REVIEW_NOISE" \
+    -scores "$ROOT/db/strategy_iteration/wallet_scores.json" \
     -target_categories "${SPORTS_HOLDERS_PUSH_TARGET_CATEGORIES:-basketball,soccer,esports}" \
     -markets "${SPORTS_HOLDERS_PUSH_MARKETS:-300}" \
     -holders "${SPORTS_HOLDERS_PUSH_HOLDERS:-100}" \
