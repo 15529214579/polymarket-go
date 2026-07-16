@@ -73,20 +73,20 @@ func DefaultConfig() Config {
 
 // State is the serializable snapshot emitted for logs / heartbeat / reports.
 type State struct {
-	Day              string // YYYY-MM-DD in cfg.Loc
-	DayRealizedPnL   float64
-	DayLossCapUSD    float64 // cfg.StartingBankrollUSD × DailyLossPct (positive number)
-	CumulativePnL    float64
-	PeakEquity       float64
-	CurrentEquity    float64
-	DrawdownUSD      float64
-	DrawdownCapUSD   float64
-	Blocked          bool
-	BlockReason      BlockReason
-	BlockedAt        time.Time
-	LastFeedAt       time.Time
-	FeedSilentFor    time.Duration
-	SingleLossFlags  int // count of trades whose loss exceeded MaxSingleLossUSD today
+	Day             string // YYYY-MM-DD in cfg.Loc
+	DayRealizedPnL  float64
+	DayLossCapUSD   float64 // cfg.StartingBankrollUSD × DailyLossPct (positive number)
+	CumulativePnL   float64
+	PeakEquity      float64
+	CurrentEquity   float64
+	DrawdownUSD     float64
+	DrawdownCapUSD  float64
+	Blocked         bool
+	BlockReason     BlockReason
+	BlockedAt       time.Time
+	LastFeedAt      time.Time
+	FeedSilentFor   time.Duration
+	SingleLossFlags int // count of trades whose loss exceeded MaxSingleLossUSD today
 }
 
 // Manager is concurrent-safe. Fields mutated under mu.
@@ -195,6 +195,7 @@ func (m *Manager) OnFeedHeartbeat(at time.Time) {
 func (m *Manager) CheckFeed(now time.Time) (silentFor time.Duration, trippedNow bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.rolloverLocked(now)
 	silentFor = now.Sub(m.lastFeedAt)
 	if m.blocked {
 		return silentFor, false

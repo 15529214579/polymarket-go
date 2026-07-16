@@ -194,6 +194,27 @@ func TestRollover_ResetsLedgerOnNewDay(t *testing.T) {
 	}
 }
 
+func TestCheckFeed_RolloverRefreshesObservabilityDay(t *testing.T) {
+	loc, _ := time.LoadLocation("Asia/Singapore")
+	cfg := testCfg()
+	cfg.Loc = loc
+	cfg.FeedConnected = func() bool { return true }
+
+	d1 := time.Date(2026, 4, 20, 15, 30, 0, 0, time.UTC) // 23:30 SGT
+	m := New(cfg, d1)
+	m.OnClose(-8, d1)
+
+	d2 := time.Date(2026, 4, 20, 16, 30, 0, 0, time.UTC) // 00:30 SGT next day
+	m.CheckFeed(d2)
+	st := m.State()
+	if st.Day != "2026-04-21" {
+		t.Fatalf("expected day=2026-04-21 after CheckFeed rollover, got %q", st.Day)
+	}
+	if st.DayRealizedPnL != 0 {
+		t.Fatalf("daily PnL should reset on CheckFeed rollover, got %v", st.DayRealizedPnL)
+	}
+}
+
 func TestRollover_DoesNotAutoResumeBreaker(t *testing.T) {
 	loc, _ := time.LoadLocation("Asia/Singapore")
 	cfg := testCfg()
