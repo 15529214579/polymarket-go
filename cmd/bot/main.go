@@ -115,6 +115,12 @@ func main() {
 	eurovisionMinEdge := flag.Float64("eurovision_min_edge_pp", 5.0, "Eurovision minimum edge in pp to signal")
 	liveTrading := flag.Bool("live", false, "enable real V2 CLOB order submission (requires wallet mnemonic in Bitwarden)")
 	initialCapital := flag.Float64("initial_capital", 200.0, "initial capital in USD for total P&L calculation")
+	positionsStatePath := flag.String("positions_state", "db/positions.json", "paper/live position state JSON path")
+	riskStatePath := flag.String("risk_state", "db/risk_state.json", "risk state JSON path")
+	buyTimesStatePath := flag.String("buy_times_state", "db/buy_times.json", "buy-times state JSON path")
+	posMaxTotalOpenUSD := flag.Float64("pos_max_total_open_usd", 300.0, "max total open paper exposure in USD")
+	posMaxOpenPositions := flag.Int("pos_max_open_positions", 60, "max concurrent open paper positions")
+	posMaxPerMarketUSD := flag.Float64("pos_max_per_market_usd", 30.0, "max open paper exposure per conditionID in USD; 0 disables")
 	flag.Parse()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -222,7 +228,7 @@ func main() {
 			EurovisionInterval: *eurovisionInterval,
 			EurovisionMinEdge:  *eurovisionMinEdge,
 		}
-		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, injCfg, whaleCfg, *confirmDelay, btcCfg, updownCfg, p10, *liveTrading, *fadeMode, *walletsFile, *copytradeSize, *walletTiersFile, *initialCapital, *minTier); err != nil && ctx.Err() == nil {
+		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, injCfg, whaleCfg, *confirmDelay, btcCfg, updownCfg, p10, *liveTrading, *fadeMode, *walletsFile, *copytradeSize, *walletTiersFile, *initialCapital, *minTier, *positionsStatePath, *riskStatePath, *buyTimesStatePath, *posMaxTotalOpenUSD, *posMaxOpenPositions, *posMaxPerMarketUSD); err != nil && ctx.Err() == nil {
 			slog.Error("detect failed", "err", err)
 			os.Exit(1)
 		}
@@ -488,7 +494,7 @@ func drainSamplerTicks(ctx context.Context, sampler *feed.Sampler) {
 	}
 }
 
-func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, injCfg injury.Config, whaleCfg whale.Config, confirmDelay time.Duration, btcCfg btc.StrategyConfig, updownCfg btc.UpDownConfig, p10 phase10Config, liveTrading bool, fadeMode bool, walletsFile string, copytradeSize float64, walletTiersFile string, initialCapital float64, minTierFilter string) error {
+func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, injCfg injury.Config, whaleCfg whale.Config, confirmDelay time.Duration, btcCfg btc.StrategyConfig, updownCfg btc.UpDownConfig, p10 phase10Config, liveTrading bool, fadeMode bool, walletsFile string, copytradeSize float64, walletTiersFile string, initialCapital float64, minTierFilter string, positionsStatePath, riskStatePath, buyTimesStatePath string, posMaxTotalOpenUSD float64, posMaxOpenPositions int, posMaxPerMarketUSD float64) error {
 	if signalMode != "auto" && signalMode != "prompt" && signalMode != "whale" && signalMode != "copytrade" {
 		return fmt.Errorf("invalid signal_mode %q (want auto|prompt|whale|copytrade)", signalMode)
 	}
@@ -678,29 +684,48 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 	exit := strategy.NewExitTracker(exitCfg)
 	ladder := strategy.NewLadderTracker(ladderCfg)
 	posCfg := strategy.DefaultPositionConfig()
+	if posMaxTotalOpenUSD > 0 {
+		posCfg.MaxTotalOpenUSD = posMaxTotalOpenUSD
+	}
+	if posMaxOpenPositions > 0 {
+		posCfg.MaxOpenPositions = posMaxOpenPositions
+	}
+	if posMaxPerMarketUSD >= 0 {
+		posCfg.MaxPerMarketUSD = posMaxPerMarketUSD
+	}
 	pm := strategy.NewPositionManager(posCfg)
-	const posStatePath = "db/positions.json"
-	if err := pm.LoadState(posStatePath); err != nil {
-		slog.Warn("positions_load_err", "path", posStatePath, "err", err.Error())
+	if positionsStatePath == "" {
+		positionsStatePath = "db/positions.json"
+	}
+	if err := os.MkdirAll(filepath.Dir(positionsStatePath), 0755); err != nil {
+		return fmt.Errorf("positions state dir: %w", err)
+	}
+	if err := pm.LoadState(positionsStatePath); err != nil {
+		slog.Warn("positions_load_err", "path", positionsStatePath, "err", err.Error())
 	} else {
 		stats := pm.Stats()
-		slog.Info("positions_loaded", "path", posStatePath, "open", stats.Open, "closed", stats.Closed, "exposure_usd", stats.TotalExposure)
+		slog.Info("positions_loaded", "path", positionsStatePath, "open", stats.Open, "closed", stats.Closed, "exposure_usd", stats.TotalExposure)
 	}
 	savePositions := func() {
-		if err := pm.SaveState(posStatePath); err != nil {
-			slog.Warn("positions_save_err", "path", posStatePath, "err", err)
+		if err := pm.SaveState(positionsStatePath); err != nil {
+			slog.Warn("positions_save_err", "path", positionsStatePath, "err", err)
 		}
 	}
 
-	const buyTimesPath = "db/buy_times.json"
 	buyTimesMap := make(map[string]time.Time)
-	if raw, err := os.ReadFile(buyTimesPath); err == nil {
+	if buyTimesStatePath == "" {
+		buyTimesStatePath = "db/buy_times.json"
+	}
+	if err := os.MkdirAll(filepath.Dir(buyTimesStatePath), 0755); err != nil {
+		return fmt.Errorf("buy-times state dir: %w", err)
+	}
+	if raw, err := os.ReadFile(buyTimesStatePath); err == nil {
 		_ = json.Unmarshal(raw, &buyTimesMap)
 		slog.Info("buy_times_loaded", "count", len(buyTimesMap))
 	}
 	saveBuyTimes := func() {
 		raw, _ := json.MarshalIndent(buyTimesMap, "", "  ")
-		_ = os.WriteFile(buyTimesPath, raw, 0644)
+		_ = os.WriteFile(buyTimesStatePath, raw, 0644)
 	}
 
 	var orderClient order.Client
@@ -745,9 +770,17 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 	}
 	slog.Info("order_client_ready", "name", orderClient.Name())
 	riskCfg := risk.DefaultConfig()
+	if initialCapital > 0 {
+		riskCfg.StartingBankrollUSD = initialCapital
+	}
 	riskCfg.FeedConnected = ws.Connected
 	rm := risk.New(riskCfg, time.Now())
-	const riskStatePath = "db/risk_state.json"
+	if riskStatePath == "" {
+		riskStatePath = "db/risk_state.json"
+	}
+	if err := os.MkdirAll(filepath.Dir(riskStatePath), 0755); err != nil {
+		return fmt.Errorf("risk state dir: %w", err)
+	}
 	if err := rm.LoadState(riskStatePath, time.Now()); err != nil {
 		slog.Warn("risk.load_state_failed", "err", err)
 	} else {
