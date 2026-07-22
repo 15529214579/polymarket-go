@@ -1,9 +1,9 @@
-0x2952c5ad930fba5c096e2cbfa7f7542f89e2f50d # list=core tier=A smart=100.00 bot=24.04 copyROI=112.3% copyPnL=$+370.56 copyT=25 copyWin=88.0% avgNotional=$241 sources=existing
-0x44c4c88662edc9e0978ee40e96ee8457531609cb # list=core tier=B smart=100.00 bot=26.41 copyROI=109.3% copyPnL=$+601.01 copyT=50 copyWin=80.0% avgNotional=$1213 sources=existing
+0x2952c5ad930fba5c096e2cbfa7f7542f89e2f50d # list=core tier=A smart=100.00 bot=24.11 copyROI=112.3% copyPnL=$+370.56 copyT=25 copyWin=88.0% avgNotional=$240 sources=existing
+0x44c4c88662edc9e0978ee40e96ee8457531609cb # list=core tier=B smart=100.00 bot=26.45 copyROI=109.3% copyPnL=$+601.01 copyT=50 copyWin=80.0% avgNotional=$1218 sources=existing
 0x6f16f7b72a46aaa663c6c198e34fd7a9cf455fe7 # list=core tier=A smart=100.00 bot=24.93 copyROI=192.8% copyPnL=$+231.31 copyT=12 copyWin=83.3% avgNotional=$1869 sources=existing
 0x90e0221caf447af4f17264c86e8503f0acb321a2 # list=core tier=A smart=100.00 bot=22.22 copyROI=143.1% copyPnL=$+171.66 copyT=12 copyWin=91.7% avgNotional=$883 sources=existing
 0xa4518561819704e84fd111b6aeee09edf3fa449e # list=core tier=A smart=100.00 bot=24.48 copyROI=108.4% copyPnL=$+130.13 copyT=12 copyWin=83.3% avgNotional=$938 sources=existing
-0xa75b9aa2c0cbe30c37306405ddc27553b8e2772c # list=core tier=A smart=100.00 bot=23.99 copyROI=108.2% copyPnL=$+432.72 copyT=28 copyWin=75.0% avgNotional=$879 sources=existing
+0xa75b9aa2c0cbe30c37306405ddc27553b8e2772c # list=core tier=A smart=100.00 bot=24.10 copyROI=103.9% copyPnL=$+457.28 copyT=32 copyWin=78.1% avgNotional=$822 sources=existing,holder
 0xabffe8faee24f24bab92fb9a878220737cc69e8f # list=core tier=A smart=100.00 bot=24.76 copyROI=135.5% copyPnL=$+149.04 copyT=11 copyWin=100.0% avgNotional=$1450 sources=existing
 0xb2edf21868234880b6899a9ab70388ecbfc64418 # list=core tier=A smart=100.00 bot=23.60 copyROI=143.7% copyPnL=$+545.89 copyT=32 copyWin=65.6% avgNotional=$610 sources=existing
 0xb715c817c60cb3eb58d5bab4cfee6a405fcdc3bb # list=core tier=A smart=100.00 bot=24.63 copyROI=135.2% copyPnL=$+148.75 copyT=10 copyWin=80.0% avgNotional=$3285 sources=existing
