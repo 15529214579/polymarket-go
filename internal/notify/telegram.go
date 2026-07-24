@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/15529214579/polymarket-go/internal/sanitize"
 )
 
 // TelegramConfig is the minimum to push to one chat.
@@ -332,7 +334,7 @@ func (t *Telegram) send(o outgoing) {
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
 	if err != nil {
-		t.logger.Warn("notify_send_build_err", "err", err.Error())
+		t.logger.Warn("notify_send_build_err", "err", sanitize.Error(err))
 		if o.onSent != nil {
 			o.onSent(0, err)
 		}
@@ -341,7 +343,7 @@ func (t *Telegram) send(o outgoing) {
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := t.client.Do(req)
 	if err != nil {
-		t.logger.Warn("notify_send_http_err", "err", err.Error())
+		t.logger.Warn("notify_send_http_err", "err", sanitize.Error(err))
 		if o.onSent != nil {
 			o.onSent(0, err)
 		}

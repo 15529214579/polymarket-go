@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/15529214579/polymarket-go/internal/sanitize"
 )
 
 const oddsPapiBase = "https://api.oddspapi.io/v4"
@@ -128,7 +130,7 @@ func (c *OddsPapiClient) fetchFixtureNames(ctx context.Context, ids map[string]i
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s", sanitize.Error(err))
 	}
 	defer resp.Body.Close()
 

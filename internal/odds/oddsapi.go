@@ -20,6 +20,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/15529214579/polymarket-go/internal/sanitize"
 )
 
 // H2H sport keys (match-level moneyline).
@@ -119,7 +121,7 @@ func (c *Client) fetchOdds(ctx context.Context, sportKeys []string, markets, reg
 	for _, sport := range sportKeys {
 		items, err := c.fetchSport(ctx, sport, markets, regions)
 		if err != nil {
-			slog.Warn("odds_fetch_fail", "sport", sport, "err", err.Error())
+			slog.Warn("odds_fetch_fail", "sport", sport, "err", sanitize.Error(err))
 			continue
 		}
 		all = append(all, items...)
@@ -147,7 +149,7 @@ func (c *Client) fetchSport(ctx context.Context, sport, markets, regions string)
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("odds api %s: %w", sport, err)
+		return nil, fmt.Errorf("odds api %s: %s", sport, sanitize.Error(err))
 	}
 	defer resp.Body.Close()
 

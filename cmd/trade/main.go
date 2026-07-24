@@ -68,7 +68,7 @@ func main() {
 		slog.Error("api_key_derive_failed", "err", err)
 		os.Exit(1)
 	}
-	slog.Info("api_key_derived", "api_key", creds.APIKey)
+	slog.Info("api_key_derived")
 
 	if *queryOpenOrders {
 		client := order.NewV2Client(wallet, creds, false)

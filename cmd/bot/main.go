@@ -32,6 +32,7 @@ import (
 	"github.com/15529214579/polymarket-go/internal/notify"
 	"github.com/15529214579/polymarket-go/internal/order"
 	"github.com/15529214579/polymarket-go/internal/risk"
+	"github.com/15529214579/polymarket-go/internal/sanitize"
 	"github.com/15529214579/polymarket-go/internal/strategy"
 	"github.com/15529214579/polymarket-go/internal/tickrec"
 	"github.com/15529214579/polymarket-go/internal/whale"
@@ -760,7 +761,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 			slog.Error("v2_api_key_derive_failed", "err", err)
 			os.Exit(1)
 		}
-		slog.Info("v2_api_key_derived", "api_key", creds.APIKey)
+		slog.Info("v2_api_key_derived")
 		v2Client := order.NewV2Client(wallet, creds, false)
 		orderClient = v2Client
 		slog.Info("v2_live_ready", "client", v2Client.Name(), "exchange", order.V2ExchangeAddress)
@@ -4327,7 +4328,7 @@ func runDailyIterate(ctx context.Context, journalDir string, windowDays int, pus
 		if tok != "" && chat != "" {
 			tgMsg := iterate.FormatTelegram(report)
 			if err := sendTelegram(ctx, tok, chat, tgMsg); err != nil {
-				slog.Warn("daily_iterate.push_fail", "err", err.Error())
+				slog.Warn("daily_iterate.push_fail", "err", sanitize.Error(err))
 			} else {
 				slog.Info("daily_iterate.pushed", "day", report.Day, "suggestions", len(report.Suggestions))
 			}
@@ -4353,7 +4354,7 @@ func sendTelegram(ctx context.Context, token, chat, body string) error {
 	cl := &nethttp.Client{Timeout: 10 * time.Second}
 	resp, err := cl.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("%s", sanitize.Error(err))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode/100 != 2 {

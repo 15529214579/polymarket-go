@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/15529214579/polymarket-go/internal/sanitize"
 )
 
 // CallbackHandler is the inbound half of the Phase 3.5 click-to-buy flow. It
@@ -82,7 +84,7 @@ func (l *LongPoll) Run(ctx context.Context) error {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			l.logger.Warn("longpoll_get_err", "err", err.Error())
+			l.logger.Warn("longpoll_get_err", "err", sanitize.Error(err))
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
@@ -288,13 +290,13 @@ func (l *LongPoll) answerCallback(ctx context.Context, cqID string, text string,
 	u := fmt.Sprintf("%s/bot%s/answerCallbackQuery", l.cfg.BaseURL, l.cfg.BotToken)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, strings.NewReader(string(payload)))
 	if err != nil {
-		l.logger.Warn("answer_cb_build_err", "err", err.Error())
+		l.logger.Warn("answer_cb_build_err", "err", sanitize.Error(err))
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := l.client.Do(req)
 	if err != nil {
-		l.logger.Warn("answer_cb_http_err", "err", err.Error())
+		l.logger.Warn("answer_cb_http_err", "err", sanitize.Error(err))
 		return
 	}
 	defer resp.Body.Close()
