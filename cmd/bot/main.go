@@ -481,6 +481,19 @@ func lotteryScannerEnabledForMode(signalMode string, lotteryEnabled bool) bool {
 	return lotteryEnabled && signalMode != "copytrade" && signalMode != "whale"
 }
 
+func copytradeAutoAllowedForAction(action string, liveTrading bool, paperFollowPrompt bool) (bool, string) {
+	if action == "" {
+		return true, "legacy_tier_file"
+	}
+	if action == "auto-small" {
+		return true, action
+	}
+	if action == "prompt" && paperFollowPrompt && !liveTrading {
+		return true, action
+	}
+	return false, action
+}
+
 func drainSamplerTicks(ctx context.Context, sampler *feed.Sampler) {
 	ticks := sampler.Ticks()
 	for {
@@ -574,13 +587,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 	}
 	copytradeAutoAllowed := func(wallet string) (bool, string) {
 		meta := walletMetas[strings.ToLower(wallet)]
-		if meta.FollowAction == "" {
-			return true, "legacy_tier_file"
-		}
-		if meta.FollowAction == "auto-small" {
-			return true, meta.FollowAction
-		}
-		return false, meta.FollowAction
+		return copytradeAutoAllowedForAction(meta.FollowAction, liveTrading, os.Getenv("COPYTRADE_PAPER_FOLLOW_PROMPT") == "1")
 	}
 	copytradeForWallet := func(wallet string) float64 {
 		tier := walletTiers[strings.ToLower(wallet)]

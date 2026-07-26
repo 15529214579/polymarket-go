@@ -27,6 +27,7 @@ MAX_PER_MARKET_USD="${SMARTMONEY_PAPER_MAX_PER_MARKET_USD:-100}"
 MAX_OPEN_POSITIONS="${SMARTMONEY_PAPER_MAX_OPEN_POSITIONS:-120}"
 MARKETS="${SMARTMONEY_PAPER_MARKETS:-120}"
 WHALE_MIN_USD="${SMARTMONEY_PAPER_WHALE_MIN_USD:-500}"
+PAPER_FOLLOW_PROMPT="${SMARTMONEY_PAPER_FOLLOW_PROMPT:-1}"
 WALLET_TIERS="${SMARTMONEY_PAPER_WALLET_TIERS:-$ROOT/db/strategy_iteration/copytrade_backtest_results.generated.json}"
 SOURCE_WALLETS="${SMARTMONEY_PAPER_SOURCE_WALLETS:-$ROOT/wallets.strategy-push.txt $ROOT/wallets.hourly-push.txt $ROOT/wallets.leaderboard-watch.txt $ROOT/wallets.leaderboard-sports-push.txt}"
 EXCLUDE_WALLETS="${SMARTMONEY_PAPER_EXCLUDE_WALLETS:-$ROOT/wallets.strategy-quarantine.txt $ROOT/wallets.strategy-review-noise.txt $ROOT/db/strategy_iteration/wallets.strategy-exclude.txt}"
@@ -124,6 +125,7 @@ prepare() {
     printf 'max_open_positions=%s\n' "$MAX_OPEN_POSITIONS"
     printf 'markets=%s\n' "$MARKETS"
     printf 'whale_min_usd=%s\n' "$WHALE_MIN_USD"
+    printf 'paper_follow_prompt=%s\n' "$PAPER_FOLLOW_PROMPT"
     printf 'wallet_count=%s\n' "$WALLET_COUNT"
     printf 'wallets_file=%s\n' "$WALLETS_FILE"
     printf 'wallet_tiers=%s\n' "$WALLET_TIERS"
@@ -142,6 +144,7 @@ run_loop() {
     spawn_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     spawn_epoch="$(date +%s)"
     echo "smartmoney-paper.spawn restart=$restart_count ts=$spawn_ts capital=$INITIAL_CAPITAL min_tier=$MIN_TIER wallets=$WALLET_COUNT markets=$MARKETS max_open_usd=$MAX_OPEN_USD"
+    export COPYTRADE_PAPER_FOLLOW_PROMPT="$PAPER_FOLLOW_PROMPT"
     "$ROOT/bin/bot" \
       -mode=detect \
       -signal_mode=copytrade \

@@ -147,6 +147,21 @@ func TestWhalePriceDecision_FiltersExtremeBuyPrices(t *testing.T) {
 	}
 }
 
+func TestCopytradeAutoAllowedForAction_PaperPromptOptIn(t *testing.T) {
+	if ok, action := copytradeAutoAllowedForAction("prompt", false, false); ok || action != "prompt" {
+		t.Fatalf("default prompt allowed=%v action=%q, want blocked prompt", ok, action)
+	}
+	if ok, action := copytradeAutoAllowedForAction("prompt", false, true); !ok || action != "prompt" {
+		t.Fatalf("paper prompt allowed=%v action=%q, want allowed prompt", ok, action)
+	}
+	if ok, action := copytradeAutoAllowedForAction("prompt", true, true); ok || action != "prompt" {
+		t.Fatalf("live prompt allowed=%v action=%q, want blocked prompt", ok, action)
+	}
+	if ok, action := copytradeAutoAllowedForAction("auto-small", true, false); !ok || action != "auto-small" {
+		t.Fatalf("auto-small allowed=%v action=%q, want allowed auto-small", ok, action)
+	}
+}
+
 func TestLoadWhaleNegativeEdgeBlocks(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "edge.jsonl")
