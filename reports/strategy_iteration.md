@@ -1,10 +1,10 @@
 # Wallet Discovery Report
 
-**Generated:** 2026-07-26 23:35 +08
+**Generated:** 2026-07-27 22:56 +08
 
 - Markets scanned: 15
 - Candidates scored: 800
-- Tiers: A=23 B=111 C=15 D=146 BOT=505
+- Tiers: A=24 B=114 C=23 D=161 BOT=478
 - Target categories: basketball,soccer,esports
 - Filters: min_notional=$100 price=0.05-0.95 days=90 copy_stake=$10 slippage=50bp fee=0bp
 
@@ -24,43 +24,43 @@
 | 8 | `0x6f16...5fe7` | A | prompt | 79.04 | 24.93 | 85.00 | 67 | 61 | 42 | 38 | 63% | 245.3% | 7 | 0.0% | 192.8% | $+231.31 | 12 | soccer 72% | strong smart-money signal and low bot score |
 | 9 | `0xdbd5...cba7` | A | prompt | 74.85 | 18.00 | 85.00 | 100 | 96 | 93 | 89 | 93% | 40.5% | 18 | 0.0% | 41.6% | $+141.61 | 19 | soccer 94% | strong smart-money signal and low bot score |
 | 10 | `0x8a35...904a` | A | prompt | 76.00 | 22.28 | 84.34 | 59 | 41 | 0 | 0 | 0% | 0.0% | 0 | 0.0% | 45.1% | $+76.63 | 7 | soccer 49% | strong smart-money signal and low bot score |
-| 11 | `0xb2ed...4418` | A | prompt | 76.11 | 23.44 | 80.00 | 288 | 221 | 117 | 93 | 41% | 108.4% | 14 | 0.0% | 144.0% | $+575.85 | 33 | soccer 73% | strong smart-money signal and low bot score |
+| 11 | `0xb2ed...4418` | A | prompt | 76.14 | 23.38 | 80.00 | 290 | 223 | 117 | 93 | 40% | 108.4% | 14 | 0.0% | 144.0% | $+575.85 | 33 | soccer 72% | strong smart-money signal and low bot score |
 | 12 | `0x7124...f0b5` | A | prompt | 74.75 | 22.50 | 77.50 | 62 | 61 | 49 | 48 | 79% | 111.8% | 6 | 0.0% | 100.3% | $+160.57 | 8 | soccer 84% | strong smart-money signal and low bot score |
 | 13 | `0x0e70...9a9c` | A | prompt | 72.61 | 20.47 | 73.16 | 21 | 16 | 7 | 5 | 33% | 76.3% | 1 | 0.0% | 46.5% | $+32.57 | 6 | soccer 71% | strong smart-money signal and low bot score |
 | 14 | `0xb916...f248` | A | prompt | 72.94 | 21.48 | 85.00 | 190 | 139 | 143 | 113 | 75% | 61.5% | 21 | 0.0% | 56.3% | $+292.83 | 24 | soccer 95% | strong smart-money signal and low bot score |
 | 15 | `0x90e0...21a2` | A | prompt | 72.53 | 22.22 | 85.00 | 54 | 53 | 53 | 52 | 98% | 143.1% | 12 | 0.0% | 143.1% | $+171.66 | 12 | soccer 100% | strong smart-money signal and low bot score |
-| 16 | `0x7391...5375` | A | prompt | 71.04 | 19.03 | 70.00 | 693 | 369 | 260 | 168 | 38% | -1.8% | 34 | 0.0% | 37.3% | $+380.06 | 81 | soccer 65% | strong smart-money signal and low bot score |
+| 16 | `0x7391...5375` | A | prompt | 71.03 | 19.05 | 70.00 | 696 | 371 | 263 | 170 | 38% | -1.8% | 34 | 0.0% | 37.3% | $+380.06 | 81 | soccer 65% | strong smart-money signal and low bot score |
 | 17 | `0xe6bf...c536` | A | prompt | 72.03 | 23.12 | 85.00 | 77 | 72 | 73 | 69 | 95% | 58.4% | 20 | 0.0% | 58.4% | $+175.23 | 20 | soccer 100% | strong smart-money signal and low bot score |
 | 18 | `0x2393...1a8d` | A | prompt | 71.24 | 21.33 | 71.96 | 60 | 51 | 37 | 30 | 62% | -41.3% | 3 | 0.0% | 29.6% | $+35.51 | 12 | soccer 75% | strong smart-money signal and low bot score |
-| 19 | `0x578e...c3c0` | A | prompt | 71.86 | 23.44 | 85.00 | 186 | 169 | 66 | 62 | 35% | 62.2% | 22 | 0.0% | 56.2% | $+297.92 | 51 | soccer 91% | strong smart-money signal and low bot score |
+| 19 | `0x578e...c3c0` | A | prompt | 71.76 | 23.63 | 85.00 | 182 | 165 | 64 | 60 | 35% | 63.5% | 21 | 0.0% | 56.6% | $+294.58 | 50 | soccer 92% | strong smart-money signal and low bot score |
 | 20 | `0xa75b...772c` | A | prompt | 71.41 | 24.26 | 85.00 | 128 | 106 | 127 | 105 | 99% | 103.8% | 33 | 0.0% | 103.8% | $+467.06 | 33 | esports 98% | strong smart-money signal and low bot score |
 | 21 | `0xa451...449e` | A | prompt | 71.28 | 24.48 | 85.00 | 58 | 51 | 32 | 27 | 55% | 170.5% | 6 | 0.0% | 108.4% | $+130.13 | 12 | soccer 98% | strong smart-money signal and low bot score |
 | 22 | `0xb715...c3bb` | A | prompt | 71.20 | 24.63 | 85.00 | 67 | 62 | 60 | 55 | 90% | 135.2% | 10 | 0.0% | 135.2% | $+148.75 | 10 | soccer 100% | strong smart-money signal and low bot score |
-| 23 | `0xabff...9e8f` | A | prompt | 71.13 | 24.76 | 85.00 | 125 | 122 | 57 | 57 | 46% | 192.4% | 3 | 0.0% | 135.5% | $+149.04 | 11 | soccer 97% | strong smart-money signal and low bot score |
-| 24 | `0xcc6e...fa6f` | B | prompt | 78.63 | 25.67 | 85.00 | 340 | 282 | 282 | 237 | 83% | 83.2% | 46 | 0.0% | 97.4% | $+623.47 | 56 | esports 73% | positive edge, prompt before auto-follow |
-| 25 | `0x8bd3...f69a` | B | prompt | 77.89 | 25.16 | 83.64 | 62 | 59 | 20 | 20 | 32% | -26.8% | 3 | 0.0% | 67.1% | $+107.43 | 11 | soccer 65% | positive edge, prompt before auto-follow |
-| 26 | `0x53ad...e49e` | B | prompt | 78.08 | 26.11 | 84.59 | 72 | 64 | 59 | 52 | 82% | 94.2% | 6 | 0.0% | 84.5% | $+84.45 | 7 | soccer 86% | positive edge, prompt before auto-follow |
-| 27 | `0x95c1...94d7` | B | prompt | 77.64 | 25.19 | 83.33 | 52 | 44 | 37 | 35 | 71% | 32.6% | 12 | 0.0% | 30.4% | $+51.74 | 16 | soccer 73% | positive edge, prompt before auto-follow |
-| 28 | `0x44c4...09cb` | B | prompt | 78.13 | 26.58 | 85.00 | 247 | 230 | 149 | 143 | 60% | 94.0% | 29 | 0.0% | 109.9% | $+560.63 | 47 | soccer 72% | positive edge, prompt before auto-follow |
-| 29 | `0xec56...1f87` | B | prompt | 77.59 | 27.56 | 85.00 | 88 | 55 | 26 | 21 | 30% | 40.3% | 2 | 0.0% | 66.5% | $+112.96 | 17 | soccer 51% | positive edge, prompt before auto-follow |
-| 30 | `0xeb8b...6d8a` | B | prompt | 77.29 | 28.11 | 85.00 | 53 | 42 | 27 | 22 | 51% | 155.3% | 6 | 0.0% | 138.5% | $+124.64 | 9 | soccer 89% | positive edge, prompt before auto-follow |
-| 31 | `0x6b51...ad13` | B | prompt | 75.50 | 27.28 | 82.01 | 35 | 30 | 14 | 13 | 40% | 56.0% | 3 | 0.0% | 79.1% | $+71.18 | 7 | soccer 86% | positive edge, prompt before auto-follow |
-| 32 | `0xe872...819a` | B | prompt | 74.78 | 25.40 | 85.00 | 1190 | 946 | 1018 | 799 | 86% | 76.6% | 15 | 0.0% | 74.0% | $+199.72 | 16 | esports 82% | positive edge, prompt before auto-follow |
-| 33 | `0x1abb...0901` | B | prompt | 75.16 | 26.66 | 81.10 | 42 | 39 | 30 | 28 | 71% | 73.1% | 6 | 0.0% | 71.3% | $+49.95 | 7 | soccer 62% | positive edge, prompt before auto-follow |
-| 34 | `0xf56d...c3d9` | B | prompt | 75.30 | 27.38 | 81.82 | 252 | 150 | 229 | 146 | 91% | 54.4% | 32 | 0.0% | 56.0% | $+285.49 | 33 | esports 59% | positive edge, prompt before auto-follow |
-| 35 | `0xb36f...53d0` | B | prompt | 76.05 | 30.37 | 85.00 | 956 | 598 | 889 | 555 | 93% | 59.8% | 171 | 0.0% | 60.1% | $+1219.76 | 184 | esports 85% | positive edge, prompt before auto-follow |
-| 36 | `0x42f1...f53f` | B | prompt | 74.80 | 27.92 | 81.54 | 113 | 88 | 73 | 64 | 65% | 39.3% | 22 | 0.0% | 39.4% | $+106.31 | 26 | soccer 79% | positive edge, prompt before auto-follow |
-| 37 | `0x7ec5...9fe0` | B | prompt | 74.06 | 26.71 | 85.00 | 204 | 87 | 32 | 10 | 16% | -91.8% | 1 | 0.0% | 79.9% | $+279.81 | 35 | soccer 54% | positive edge, prompt before auto-follow |
-| 38 | `0x9caf...94dc` | B | prompt | 75.41 | 31.53 | 85.00 | 127 | 124 | 64 | 64 | 50% | 117.8% | 16 | 0.0% | 103.7% | $+300.79 | 28 | soccer 84% | positive edge, prompt before auto-follow |
-| 39 | `0x7a26...1589` | B | prompt | 75.35 | 31.63 | 85.00 | 138 | 128 | 78 | 73 | 57% | 87.1% | 22 | 0.0% | 65.8% | $+236.93 | 29 | esports 49% | positive edge, prompt before auto-follow |
-| 40 | `0x0931...e78e` | B | prompt | 72.81 | 25.54 | 77.14 | 186 | 109 | 124 | 71 | 67% | 71.2% | 15 | 0.0% | 55.6% | $+122.29 | 21 | soccer 86% | positive edge, prompt before auto-follow |
-| 41 | `0xaa62...eb28` | B | prompt | 74.17 | 30.25 | 82.41 | 41 | 29 | 27 | 22 | 66% | 33.7% | 7 | 0.0% | 36.0% | $+36.02 | 8 | soccer 73% | positive edge, prompt before auto-follow |
-| 42 | `0xeca2...44fc` | B | prompt | 74.88 | 32.50 | 85.00 | 92 | 65 | 58 | 42 | 63% | 182.9% | 6 | 0.0% | 222.3% | $+311.21 | 11 | soccer 47% | positive edge, prompt before auto-follow |
-| 43 | `0xe760...f2f9` | B | prompt | 74.60 | 32.44 | 84.59 | 37 | 34 | 36 | 33 | 97% | 65.0% | 9 | 0.0% | 65.0% | $+84.50 | 9 | esports 84% | positive edge, prompt before auto-follow |
-| 44 | `0x59a8...eb4e` | B | prompt | 74.49 | 33.20 | 85.00 | 462 | 288 | 89 | 64 | 19% | 79.9% | 17 | 0.0% | 86.2% | $+784.54 | 89 | soccer 60% | positive edge, prompt before auto-follow |
-| 45 | `0x5bcb...398a` | B | prompt | 73.57 | 32.96 | 83.61 | 27 | 26 | 26 | 25 | 96% | 57.6% | 9 | 0.0% | 57.6% | $+57.58 | 9 | esports 52% | positive edge, prompt before auto-follow |
-| 46 | `0xb05d...dcdc` | B | prompt | 73.82 | 34.41 | 85.00 | 102 | 40 | 85 | 39 | 83% | 215.4% | 7 | 0.0% | 215.4% | $+150.76 | 7 | soccer 83% | positive edge, prompt before auto-follow |
-| 47 | `0xd3cc...85ed` | B | prompt | 70.75 | 26.20 | 74.87 | 46 | 34 | 26 | 21 | 57% | -5.9% | 4 | 0.0% | 43.2% | $+43.23 | 8 | soccer 48% | positive edge, prompt before auto-follow |
+| 23 | `0x2a99...51bb` | A | prompt | 71.14 | 24.74 | 85.00 | 737 | 494 | 731 | 488 | 99% | 39.9% | 122 | 0.0% | 39.9% | $+499.26 | 122 | esports 96% | strong smart-money signal and low bot score |
+| 24 | `0xabff...9e8f` | A | prompt | 71.13 | 24.76 | 85.00 | 125 | 122 | 57 | 57 | 46% | 192.4% | 3 | 0.0% | 135.5% | $+149.04 | 11 | soccer 97% | strong smart-money signal and low bot score |
+| 25 | `0xcc6e...fa6f` | B | prompt | 78.63 | 25.67 | 85.00 | 340 | 282 | 282 | 237 | 83% | 83.2% | 46 | 0.0% | 97.4% | $+623.47 | 56 | esports 73% | positive edge, prompt before auto-follow |
+| 26 | `0x8bd3...f69a` | B | prompt | 77.89 | 25.16 | 83.64 | 62 | 59 | 20 | 20 | 32% | -26.8% | 3 | 0.0% | 67.1% | $+107.43 | 11 | soccer 65% | positive edge, prompt before auto-follow |
+| 27 | `0x53ad...e49e` | B | prompt | 78.08 | 26.11 | 84.59 | 72 | 64 | 59 | 52 | 82% | 94.2% | 6 | 0.0% | 84.5% | $+84.45 | 7 | soccer 86% | positive edge, prompt before auto-follow |
+| 28 | `0x95c1...94d7` | B | prompt | 77.64 | 25.19 | 83.33 | 52 | 44 | 37 | 35 | 71% | 32.6% | 12 | 0.0% | 30.4% | $+51.74 | 16 | soccer 73% | positive edge, prompt before auto-follow |
+| 29 | `0x44c4...09cb` | B | prompt | 78.13 | 26.58 | 85.00 | 243 | 227 | 148 | 142 | 61% | 94.0% | 29 | 0.0% | 109.0% | $+545.00 | 46 | soccer 73% | positive edge, prompt before auto-follow |
+| 30 | `0xec56...1f87` | B | prompt | 77.59 | 27.56 | 85.00 | 88 | 55 | 26 | 21 | 30% | 40.3% | 2 | 0.0% | 66.5% | $+112.96 | 17 | soccer 51% | positive edge, prompt before auto-follow |
+| 31 | `0xeb8b...6d8a` | B | prompt | 77.29 | 28.11 | 85.00 | 53 | 42 | 27 | 22 | 51% | 155.3% | 6 | 0.0% | 138.5% | $+124.64 | 9 | soccer 89% | positive edge, prompt before auto-follow |
+| 32 | `0xf56d...c3d9` | B | prompt | 76.73 | 26.86 | 83.33 | 269 | 159 | 245 | 155 | 91% | 56.5% | 34 | 0.0% | 57.5% | $+316.38 | 36 | esports 61% | positive edge, prompt before auto-follow |
+| 33 | `0x6b51...ad13` | B | prompt | 75.50 | 27.28 | 82.01 | 35 | 30 | 14 | 13 | 40% | 56.0% | 3 | 0.0% | 79.1% | $+71.18 | 7 | soccer 86% | positive edge, prompt before auto-follow |
+| 34 | `0xe872...819a` | B | prompt | 74.78 | 25.40 | 85.00 | 1189 | 945 | 1017 | 798 | 86% | 76.6% | 15 | 0.0% | 74.0% | $+199.72 | 16 | esports 82% | positive edge, prompt before auto-follow |
+| 35 | `0x1abb...0901` | B | prompt | 75.16 | 26.66 | 81.10 | 42 | 39 | 30 | 28 | 71% | 73.1% | 6 | 0.0% | 71.3% | $+49.95 | 7 | soccer 62% | positive edge, prompt before auto-follow |
+| 36 | `0xb36f...53d0` | B | prompt | 76.05 | 30.37 | 85.00 | 956 | 598 | 889 | 555 | 93% | 59.8% | 171 | 0.0% | 60.1% | $+1219.76 | 184 | esports 85% | positive edge, prompt before auto-follow |
+| 37 | `0x42f1...f53f` | B | prompt | 74.80 | 27.92 | 81.54 | 113 | 88 | 73 | 64 | 65% | 39.3% | 22 | 0.0% | 39.4% | $+106.31 | 26 | soccer 79% | positive edge, prompt before auto-follow |
+| 38 | `0x7ec5...9fe0` | B | prompt | 74.06 | 26.71 | 85.00 | 204 | 87 | 32 | 10 | 16% | -91.8% | 1 | 0.0% | 79.9% | $+279.81 | 35 | soccer 54% | positive edge, prompt before auto-follow |
+| 39 | `0x9caf...94dc` | B | prompt | 75.41 | 31.53 | 85.00 | 127 | 124 | 64 | 64 | 50% | 117.8% | 16 | 0.0% | 103.7% | $+300.79 | 28 | soccer 84% | positive edge, prompt before auto-follow |
+| 40 | `0x7a26...1589` | B | prompt | 75.35 | 31.63 | 85.00 | 138 | 128 | 78 | 73 | 57% | 87.1% | 22 | 0.0% | 65.8% | $+236.93 | 29 | esports 49% | positive edge, prompt before auto-follow |
+| 41 | `0x0931...e78e` | B | prompt | 72.81 | 25.54 | 77.14 | 186 | 109 | 124 | 71 | 67% | 71.2% | 15 | 0.0% | 55.6% | $+122.29 | 21 | soccer 86% | positive edge, prompt before auto-follow |
+| 42 | `0xaa62...eb28` | B | prompt | 74.17 | 30.25 | 82.41 | 41 | 29 | 27 | 22 | 66% | 33.7% | 7 | 0.0% | 36.0% | $+36.02 | 8 | soccer 73% | positive edge, prompt before auto-follow |
+| 43 | `0xeca2...44fc` | B | prompt | 74.88 | 32.50 | 85.00 | 92 | 65 | 58 | 42 | 63% | 182.9% | 6 | 0.0% | 222.3% | $+311.21 | 11 | soccer 47% | positive edge, prompt before auto-follow |
+| 44 | `0xe760...f2f9` | B | prompt | 74.60 | 32.44 | 84.59 | 37 | 34 | 36 | 33 | 97% | 65.0% | 9 | 0.0% | 65.0% | $+84.50 | 9 | esports 84% | positive edge, prompt before auto-follow |
+| 45 | `0x59a8...eb4e` | B | prompt | 74.49 | 33.20 | 85.00 | 462 | 288 | 89 | 64 | 19% | 79.9% | 17 | 0.0% | 86.2% | $+784.54 | 89 | soccer 60% | positive edge, prompt before auto-follow |
+| 46 | `0x5bcb...398a` | B | prompt | 73.57 | 32.96 | 83.61 | 27 | 26 | 26 | 25 | 96% | 57.6% | 9 | 0.0% | 57.6% | $+57.58 | 9 | esports 52% | positive edge, prompt before auto-follow |
+| 47 | `0xb05d...dcdc` | B | prompt | 73.82 | 34.41 | 85.00 | 102 | 40 | 85 | 39 | 83% | 215.4% | 7 | 0.0% | 215.4% | $+150.76 | 7 | soccer 83% | positive edge, prompt before auto-follow |
 | 48 | `0x8e41...cbab` | B | prompt | 71.23 | 27.67 | 76.59 | 73 | 54 | 45 | 37 | 62% | 26.7% | 14 | 0.0% | 24.3% | $+46.25 | 19 | soccer 71% | positive edge, prompt before auto-follow |
 | 49 | `0x07a9...32c8` | B | prompt | 71.10 | 27.47 | 76.28 | 76 | 69 | 35 | 33 | 46% | 107.8% | 5 | 0.0% | 83.2% | $+74.90 | 7 | soccer 61% | positive edge, prompt before auto-follow |
 | 50 | `0x7c73...6ee3` | B | prompt | 69.88 | 25.88 | 84.16 | 51 | 50 | 49 | 48 | 96% | 102.0% | 7 | 0.0% | 102.0% | $+71.40 | 7 | soccer 100% | positive edge, prompt before auto-follow |
