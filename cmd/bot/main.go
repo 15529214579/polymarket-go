@@ -3096,19 +3096,27 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				if len(open) == 0 {
 					continue
 				}
-				// Collect unique conditionIDs from meta.
+				// Collect unique conditionIDs from the open positions. Copytrade
+				// can follow markets that were not part of the startup market
+				// scan, so position.Market is the durable source of truth here.
 				seen := make(map[string]struct{}, len(open))
 				ids := make([]string, 0, len(open))
 				for _, p := range open {
-					me := meta[p.AssetID]
-					if me == nil || me.ConditionID == "" {
+					conditionID := p.Market
+					if conditionID == "" {
+						if me := meta[p.AssetID]; me != nil {
+							conditionID = me.ConditionID
+						}
+					}
+					if conditionID == "" {
 						continue
 					}
-					if _, ok := seen[me.ConditionID]; ok {
+					key := strings.ToLower(conditionID)
+					if _, ok := seen[key]; ok {
 						continue
 					}
-					seen[me.ConditionID] = struct{}{}
-					ids = append(ids, me.ConditionID)
+					seen[key] = struct{}{}
+					ids = append(ids, conditionID)
 				}
 				if len(ids) == 0 {
 					continue
@@ -3122,7 +3130,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				}
 				byCond := make(map[string]feed.Market, len(mkts2))
 				for _, m := range mkts2 {
-					byCond[m.ConditionID] = m
+					byCond[strings.ToLower(m.ConditionID)] = m
 				}
 				// Periodic "still holding" log (once per 5 min) — easy to grep for.
 				now := time.Now()
@@ -3131,32 +3139,103 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					slog.Info("hold_status",
 						"open", len(open),
 						"markets_polled", len(ids),
+						"markets_returned", len(mkts2),
 						"resolved_seen", countResolved(mkts2),
 					)
 				}
 				for _, p := range open {
-					me := meta[p.AssetID]
-					if me == nil || me.ConditionID == "" {
+					conditionID := p.Market
+					if conditionID == "" {
+						if me := meta[p.AssetID]; me != nil {
+							conditionID = me.ConditionID
+						}
+					}
+					if conditionID == "" {
 						continue
 					}
-					m, ok := byCond[me.ConditionID]
+					m, ok := byCond[strings.ToLower(conditionID)]
 					if !ok {
+						if !liveTrading && exitMode == "ladder" && ladderCfg.MaxHold > 0 && now.Sub(p.EntryTime) >= ladderCfg.MaxHold {
+							sig := strategy.ExitSignal{
+								AssetID:  p.AssetID,
+								Market:   p.Market,
+								Time:     now,
+								EntryMid: p.EntryMid,
+								PeakMid:  p.EntryMid,
+								ExitMid:  p.EntryMid,
+								HeldFor:  now.Sub(p.EntryTime),
+								Reason:   strategy.ExitTimeout,
+							}
+							closed, cerr := pm.Close(p.ID, sig)
+							if cerr != nil {
+								slog.Warn("paper_timeout_flat_close_miss", "pos", p.ID, "asset", short(p.AssetID), "err", cerr.Error())
+								continue
+							}
+							savePositions()
+							ladder.Forget(p.ID)
+							if recorder != nil {
+								if rerr := recorder.Stop(closed.ID); rerr != nil {
+									slog.Warn("tickrec_stop_fail", "pos", closed.ID, "err", rerr.Error())
+								}
+							}
+							source, openOID := src.Take(closed.ID)
+							if jerr := jrn.Append(journal.TradeRecord{
+								ID: closed.ID, AssetID: closed.AssetID, Market: closed.Market,
+								Question:     closed.Question,
+								Outcome:      closed.Outcome,
+								Side:         "buy",
+								SizeUSD:      closed.SizeUSD,
+								Units:        closed.Units,
+								EntryMid:     closed.EntryMid,
+								EntryTime:    closed.EntryTime,
+								ExitMid:      closed.ExitMid,
+								ExitTime:     closed.ExitTime,
+								ExitReason:   string(closed.ExitReason),
+								HeldSec:      int(sig.HeldFor.Seconds()),
+								PnLUSD:       closed.PnLUSD,
+								NetPnLUSD:    closed.PnLUSD,
+								Tranche:      "timeout_flat",
+								OpenOrderID:  openOID,
+								CloseOrderID: fmt.Sprintf("timeout-flat-%s", short(p.AssetID)),
+								Mode:         "paper",
+								SignalSource: source,
+							}); jerr != nil {
+								slog.Warn("journal_append_fail", "asset", short(p.AssetID), "err", jerr.Error())
+							}
+							stats := pm.Stats()
+							slog.Info("paper_timeout_flat_exit",
+								"pos", closed.ID,
+								"asset", short(p.AssetID),
+								"q", closed.Question,
+								"outcome", closed.Outcome,
+								"entry", p.EntryMid,
+								"held_sec", int(sig.HeldFor.Seconds()),
+								"open_positions", stats.Open,
+								"realized_pnl", stats.RealizedPnLUSD,
+							)
+						}
 						continue
 					}
-					if !m.Closed {
-						continue
-					}
+					slotIdx, slotOK := settlementSlotForPosition(p, m, meta[p.AssetID])
 					prices := m.OutcomePrices()
-					if me.SlotIdx < 0 || me.SlotIdx >= len(prices) {
+					if !slotOK || slotIdx < 0 || slotIdx >= len(prices) {
+						slog.Warn("settlement_slot_miss", "pos", p.ID, "asset", short(p.AssetID), "market", short(conditionID), "prices", len(prices))
 						continue
 					}
-					settleMid, perr := strconv.ParseFloat(prices[me.SlotIdx], 64)
+					settleMid, perr := strconv.ParseFloat(prices[slotIdx], 64)
 					if perr != nil {
 						slog.Warn("settlement_price_parse_fail",
 							"asset", short(p.AssetID),
-							"raw", prices[me.SlotIdx],
+							"raw", prices[slotIdx],
 							"err", perr.Error())
 						continue
+					}
+					reason := strategy.ExitSettlement
+					if !m.Closed {
+						if liveTrading || exitMode != "ladder" || ladderCfg.MaxHold <= 0 || now.Sub(p.EntryTime) < ladderCfg.MaxHold {
+							continue
+						}
+						reason = strategy.ExitTimeout
 					}
 					sig := strategy.ExitSignal{
 						AssetID:  p.AssetID,
@@ -3167,7 +3246,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						ExitMid:  settleMid,
 						HeldFor:  now.Sub(p.EntryTime),
 						ChangePP: (settleMid - p.EntryMid) * 100,
-						Reason:   strategy.ExitSettlement,
+						Reason:   reason,
 					}
 					closed, cerr := pm.Close(p.ID, sig)
 					if cerr != nil {
@@ -3215,22 +3294,22 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					}
 					if netPnL <= -largeFillUSD || netPnL >= largeFillUSD {
 						notifier.LargeFill(notify.LargeFillEvent{
-							Question: metaQ(meta, p.AssetID),
+							Question: paperPositionQuestion(p, m, meta[p.AssetID]),
 							AssetID:  p.AssetID,
 							Side:     "sell",
 							SizeUSD:  p.SizeUSD,
 							PnLUSD:   netPnL,
 							EntryPx:  p.EntryMid,
 							ExitPx:   settleMid,
-							Reason:   string(strategy.ExitSettlement),
+							Reason:   string(reason),
 							HeldSec:  int(sig.HeldFor.Seconds()),
 						})
 					}
 					source, openOID := src.Take(closed.ID)
 					if jerr := jrn.Append(journal.TradeRecord{
 						ID: closed.ID, AssetID: closed.AssetID, Market: closed.Market,
-						Question:     metaQ(meta, closed.AssetID),
-						Outcome:      metaOutcome(meta, closed.AssetID),
+						Question:     paperPositionQuestion(closed, m, meta[closed.AssetID]),
+						Outcome:      paperPositionOutcome(closed, m, slotIdx, meta[closed.AssetID]),
 						Side:         "buy",
 						SizeUSD:      closed.SizeUSD,
 						Units:        closed.Units,
@@ -3254,14 +3333,15 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					}
 					slog.Info("settlement_exit",
 						"asset", short(p.AssetID),
-						"q", metaQ(meta, p.AssetID),
-						"outcome", metaOutcome(meta, p.AssetID),
+						"q", paperPositionQuestion(p, m, meta[p.AssetID]),
+						"outcome", paperPositionOutcome(p, m, slotIdx, meta[p.AssetID]),
 						"entry", p.EntryMid,
 						"settle", settleMid,
 						"gross_pnl_usd", closed.PnLUSD,
 						"entry_fee_usd", entryFeeShare,
 						"net_pnl_usd", netPnL,
 						"held_sec", int(sig.HeldFor.Seconds()),
+						"reason", string(reason),
 						"open_positions", stats.Open,
 						"realized_pnl", stats.RealizedPnLUSD,
 					)
@@ -3565,6 +3645,43 @@ func countResolved(ms []feed.Market) int {
 		}
 	}
 	return n
+}
+
+func settlementSlotForPosition(p strategy.Position, m feed.Market, me *assetMeta) (int, bool) {
+	tokens := m.ClobTokenIDs()
+	for i, token := range tokens {
+		if token == p.AssetID {
+			return i, true
+		}
+	}
+	if me != nil && me.SlotIdx >= 0 {
+		return me.SlotIdx, true
+	}
+	return -1, false
+}
+
+func paperPositionQuestion(p strategy.Position, m feed.Market, me *assetMeta) string {
+	if p.Question != "" {
+		return p.Question
+	}
+	if me != nil && me.Question != "" {
+		return me.Question
+	}
+	return m.Question
+}
+
+func paperPositionOutcome(p strategy.Position, m feed.Market, slotIdx int, me *assetMeta) string {
+	if p.Outcome != "" {
+		return p.Outcome
+	}
+	if me != nil && me.Outcome != "" {
+		return me.Outcome
+	}
+	outcomes := m.Outcomes()
+	if slotIdx >= 0 && slotIdx < len(outcomes) {
+		return outcomes[slotIdx]
+	}
+	return ""
 }
 
 func topWindow(ws []feed.WindowStats, n int) []feed.WindowStats {
