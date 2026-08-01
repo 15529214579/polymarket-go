@@ -14,6 +14,8 @@
 - [x] `state.json`：last_heartbeat / last_commit / uncommitted / ticks_no_progress / alert
 - [x] OpenClaw 唤醒 cron：`17,47 8-22 * * *`（session-only，需每次开 session 时重装）
 - [x] alert 升级通道：`scripts/alert-dispatch.sh` — 读 state.json 若 alert 非空 → Telegram Bot API 直推老板，2h cooldown、夜间静默、.env.local 存 token（gitignored）。04-19 23:49 端到端验证 ok=true。
+- [x] 每日 04:30 运行受控 P0 代码优化：从健康日志、PnL/shadow 报告和测试中只选择一个证据充分的正确性/可靠性问题；Codex 不能提交或推送，由外层控制器执行范围检查、敏感信息扫描、`go test -race ./...`、失败隔离、commit 和 push。
+- [x] 自动优化禁止修改实盘开关、运行数据库、地址池、金额/退出/晋升阈值及自身控制文件；没有达到 P0 门槛时当天明确 no-action，不为制造提交而改代码。
 
 ### Phase 0 — Bootstrap ✅
 - [x] `go mod init github.com/15529214579/polymarket-go`

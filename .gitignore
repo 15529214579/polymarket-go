@@ -21,6 +21,7 @@ db/strategy_iteration/*.jsonl
 db/strategy_iteration/*midpoints*.json
 db/strategy_iteration/*decision*.json
 db/smartmoney-paper/
+db/self-optimization/
 db/*.lock/
 db/copytrade_backtest_results.generated.json
 db/copytrade_tiers_expanded.json
