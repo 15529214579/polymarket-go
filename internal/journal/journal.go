@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -26,29 +27,30 @@ var SGT = time.FixedZone("SGT", 8*3600)
 // fields decode with zero values — report.Summarize prefers NetPnLUSD when
 // non-zero and falls back to PnLUSD.
 type TradeRecord struct {
-	ID           string    `json:"id"`
-	AssetID      string    `json:"asset_id"`
-	Market       string    `json:"market"`
-	Question     string    `json:"question"`
-	Outcome      string    `json:"outcome"`
-	Side         string    `json:"side"` // always "buy" for now (long-only)
-	SizeUSD      float64   `json:"size_usd"`
-	Units        float64   `json:"units"`
-	EntryMid     float64   `json:"entry_mid"`
-	EntryTime    time.Time `json:"entry_time"`
-	ExitMid      float64   `json:"exit_mid"`
-	ExitTime     time.Time `json:"exit_time"`
-	ExitReason   string    `json:"exit_reason"`
-	HeldSec      int       `json:"held_sec"`
-	PnLUSD       float64   `json:"pnl_usd"`                 // gross: units × (exit - entry)
-	EntryFeeUSD  float64   `json:"entry_fee_usd,omitempty"` // apportioned across ladder tranches
-	ExitFeeUSD   float64   `json:"exit_fee_usd,omitempty"`  // fee on the closing leg
-	NetPnLUSD    float64   `json:"net_pnl_usd,omitempty"`   // PnLUSD − EntryFeeUSD − ExitFeeUSD
-	Tranche      string    `json:"tranche,omitempty"`       // "" / "t1" / "t2" / "sl" / "timeout" / "settle"
-	OpenOrderID  string    `json:"open_order_id"`
-	CloseOrderID string    `json:"close_order_id"`
-	Mode         string    `json:"mode"`          // "paper" / "live"
-	SignalSource string    `json:"signal_source"` // "auto" / "manual"
+	ID            string    `json:"id"`
+	AssetID       string    `json:"asset_id"`
+	Market        string    `json:"market"`
+	Question      string    `json:"question"`
+	Outcome       string    `json:"outcome"`
+	Side          string    `json:"side"` // always "buy" for now (long-only)
+	SizeUSD       float64   `json:"size_usd"`
+	Units         float64   `json:"units"`
+	EntryMid      float64   `json:"entry_mid"`
+	EntryTime     time.Time `json:"entry_time"`
+	ExitMid       float64   `json:"exit_mid"`
+	ExitTime      time.Time `json:"exit_time"`
+	ExitReason    string    `json:"exit_reason"`
+	HeldSec       int       `json:"held_sec"`
+	PnLUSD        float64   `json:"pnl_usd"`                 // gross: units × (exit - entry)
+	EntryFeeUSD   float64   `json:"entry_fee_usd,omitempty"` // apportioned across ladder tranches
+	ExitFeeUSD    float64   `json:"exit_fee_usd,omitempty"`  // fee on the closing leg
+	NetPnLUSD     float64   `json:"net_pnl_usd,omitempty"`   // PnLUSD − EntryFeeUSD − ExitFeeUSD
+	Tranche       string    `json:"tranche,omitempty"`       // "" / "t1" / "t2" / "sl" / "timeout" / "settle"
+	OpenOrderID   string    `json:"open_order_id"`
+	CloseOrderID  string    `json:"close_order_id"`
+	Mode          string    `json:"mode"`          // "paper" / "live"
+	SignalSource  string    `json:"signal_source"` // "auto" / "manual"
+	PolicyVersion string    `json:"policy_version,omitempty"`
 }
 
 // Journal appends TradeRecords into ./db/trades-YYYY-MM-DD.jsonl partitioned
@@ -56,12 +58,19 @@ type TradeRecord struct {
 // handle, not the file itself — multiple processes would race, but this bot
 // is single-instance).
 type Journal struct {
-	dir string
+	dir           string
+	policyVersion string
 
 	mu     sync.Mutex
 	day    string // "YYYY-MM-DD" SGT
 	f      *os.File
 	writer *bufio.Writer
+}
+
+func (j *Journal) SetPolicyVersion(version string) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.policyVersion = strings.TrimSpace(version)
 }
 
 func New(dir string) (*Journal, error) {
@@ -75,6 +84,9 @@ func New(dir string) (*Journal, error) {
 func (j *Journal) Append(rec TradeRecord) error {
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	if rec.PolicyVersion == "" {
+		rec.PolicyVersion = j.policyVersion
+	}
 	day := recordDay(rec)
 	if j.f == nil || j.day != day {
 		if err := j.rotateLocked(day); err != nil {

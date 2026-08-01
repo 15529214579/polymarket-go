@@ -24,7 +24,7 @@ type ShadowExitConfig struct {
 
 func DefaultShadowExitConfig() ShadowExitConfig {
 	return ShadowExitConfig{
-		Timeouts:      []time.Duration{10 * time.Minute, 20 * time.Minute, 30 * time.Minute},
+		Timeouts:      []time.Duration{10 * time.Minute, 20 * time.Minute, 30 * time.Minute, 45 * time.Minute, 60 * time.Minute},
 		StopLosses:    []float64{0.20, 0.25},
 		TakeProfits:   []float64{0.30, 0.50},
 		SLConfirmTime: 15 * time.Second,
@@ -56,6 +56,12 @@ type ShadowExitObservation struct {
 	HoldProfile    string
 	EventStart     time.Time
 	ExitDeadline   time.Time
+	Question       string
+	Outcome        string
+	Source         string
+	SignalSource   string
+	ActualCloseAt  time.Time
+	ActualReason   ExitReason
 }
 
 type shadowExitState struct {
@@ -63,6 +69,8 @@ type shadowExitState struct {
 	feeRate    float64
 	fired      map[string]bool
 	belowSince map[string]time.Time
+	actualAt   time.Time
+	actualWhy  ExitReason
 }
 
 // ShadowExitTracker tracks counterfactual exits independently of the live
@@ -117,6 +125,22 @@ func (s *ShadowExitTracker) Close(posID string) {
 	delete(s.states, posID)
 }
 
+// ActualClose keeps a counterfactual position alive until the longest timeout
+// observation has fired, even if the running policy exits earlier.
+func (s *ShadowExitTracker) ActualClose(p Position) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	state, ok := s.states[p.ID]
+	if !ok {
+		return
+	}
+	state.actualAt = p.ExitTime
+	state.actualWhy = p.ExitReason
+	if s.allTimeoutsFired(state) {
+		delete(s.states, p.ID)
+	}
+}
+
 func (s *ShadowExitTracker) Snapshot() map[string]string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -137,6 +161,9 @@ func (s *ShadowExitTracker) OnTick(posID string, tick feed.Tick) []ShadowExitObs
 
 	price := tick.BestBid
 	if price <= 0 || price >= 1 {
+		if !state.actualAt.IsZero() && tick.Time.Sub(state.position.EntryTime) >= s.shadowRetention() {
+			delete(s.states, posID)
+		}
 		return nil
 	}
 	var out []ShadowExitObservation
@@ -146,7 +173,7 @@ func (s *ShadowExitTracker) OnTick(posID string, tick feed.Tick) []ShadowExitObs
 			continue
 		}
 		state.fired[policy] = true
-		out = append(out, shadowObservation(state.position, tick.Time, price, policy, 0, s.cfg, state.feeRate))
+		out = append(out, state.observation(tick.Time, price, policy, 0, s.cfg))
 	}
 
 	for _, stop := range s.cfg.StopLosses {
@@ -167,7 +194,7 @@ func (s *ShadowExitTracker) OnTick(posID string, tick feed.Tick) []ShadowExitObs
 			continue
 		}
 		state.fired[policy] = true
-		out = append(out, shadowObservation(state.position, tick.Time, tick.BestBid, policy, stop*100, s.cfg, state.feeRate))
+		out = append(out, state.observation(tick.Time, tick.BestBid, policy, stop*100, s.cfg))
 	}
 	for _, take := range s.cfg.TakeProfits {
 		policy := percentPolicy("tp", take)
@@ -175,9 +202,35 @@ func (s *ShadowExitTracker) OnTick(posID string, tick feed.Tick) []ShadowExitObs
 			continue
 		}
 		state.fired[policy] = true
-		out = append(out, shadowObservation(state.position, tick.Time, tick.BestBid, policy, take*100, s.cfg, state.feeRate))
+		out = append(out, state.observation(tick.Time, tick.BestBid, policy, take*100, s.cfg))
+	}
+	if !state.actualAt.IsZero() && s.allTimeoutsFired(state) {
+		delete(s.states, posID)
 	}
 	return out
+}
+
+func (s *ShadowExitTracker) allTimeoutsFired(state *shadowExitState) bool {
+	for _, timeout := range s.cfg.Timeouts {
+		if !state.fired[timeoutPolicy(timeout)] {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *ShadowExitTracker) shadowRetention() time.Duration {
+	if len(s.cfg.Timeouts) == 0 {
+		return 0
+	}
+	return s.cfg.Timeouts[len(s.cfg.Timeouts)-1] + 30*time.Minute
+}
+
+func (s *shadowExitState) observation(observedAt time.Time, exitQuote float64, policy string, thresholdPct float64, cfg ShadowExitConfig) ShadowExitObservation {
+	obs := shadowObservation(s.position, observedAt, exitQuote, policy, thresholdPct, cfg, s.feeRate)
+	obs.ActualCloseAt = s.actualAt
+	obs.ActualReason = s.actualWhy
+	return obs
 }
 
 func shadowObservation(p Position, observedAt time.Time, exitQuote float64, policy string, thresholdPct float64, cfg ShadowExitConfig, feeRate float64) ShadowExitObservation {
@@ -230,6 +283,10 @@ func shadowObservation(p Position, observedAt time.Time, exitQuote float64, poli
 		HoldProfile:    p.HoldProfile,
 		EventStart:     p.EventStart,
 		ExitDeadline:   p.ExitDeadline,
+		Question:       p.Question,
+		Outcome:        p.Outcome,
+		Source:         p.Source,
+		SignalSource:   p.SignalSource,
 	}
 }
 

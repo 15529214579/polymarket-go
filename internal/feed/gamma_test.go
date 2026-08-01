@@ -515,6 +515,10 @@ func TestMarketEventStartTime(t *testing.T) {
 	if got := event.EventStartTime(); got.Format(time.RFC3339Nano) != "2026-08-03T09:15:00.123Z" {
 		t.Fatalf("event game start=%v", got)
 	}
+	spaceOffset := Market{GameStartTime: "2026-08-01 13:15:00+00"}
+	if got := spaceOffset.EventStartTime(); got.Format(time.RFC3339) != "2026-08-01T13:15:00Z" {
+		t.Fatalf("space-offset game start=%v", got)
+	}
 }
 
 func TestGetCLOBEventStart(t *testing.T) {

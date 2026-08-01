@@ -67,7 +67,7 @@ func main() {
 	ladderSLPct := flag.Float64("ladder_sl_pct", 0.15, "ladder stop-loss: exit ≤ entry × (1 - this) closes 100%")
 	ladderMaxHold := flag.Duration("ladder_max_hold", 6*time.Hour, "ladder hard timeout — closes remainder")
 	exitPollInterval := flag.Duration("exit_poll_interval", 5*time.Second, "deadline check interval for timed exits")
-	eventPostStartHold := flag.Duration("event_post_start_hold", 10*time.Minute, "event positions: hold this long after scheduled start before timeout")
+	eventPostStartHold := flag.Duration("event_post_start_hold", 30*time.Minute, "event positions: minimum observation hold after scheduled start or in-play entry")
 	timeoutReentryCooldown := flag.Duration("timeout_reentry_cooldown", 30*time.Minute, "block the same market after a timeout exit")
 	// Phase 7.g lottery comparison strategy (SPEC §2.5). Parallel to momentum:
 	// scan subscribed assets, open a small paper position when mid is in the
@@ -119,6 +119,7 @@ func main() {
 	eurovisionInterval := flag.Duration("eurovision_interval", 6*time.Hour, "Eurovision scan interval")
 	eurovisionMinEdge := flag.Float64("eurovision_min_edge_pp", 5.0, "Eurovision minimum edge in pp to signal")
 	liveTrading := flag.Bool("live", false, "enable real V2 CLOB order submission (requires wallet mnemonic in Bitwarden)")
+	liveDisableFile := flag.String("live_disable_file", "db/live-trading.disabled", "live trading kill-switch file; ignored in paper/research modes")
 	initialCapital := flag.Float64("initial_capital", 200.0, "initial capital in USD for total P&L calculation")
 	positionsStatePath := flag.String("positions_state", "db/positions.json", "paper/live position state JSON path")
 	riskStatePath := flag.String("risk_state", "db/risk_state.json", "risk state JSON path")
@@ -126,6 +127,8 @@ func main() {
 	posMaxTotalOpenUSD := flag.Float64("pos_max_total_open_usd", 300.0, "max total open paper exposure in USD")
 	posMaxOpenPositions := flag.Int("pos_max_open_positions", 60, "max concurrent open paper positions")
 	posMaxPerMarketUSD := flag.Float64("pos_max_per_market_usd", 30.0, "max open paper exposure per conditionID in USD; 0 disables")
+	posMaxPerEventUSD := flag.Float64("pos_max_per_event_usd", 100.0, "max open paper exposure across related event conditions; 0 disables")
+	footballScoreMaxEventUSD := flag.Float64("football_score_max_event_usd", 60.0, "max open paper exposure across exact-score outcomes for one match")
 	flag.Parse()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -133,6 +136,15 @@ func main() {
 
 	if err := config.LoadDotEnv(*envFile); err != nil {
 		slog.Warn("dotenv_load_warn", "path", *envFile, "err", err.Error())
+	}
+	if *liveTrading {
+		if _, err := os.Stat(*liveDisableFile); err == nil {
+			slog.Error("live_trading_disabled", "file", *liveDisableFile)
+			os.Exit(1)
+		} else if !os.IsNotExist(err) {
+			slog.Error("live_disable_file_check_failed", "file", *liveDisableFile, "err", err.Error())
+			os.Exit(1)
+		}
 	}
 
 	order.InitProxy()
@@ -233,7 +245,7 @@ func main() {
 			EurovisionInterval: *eurovisionInterval,
 			EurovisionMinEdge:  *eurovisionMinEdge,
 		}
-		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *takerFeeRate, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *exitPollInterval, *eventPostStartHold, *timeoutReentryCooldown, *lotteryEnabled, lottCfg, injCfg, whaleCfg, *confirmDelay, btcCfg, updownCfg, p10, *liveTrading, *fadeMode, *walletsFile, *copytradeSize, *walletTiersFile, *initialCapital, *minTier, *positionsStatePath, *riskStatePath, *buyTimesStatePath, *posMaxTotalOpenUSD, *posMaxOpenPositions, *posMaxPerMarketUSD); err != nil && ctx.Err() == nil {
+		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *takerFeeRate, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *exitPollInterval, *eventPostStartHold, *timeoutReentryCooldown, *lotteryEnabled, lottCfg, injCfg, whaleCfg, *confirmDelay, btcCfg, updownCfg, p10, *liveTrading, *fadeMode, *walletsFile, *copytradeSize, *walletTiersFile, *initialCapital, *minTier, *positionsStatePath, *riskStatePath, *buyTimesStatePath, *posMaxTotalOpenUSD, *posMaxOpenPositions, *posMaxPerMarketUSD, *posMaxPerEventUSD, *footballScoreMaxEventUSD); err != nil && ctx.Err() == nil {
 			slog.Error("detect failed", "err", err)
 			os.Exit(1)
 		}
@@ -499,6 +511,9 @@ func copytradeAutoAllowedForAction(action string, liveTrading bool, paperFollowP
 }
 
 func copytradeTierForMarket(globalTier string, fileMeta walletFileMeta, footballScore bool) string {
+	if fileMeta.List == "paper_promoted" && fileMeta.Tier != "" && fileMeta.Tier != "?" {
+		return strings.ToUpper(fileMeta.Tier)
+	}
 	if footballScore && fileMeta.List == "football_score_push" && fileMeta.Tier != "" && fileMeta.Tier != "?" {
 		return strings.ToUpper(fileMeta.Tier)
 	}
@@ -530,7 +545,7 @@ func drainSamplerTicks(ctx context.Context, sampler *feed.Sampler) {
 	}
 }
 
-func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, takerFeeRate, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, exitPollInterval, eventPostStartHold, timeoutReentryCooldown time.Duration, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, injCfg injury.Config, whaleCfg whale.Config, confirmDelay time.Duration, btcCfg btc.StrategyConfig, updownCfg btc.UpDownConfig, p10 phase10Config, liveTrading bool, fadeMode bool, walletsFile string, copytradeSize float64, walletTiersFile string, initialCapital float64, minTierFilter string, positionsStatePath, riskStatePath, buyTimesStatePath string, posMaxTotalOpenUSD float64, posMaxOpenPositions int, posMaxPerMarketUSD float64) error {
+func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, takerFeeRate, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, exitPollInterval, eventPostStartHold, timeoutReentryCooldown time.Duration, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, injCfg injury.Config, whaleCfg whale.Config, confirmDelay time.Duration, btcCfg btc.StrategyConfig, updownCfg btc.UpDownConfig, p10 phase10Config, liveTrading bool, fadeMode bool, walletsFile string, copytradeSize float64, walletTiersFile string, initialCapital float64, minTierFilter string, positionsStatePath, riskStatePath, buyTimesStatePath string, posMaxTotalOpenUSD float64, posMaxOpenPositions int, posMaxPerMarketUSD, posMaxPerEventUSD, footballScoreMaxEventUSD float64) error {
 	if signalMode != "auto" && signalMode != "prompt" && signalMode != "whale" && signalMode != "copytrade" {
 		return fmt.Errorf("invalid signal_mode %q (want auto|prompt|whale|copytrade)", signalMode)
 	}
@@ -540,7 +555,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 	if exitPollInterval <= 0 {
 		return fmt.Errorf("exit_poll_interval must be positive")
 	}
-	if eventPostStartHold < 0 || timeoutReentryCooldown < 0 {
+	if eventPostStartHold < 0 || timeoutReentryCooldown < 0 || posMaxPerEventUSD < 0 || footballScoreMaxEventUSD < 0 {
 		return fmt.Errorf("event hold and timeout cooldown must not be negative")
 	}
 	paperFollowFootballScore := signalMode == "copytrade" && !liveTrading && os.Getenv("COPYTRADE_PAPER_FOLLOW_FOOTBALL_SCORE") == "1"
@@ -548,10 +563,29 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 	if paperFootballScoreSize <= 0 {
 		paperFootballScoreSize = 5
 	}
+	footballScoreMaxSignalAge := 2 * time.Minute
+	if raw := strings.TrimSpace(os.Getenv("COPYTRADE_FOOTBALL_SCORE_MAX_SIGNAL_AGE")); raw != "" {
+		if parsed, err := time.ParseDuration(raw); err == nil && parsed >= 0 {
+			footballScoreMaxSignalAge = parsed
+		} else {
+			slog.Warn("copytrade_football_invalid_signal_age", "value", raw, "err", err)
+		}
+	}
+	footballScoreHold := 150 * time.Minute
+	if raw := strings.TrimSpace(os.Getenv("COPYTRADE_FOOTBALL_SCORE_HOLD")); raw != "" {
+		if parsed, err := time.ParseDuration(raw); err == nil && parsed > 0 {
+			footballScoreHold = parsed
+		} else {
+			slog.Warn("copytrade_football_invalid_hold", "value", raw, "err", err)
+		}
+	}
 	if signalMode == "copytrade" {
 		slog.Info("copytrade_football_config",
 			"score_enabled", paperFollowFootballScore,
 			"score_size_usd", paperFootballScoreSize,
+			"score_max_signal_age", footballScoreMaxSignalAge.String(),
+			"score_hold", footballScoreHold.String(),
+			"score_max_event_usd", footballScoreMaxEventUSD,
 			"live", liveTrading,
 		)
 	}
@@ -648,6 +682,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 	if err != nil {
 		return fmt.Errorf("journal init: %w", err)
 	}
+	jrn.SetPolicyVersion(os.Getenv("PAPER_POLICY_VERSION"))
 	defer jrn.Close()
 	// Phase 7.e: per-position 1Hz tick path recorder. Empty dir → noop nil
 	// recorder so unit tests / ad-hoc runs can opt out cleanly.
@@ -742,6 +777,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 	if posMaxPerMarketUSD >= 0 {
 		posCfg.MaxPerMarketUSD = posMaxPerMarketUSD
 	}
+	posCfg.MaxPerEventUSD = posMaxPerEventUSD
 	pm := strategy.NewPositionManager(posCfg)
 	if positionsStatePath == "" {
 		positionsStatePath = "db/positions.json"
@@ -845,8 +881,8 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 			slog.Warn("positions_save_err", "path", positionsStatePath, "err", err)
 		}
 	}
-	configureHold := func(posID string, eventStart time.Time) strategy.Position {
-		planned, err := pm.ConfigureOpenHold(posID, eventStart, ladderCfg.MaxHold, eventPostStartHold)
+	configureHoldWithPolicy := func(posID string, eventStart time.Time, maxHold, eventHold time.Duration) strategy.Position {
+		planned, err := pm.ConfigureOpenHold(posID, eventStart, maxHold, eventHold)
 		if err != nil {
 			slog.Warn("position_hold_config_fail", "pos", posID, "err", err)
 			return strategy.Position{ID: posID}
@@ -856,8 +892,13 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 			"profile", planned.HoldProfile,
 			"event_start", planned.EventStart,
 			"exit_deadline", planned.ExitDeadline,
+			"max_hold", maxHold.String(),
+			"event_hold", eventHold.String(),
 		)
 		return planned
+	}
+	configureHold := func(posID string, eventStart time.Time) strategy.Position {
+		return configureHoldWithPolicy(posID, eventStart, ladderCfg.MaxHold, eventPostStartHold)
 	}
 
 	var timeoutCooldownMu sync.Mutex
@@ -880,6 +921,48 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 		defer timeoutCooldownMu.Unlock()
 		until := timeoutCooldownUntil[market]
 		return until, !until.IsZero() && now.Before(until)
+	}
+	timeoutLiquidity := strategy.NewTimeoutLiquidityTracker(5 * time.Minute)
+	recordTimeoutLiquidity := func(p strategy.Position, mid float64, reason string, now time.Time) {
+		// Keep extending the market-level block while the expired position has
+		// no executable exit. This prevents stacking more exposure into a market
+		// whose order book cannot currently absorb a sell.
+		markTimeoutCooldown(p.Market, now)
+		state, shouldLog := timeoutLiquidity.Observe(p, now)
+		if !shouldLog {
+			return
+		}
+		phase := "ongoing"
+		if state.Attempts == 1 {
+			phase = "detected"
+		}
+		slog.Warn("paper_timeout_best_bid_unavailable",
+			"pos", p.ID,
+			"asset", short(p.AssetID),
+			"market", short(p.Market),
+			"phase", phase,
+			"reason", reason,
+			"attempts", state.Attempts,
+			"unavailable_sec", int(now.Sub(state.FirstSeen).Seconds()),
+			"mid", mid,
+			"exposure_usd", state.ExposureUSD,
+			"conservative_value_usd", 0,
+			"conservative_net_pnl_usd", state.ConservativeNetPnLUSD,
+		)
+	}
+	logTimeoutLiquidityRecovered := func(p strategy.Position, exitFill float64, now time.Time) {
+		state, ok := timeoutLiquidity.Resolve(p.ID)
+		if !ok {
+			return
+		}
+		slog.Info("paper_timeout_best_bid_recovered",
+			"pos", p.ID,
+			"asset", short(p.AssetID),
+			"market", short(p.Market),
+			"attempts", state.Attempts,
+			"unavailable_sec", int(now.Sub(state.FirstSeen).Seconds()),
+			"exit_fill", exitFill,
+		)
 	}
 	for _, tr := range persistedTrades {
 		if isTimeoutExitReason(tr.ExitReason) {
@@ -1579,6 +1662,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 								"asset", short(obs.AssetID),
 								"market", short(obs.Market),
 								"policy", obs.Policy,
+								"entry_time", obs.EntryTime,
 								"entry", obs.EntryMid,
 								"best_bid", obs.ExitQuotePrice,
 								"executable_exit", obs.ExitPrice,
@@ -1594,6 +1678,12 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 								"hold_profile", obs.HoldProfile,
 								"event_start", obs.EventStart,
 								"actual_exit_deadline", obs.ExitDeadline,
+								"question", obs.Question,
+								"outcome", obs.Outcome,
+								"source", obs.Source,
+								"signal_source", obs.SignalSource,
+								"actual_close_at", obs.ActualCloseAt,
+								"actual_exit_reason", obs.ActualReason,
 							)
 						}
 					}
@@ -2218,12 +2308,13 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 		NegRisk      bool
 		TakerFeeRate float64
 		FeeRateKnown bool
+		LoadedAt     time.Time
 	}
 	var endDateMu sync.Mutex
 	metaCache := make(map[string]marketMeta)
 	lookupMarketMeta := func(conditionID string) (marketMeta, bool) {
 		endDateMu.Lock()
-		if m, ok := metaCache[conditionID]; ok {
+		if m, ok := metaCache[conditionID]; ok && (!m.GameStart.IsZero() || time.Since(m.LoadedAt) < 30*time.Second) {
 			endDateMu.Unlock()
 			return m, true
 		}
@@ -2247,7 +2338,10 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 		}
 		m := marketMeta{
 			EndDate: ed, GameStart: gameStart, Category: mkts[0].Category, NegRisk: mkts[0].NegRisk,
-			TakerFeeRate: clobInfo.TakerFeeRate, FeeRateKnown: clobInfo.FeeRateKnown,
+			TakerFeeRate: clobInfo.TakerFeeRate, FeeRateKnown: clobInfo.FeeRateKnown, LoadedAt: time.Now(),
+		}
+		if gameStart.IsZero() {
+			slog.Warn("market_start_unavailable", "market", short(conditionID), "gamma_game_start", mkts[0].GameStartTime, "clob_error", clobErr)
 		}
 		endDateMu.Lock()
 		metaCache[conditionID] = m
@@ -2261,6 +2355,33 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 		}
 		rate := m.TakerFeeRate
 		return &rate
+	}
+	reconfiguredHolds := 0
+	for _, openPos := range pm.Snapshot() {
+		if !strings.HasPrefix(persistedPositionSource(openPos), "copytrade") {
+			continue
+		}
+		eventStart := time.Time{}
+		if marketInfo, ok := lookupMarketMeta(openPos.Market); ok {
+			eventStart = marketInfo.GameStart
+		}
+		maxHold := ladderCfg.MaxHold
+		eventHold := eventPostStartHold
+		if feed.IsFootballScoreMarketText(openPos.Question) {
+			maxHold = footballScoreHold
+			eventHold = footballScoreHold
+		}
+		_, candidateDeadline := strategy.PlannedHold(openPos.EntryTime, eventStart, maxHold, eventHold)
+		if candidateDeadline.IsZero() || !candidateDeadline.After(openPos.ExitDeadline) {
+			continue
+		}
+		planned := configureHoldWithPolicy(openPos.ID, eventStart, maxHold, eventHold)
+		shadowExits.Open(planned)
+		reconfiguredHolds++
+	}
+	if reconfiguredHolds > 0 {
+		savePositions()
+		slog.Info("positions_hold_reconfigured", "count", reconfiguredHolds)
 	}
 
 	// Smart-money whale tracker: polls target wallet's CLOB trades and
@@ -2492,6 +2613,22 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 				}
 
 				footballScore := feed.IsFootballScoreMarketText(ev.Question + " " + ev.Slug)
+				if side == "BUY" && footballScore && footballScoreMaxSignalAge > 0 && !ev.Timestamp.IsZero() {
+					signalAge := time.Since(ev.Timestamp)
+					if signalAge < 0 {
+						signalAge = 0
+					}
+					if signalAge > footballScoreMaxSignalAge {
+						appendWhaleTrade(ev, "skip", "football_score_stale:"+signalAge.Round(time.Second).String())
+						slog.Info("copytrade_football_score_stale",
+							"wallet", ev.Label,
+							"signal_age", signalAge.Round(time.Second).String(),
+							"max_age", footballScoreMaxSignalAge.String(),
+							"market", ev.Question,
+						)
+						return
+					}
+				}
 				if ev.Price < copytradeEntryPriceFloor(footballScore, paperFollowFootballScore) || ev.Price > followMaxEntryPrice {
 					appendWhaleTrade(ev, "skip", "price_filtered")
 					slog.Info("copytrade_price_filtered", "wallet", ev.Label, "price", ev.Price, "market", ev.Question)
@@ -2596,7 +2733,12 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 					if tier == "" {
 						tier = "?"
 					}
-					pos, err := pm.OpenSized(ev.AssetID, ev.ConditionID, tick, sizeUSD)
+					eventKey := copytradeExposureEventKey(ev)
+					eventCap := 0.0
+					if footballScore {
+						eventCap = footballScoreMaxEventUSD
+					}
+					pos, err := pm.OpenSizedForEvent(ev.AssetID, ev.ConditionID, eventKey, tick, sizeUSD, eventCap)
 					if err != nil {
 						appendWhaleTrade(ev, "skip", "open_rejected:"+err.Error())
 						slog.Warn("copytrade_open_rejected", "wallet", ev.Label, "asset", short(ev.AssetID), "err", err.Error())
@@ -2700,12 +2842,17 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 							ev.Label, ev.Notional,
 							result.OrderID)
 						notifier.SidecarAlert(fillMsg)
-						signalSource := "copytrade_" + ev.Label
+						signalSource := "copytrade_wallet:" + strings.ToLower(strings.TrimSpace(ev.Wallet))
 						if footballScore {
-							signalSource = "copytrade_football_score_" + ev.Label
+							signalSource = "copytrade_football_score_wallet:" + strings.ToLower(strings.TrimSpace(ev.Wallet))
 						}
 						markPositionSource(pm, src, pos.ID, signalSource, result.OrderID)
-						planned := configureHold(pos.ID, followedMeta.GameStart)
+						var planned strategy.Position
+						if footballScore {
+							planned = configureHoldWithPolicy(pos.ID, followedMeta.GameStart, footballScoreHold, footballScoreHold)
+						} else {
+							planned = configureHold(pos.ID, followedMeta.GameStart)
+						}
 						shadowExits.OpenWithFeeRate(planned, effectiveFeeRate)
 						if added, subErr := ws.SubscribeAssets(ev.AssetID); subErr != nil {
 							slog.Warn("copytrade_wss_subscribe_fail", "pos", pos.ID, "asset", short(ev.AssetID), "err", subErr.Error())
@@ -2816,7 +2963,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 						var source, openOID string
 						if sellPct >= 0.95 {
 							source, openOID = src.Take(closedPos.ID)
-							shadowExits.Close(closedPos.ID)
+							shadowExits.ActualClose(closedPos)
 							if recorder != nil {
 								if rerr := recorder.Stop(closedPos.ID); rerr != nil {
 									slog.Warn("tickrec_stop_fail", "pos", closedPos.ID, "err", rerr.Error())
@@ -3433,6 +3580,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 				if now.Sub(lastSummary) >= 60*time.Second {
 					lastSummary = now
 					st := rm.State()
+					illiquid := timeoutLiquidity.Summary()
 					slog.Info("risk_status",
 						"day", st.Day,
 						"day_pnl_usd", st.DayRealizedPnL,
@@ -3445,6 +3593,9 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 						"reason", string(st.BlockReason),
 						"single_loss_flags", st.SingleLossFlags,
 						"feed_silent_sec", int(silent.Seconds()),
+						"timeout_illiquid_positions", illiquid.Positions,
+						"timeout_illiquid_exposure_usd", illiquid.ExposureUSD,
+						"timeout_illiquid_conservative_net_pnl_usd", illiquid.ConservativeNetPnLUSD,
 					)
 				}
 			}
@@ -3561,12 +3712,12 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 							}
 							tail, tickOK := sampler.TickTail(p.AssetID, 1)
 							if !tickOK || len(tail) == 0 {
-								slog.Warn("paper_timeout_price_unavailable", "pos", p.ID, "asset", short(p.AssetID), "market", short(p.Market))
+								recordTimeoutLiquidity(p, 0, "tick_unavailable", now)
 								continue
 							}
 							timeoutPrice, priceOK := paperTimeoutExitPrice(tail[0])
 							if !priceOK {
-								slog.Warn("paper_timeout_best_bid_unavailable", "pos", p.ID, "asset", short(p.AssetID), "mid", tail[0].Mid)
+								recordTimeoutLiquidity(p, tail[0].Mid, "no_executable_bid", now)
 								continue
 							}
 							res, serr := orderClient.Submit(ctx, order.Intent{
@@ -3599,10 +3750,11 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 								slog.Warn("paper_timeout_flat_close_miss", "pos", p.ID, "asset", short(p.AssetID), "err", cerr.Error())
 								continue
 							}
+							logTimeoutLiquidityRecovered(p, res.AvgPrice, now)
 							savePositions()
 							markTimeoutCooldown(closed.Market, closed.ExitTime)
 							ladder.Forget(p.ID)
-							shadowExits.Close(closed.ID)
+							shadowExits.ActualClose(closed)
 							if recorder != nil {
 								if rerr := recorder.Stop(closed.ID); rerr != nil {
 									slog.Warn("tickrec_stop_fail", "pos", closed.ID, "err", rerr.Error())
@@ -3702,13 +3854,13 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 					if reason == strategy.ExitTimeout {
 						tail, tickOK := sampler.TickTail(p.AssetID, 1)
 						if !tickOK || len(tail) == 0 {
-							slog.Warn("paper_timeout_price_unavailable", "pos", p.ID, "asset", short(p.AssetID), "market", short(p.Market))
+							recordTimeoutLiquidity(p, 0, "tick_unavailable", now)
 							continue
 						}
 						var priceOK bool
 						executableBid, priceOK = paperTimeoutExitPrice(tail[0])
 						if !priceOK {
-							slog.Warn("paper_timeout_best_bid_unavailable", "pos", p.ID, "asset", short(p.AssetID), "mid", tail[0].Mid)
+							recordTimeoutLiquidity(p, tail[0].Mid, "no_executable_bid", now)
 							continue
 						}
 						res, serr := orderClient.Submit(ctx, order.Intent{
@@ -3747,8 +3899,11 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 						slog.Warn("settlement_close_miss", "pos", p.ID, "asset", short(p.AssetID), "err", cerr.Error())
 						continue
 					}
+					if reason == strategy.ExitTimeout {
+						logTimeoutLiquidityRecovered(p, exitMid, now)
+					}
 					savePositions()
-					shadowExits.Close(closed.ID)
+					shadowExits.ActualClose(closed)
 					if reason == strategy.ExitTimeout {
 						markTimeoutCooldown(closed.Market, closed.ExitTime)
 					}
@@ -6045,6 +6200,16 @@ func whaleEventKeyForAlert(ev whale.AlertEvent) string {
 	market := whaleEventSpaceRE.ReplaceAllString(strings.ToLower(strings.TrimSpace(ev.Question)), " ")
 	outcome := strings.ToLower(strings.TrimSpace(ev.Outcome))
 	return "football_score:" + market + "|" + outcome
+}
+
+func copytradeExposureEventKey(ev whale.AlertEvent) string {
+	if !feed.IsFootballScoreMarketText(ev.Question + " " + ev.Slug) {
+		return "event:" + whaleEventKey(ev.Question)
+	}
+	if slug := strings.ToLower(strings.TrimSpace(ev.Slug)); slug != "" {
+		return "football_score_event:" + slug
+	}
+	return "football_score_event:" + whaleEventKey(ev.Question)
 }
 
 func loadWhaleCooldownSeeds(path string, repeatCooldown, eventCooldown time.Duration) (map[string]time.Time, map[string]time.Time, int, int) {

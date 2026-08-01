@@ -273,6 +273,11 @@ if [ "${HOURLY_PROMOTION_RESTART:-1}" = "1" ]; then
 fi
 
 if [ "${HOURLY_SMARTMONEY_REFRESH:-1}" = "1" ] && [ -x "$ROOT/scripts/start-smartmoney-paper.sh" ]; then
+	if "$ROOT/scripts/smartmoney-paper-wallet-policy.sh"; then
+		printf 'hourly-wallet-promotion.paper_policy refreshed\n'
+	else
+		printf 'hourly-wallet-promotion.paper_policy refresh_failed\n' >&2
+	fi
   if "$ROOT/scripts/start-smartmoney-paper.sh" restart; then
     printf 'hourly-wallet-promotion.smartmoney refreshed\n'
   else

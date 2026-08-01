@@ -1,11 +1,12 @@
 #!/bin/bash
 # Embiid injury monitor - check every run, alert on status change
 STATE_FILE="/Users/murphyma/work/polymarket-go/db/embiid_state.txt"
-DISABLED_FILE="/Users/murphyma/work/polymarket-go/db/project.disabled"
+ROOT="/Users/murphyma/work/polymarket-go"
 PUSH_BOT="${PUSH_BOT_TOKEN:-${TELEGRAM_BOT_TOKEN:-}}"
 CHAT_ID="${TELEGRAM_CHAT_ID:-6695538819}"
 
-[ -f "$DISABLED_FILE" ] && exit 0
+. "$ROOT/scripts/component-flags.sh"
+component_disabled "$ROOT" embiid-monitor && exit 0
 [ -n "$PUSH_BOT" ] || exit 0
 [ -n "$CHAT_ID" ] || exit 0
 

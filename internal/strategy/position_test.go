@@ -146,6 +146,25 @@ func TestPositionManager_MaxPositionsAndExposure(t *testing.T) {
 	}
 }
 
+func TestPositionManager_MaxPerEventExposureAcrossMarkets(t *testing.T) {
+	cfg := DefaultPositionConfig()
+	cfg.MaxPerMarketUSD = 100
+	cfg.MaxPerEventUSD = 60
+	pm := NewPositionManager(cfg)
+	now := time.Now()
+	for i := 0; i < 3; i++ {
+		if _, err := pm.OpenSizedForEvent("asset"+string(rune('a'+i)), "market"+string(rune('a'+i)), "football:match", tick(0.2, now), 20, 0); err != nil {
+			t.Fatalf("open %d: %v", i, err)
+		}
+	}
+	if _, err := pm.OpenSizedForEvent("assetd", "marketd", "football:match", tick(0.2, now), 20, 0); !errors.Is(err, ErrMaxPerEvent) {
+		t.Fatalf("want ErrMaxPerEvent, got %v", err)
+	}
+	if got := pm.ExposureForEvent("football:match"); got != 60 {
+		t.Fatalf("event exposure=%v", got)
+	}
+}
+
 func TestPositionManager_InvalidEntry(t *testing.T) {
 	pm := NewPositionManager(DefaultPositionConfig())
 	now := time.Now()
@@ -233,9 +252,17 @@ func TestPositionManager_EventHoldSurvivesRestart(t *testing.T) {
 	}
 }
 
-func TestPlannedHoldUsesShortDeadlineWithoutFutureEvent(t *testing.T) {
+func TestPlannedHoldExtendsInPlayEntry(t *testing.T) {
 	entry := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)
-	profile, deadline := PlannedHold(entry, entry.Add(-time.Minute), 10*time.Minute, 10*time.Minute)
+	profile, deadline := PlannedHold(entry, entry.Add(-time.Minute), 10*time.Minute, 30*time.Minute)
+	if profile != HoldProfileEvent || !deadline.Equal(entry.Add(30*time.Minute)) {
+		t.Fatalf("profile=%s deadline=%v", profile, deadline)
+	}
+}
+
+func TestPlannedHoldUsesShortDeadlineWithoutKnownEvent(t *testing.T) {
+	entry := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)
+	profile, deadline := PlannedHold(entry, time.Time{}, 10*time.Minute, 30*time.Minute)
 	if profile != HoldProfileShort || !deadline.Equal(entry.Add(10*time.Minute)) {
 		t.Fatalf("profile=%s deadline=%v", profile, deadline)
 	}

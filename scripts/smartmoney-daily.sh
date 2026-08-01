@@ -21,6 +21,11 @@ DAY="$(date '+%Y-%m-%d')"
 RUN_AT="$(date '+%Y-%m-%d %H:%M:%S %Z')"
 LOG="${SMARTMONEY_DAILY_LOG:-$ROOT/logs/smartmoney-daily-$DAY.log}"
 SUMMARY="${SMARTMONEY_DAILY_REPORT:-$ROOT/reports/smartmoney_daily.md}"
+PAPER_PNL_REPORT="${SMARTMONEY_PAPER_PNL_REPORT:-$ROOT/reports/smartmoney-paper-pnl.md}"
+PAPER_WALLET_POLICY_REPORT="${SMARTMONEY_PAPER_WALLET_POLICY_REPORT:-$ROOT/reports/smartmoney-paper-wallets.md}"
+PAPER_SHADOW_REPORT="${SMARTMONEY_SHADOW_REPORT:-$ROOT/reports/smartmoney-exit-shadow.md}"
+PAPER_PROMOTED_WALLETS="${SMARTMONEY_PAPER_PROMOTED_WALLETS:-$ROOT/db/smartmoney-paper/wallets.paper-promoted.txt}"
+PAPER_DEMOTED_WALLETS="${SMARTMONEY_PAPER_DEMOTED_WALLETS:-$ROOT/db/smartmoney-paper/wallets.paper-demoted.txt}"
 CORE="${SMARTMONEY_CORE_WALLETS:-$ROOT/wallets.strategy-core.txt}"
 WATCH="${SMARTMONEY_WATCH_WALLETS:-$ROOT/wallets.strategy-watch.txt}"
 SPORTS="${SMARTMONEY_SPORTS_WALLETS:-$ROOT/wallets.strategy-sports.txt}"
@@ -608,6 +613,8 @@ run_pipeline() {
 
 before_core_hash="$(hash_file "$CORE")"
 before_push_hash="$(hash_file "$PUSH")"
+before_paper_promoted_hash="$(hash_file "$PAPER_PROMOTED_WALLETS")"
+before_paper_demoted_hash="$(hash_file "$PAPER_DEMOTED_WALLETS")"
 before_core_count="$(wallet_count "$CORE")"
 before_push_count="$(wallet_count "$PUSH")"
 
@@ -617,8 +624,38 @@ run_pipeline >> "$LOG" 2>&1
 pipeline_status=$?
 set -e
 
+paper_report_status=0
+set +e
+SMARTMONEY_PAPER_REPORT_OUT="$PAPER_PNL_REPORT" \
+  "$ROOT/scripts/smartmoney-paper-report.sh" >> "$LOG" 2>&1
+paper_report_status=$?
+set -e
+if [ "$pipeline_status" -eq 0 ] && [ "$paper_report_status" -ne 0 ]; then
+  pipeline_status="$paper_report_status"
+fi
+
+paper_policy_status=0
+set +e
+"$ROOT/scripts/smartmoney-paper-wallet-policy.sh" >> "$LOG" 2>&1
+paper_policy_status=$?
+set -e
+if [ "$pipeline_status" -eq 0 ] && [ "$paper_policy_status" -ne 0 ]; then
+  pipeline_status="$paper_policy_status"
+fi
+
+paper_shadow_status=0
+set +e
+"$ROOT/scripts/smartmoney-shadow-report.sh" >> "$LOG" 2>&1
+paper_shadow_status=$?
+set -e
+if [ "$pipeline_status" -eq 0 ] && [ "$paper_shadow_status" -ne 0 ]; then
+  pipeline_status="$paper_shadow_status"
+fi
+
 after_core_hash="$(hash_file "$CORE")"
 after_push_hash="$(hash_file "$PUSH")"
+after_paper_promoted_hash="$(hash_file "$PAPER_PROMOTED_WALLETS")"
+after_paper_demoted_hash="$(hash_file "$PAPER_DEMOTED_WALLETS")"
 after_core_count="$(wallet_count "$CORE")"
 after_watch_count="$(wallet_count "$WATCH")"
 after_sports_count="$(wallet_count "$SPORTS")"
@@ -636,11 +673,25 @@ after_consensus_research_count="$(wallet_count "$CONSENSUS_RESEARCH")"
 after_push_count="$(wallet_count "$PUSH")"
 core_changed='no'
 push_changed='no'
+paper_policy_changed='no'
 if [ "$before_core_hash" != "$after_core_hash" ]; then
   core_changed='yes'
 fi
 if [ "$before_push_hash" != "$after_push_hash" ]; then
   push_changed='yes'
+fi
+if [ "$before_paper_promoted_hash" != "$after_paper_promoted_hash" ] || [ "$before_paper_demoted_hash" != "$after_paper_demoted_hash" ]; then
+  paper_policy_changed='yes'
+fi
+
+paper_restart_status='not needed'
+if [ "$pipeline_status" -eq 0 ] && [ "$paper_policy_changed" = "yes" ]; then
+  if "$ROOT/scripts/start-smartmoney-paper.sh" restart >> "$LOG" 2>&1; then
+    paper_restart_status='restarted after wallet policy change'
+  else
+    paper_restart_status='restart failed'
+    pipeline_status=1
+  fi
 fi
 
 restart_status='not requested'
@@ -1039,6 +1090,9 @@ fi
   printf -- '- Flow performance report: `%s`\n' "$FLOW_PERF_REPORT"
   printf -- '- Tape performance report: `%s`\n' "$TAPE_PERF_REPORT"
   printf -- '- Push performance report: `%s`\n' "$PUSH_PERF_REPORT"
+  printf -- '- Paper PnL report: `%s` (status %s)\n' "$PAPER_PNL_REPORT" "$paper_report_status"
+  printf -- '- Paper wallet policy: `%s` (status %s, changed %s, worker %s)\n' "$PAPER_WALLET_POLICY_REPORT" "$paper_policy_status" "$paper_policy_changed" "$paper_restart_status"
+  printf -- '- Paper exit shadow: `%s` (status %s)\n' "$PAPER_SHADOW_REPORT" "$paper_shadow_status"
   printf -- '- Maintenance report: `%s`\n\n' "$MAINT_REPORT"
 
   printf '## Wallet Lists\n\n'

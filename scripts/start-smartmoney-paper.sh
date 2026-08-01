@@ -5,6 +5,16 @@ set -euo pipefail
 export PATH="/usr/local/go/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 export CLOB_PROXY="${CLOB_PROXY:-direct}"
 
+GO_BIN="$(command -v go 2>/dev/null || true)"
+if [ -z "$GO_BIN" ]; then
+  for candidate in /opt/homebrew/bin/go /usr/local/go/bin/go; do
+    if [ -x "$candidate" ]; then
+      GO_BIN="$candidate"
+      break
+    fi
+  done
+fi
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SCRIPT="$ROOT/scripts/start-smartmoney-paper.sh"
 STATE_DIR="$ROOT/db/smartmoney-paper"
@@ -24,21 +34,26 @@ MIN_TIER="${SMARTMONEY_PAPER_MIN_TIER:-B}"
 COPYTRADE_SIZE="${SMARTMONEY_PAPER_COPYTRADE_SIZE:-20}"
 MAX_OPEN_USD="${SMARTMONEY_PAPER_MAX_OPEN_USD:-1500}"
 MAX_PER_MARKET_USD="${SMARTMONEY_PAPER_MAX_PER_MARKET_USD:-100}"
+MAX_PER_EVENT_USD="${SMARTMONEY_PAPER_MAX_PER_EVENT_USD:-100}"
 MAX_OPEN_POSITIONS="${SMARTMONEY_PAPER_MAX_OPEN_POSITIONS:-120}"
 MARKETS="${SMARTMONEY_PAPER_MARKETS:-120}"
 WHALE_MIN_USD="${SMARTMONEY_PAPER_WHALE_MIN_USD:-500}"
 PAPER_FOLLOW_PROMPT="${SMARTMONEY_PAPER_FOLLOW_PROMPT:-1}"
 PAPER_FOLLOW_FOOTBALL_SCORE="${SMARTMONEY_PAPER_FOLLOW_FOOTBALL_SCORE:-1}"
 FOOTBALL_SCORE_SIZE="${SMARTMONEY_PAPER_FOOTBALL_SCORE_SIZE:-20}"
+FOOTBALL_SCORE_MAX_EVENT_USD="${SMARTMONEY_PAPER_FOOTBALL_SCORE_MAX_EVENT_USD:-60}"
+FOOTBALL_SCORE_MAX_SIGNAL_AGE="${SMARTMONEY_PAPER_FOOTBALL_SCORE_MAX_SIGNAL_AGE:-2m}"
+FOOTBALL_SCORE_HOLD="${SMARTMONEY_PAPER_FOOTBALL_SCORE_HOLD:-150m}"
 SLIPPAGE_BP="${SMARTMONEY_PAPER_SLIPPAGE_BP:-50}"
 BUILDER_FEE_BP="${SMARTMONEY_PAPER_BUILDER_FEE_BP:-0}"
 TAKER_FEE_RATE="${SMARTMONEY_PAPER_TAKER_FEE_RATE:-0.05}"
 EXIT_POLL_INTERVAL="${SMARTMONEY_PAPER_EXIT_POLL_INTERVAL:-5s}"
-EVENT_POST_START_HOLD="${SMARTMONEY_PAPER_EVENT_POST_START_HOLD:-10m}"
+EVENT_POST_START_HOLD="${SMARTMONEY_PAPER_EVENT_POST_START_HOLD:-30m}"
 TIMEOUT_REENTRY_COOLDOWN="${SMARTMONEY_PAPER_TIMEOUT_REENTRY_COOLDOWN:-30m}"
+POLICY_VERSION="${SMARTMONEY_PAPER_POLICY_VERSION:-smartmoney-2026-08-01-v1}"
 WALLET_TIERS="${SMARTMONEY_PAPER_WALLET_TIERS:-$ROOT/db/strategy_iteration/copytrade_backtest_results.generated.json}"
-SOURCE_WALLETS="${SMARTMONEY_PAPER_SOURCE_WALLETS:-$ROOT/wallets.football-score-push.txt $ROOT/wallets.strategy-push.txt $ROOT/wallets.hourly-push.txt $ROOT/wallets.leaderboard-watch.txt $ROOT/wallets.leaderboard-sports-push.txt}"
-EXCLUDE_WALLETS="${SMARTMONEY_PAPER_EXCLUDE_WALLETS:-$ROOT/wallets.strategy-quarantine.txt $ROOT/wallets.strategy-review-noise.txt $ROOT/db/strategy_iteration/wallets.strategy-exclude.txt}"
+SOURCE_WALLETS="${SMARTMONEY_PAPER_SOURCE_WALLETS:-$ROOT/db/smartmoney-paper/wallets.paper-promoted.txt $ROOT/wallets.football-score-push.txt $ROOT/wallets.strategy-push.txt $ROOT/wallets.hourly-push.txt $ROOT/wallets.leaderboard-watch.txt $ROOT/wallets.leaderboard-sports-push.txt}"
+EXCLUDE_WALLETS="${SMARTMONEY_PAPER_EXCLUDE_WALLETS:-$ROOT/db/smartmoney-paper/wallets.paper-demoted.txt $ROOT/wallets.strategy-quarantine.txt $ROOT/wallets.strategy-review-noise.txt $ROOT/db/strategy_iteration/wallets.strategy-exclude.txt}"
 
 acquire_lock() {
   while ! mkdir "$LOCKDIR" 2>/dev/null; do
@@ -76,13 +91,7 @@ is_running() {
   local pid
   pid="$(managed_pid)"
   [ -n "$pid" ] || return 1
-  kill -0 "$pid" 2>/dev/null || return 1
-  local cmd
-  cmd="$(ps -o command= -p "$pid" 2>/dev/null || true)"
-  case "$cmd" in
-    *"start-smartmoney-paper.sh run"*) return 0 ;;
-    *) return 1 ;;
-  esac
+  kill -0 "$pid" 2>/dev/null
 }
 
 merge_wallet_files() {
@@ -124,7 +133,11 @@ merge_wallet_files() {
 
 prepare() {
   cd "$ROOT"
-  go build -o bin/bot ./cmd/bot
+  if [ -z "$GO_BIN" ]; then
+    echo "go executable not found" >&2
+    exit 1
+  fi
+  "$GO_BIN" build -o bin/bot ./cmd/bot
   merge_wallet_files "$WALLETS_FILE"
   WALLET_COUNT="$(awk '/^0x[0-9a-fA-F]{40}/ { n++ } END { print n+0 }' "$WALLETS_FILE")"
   if [ "$WALLET_COUNT" -eq 0 ]; then
@@ -138,18 +151,23 @@ prepare() {
     printf 'copytrade_size=%s\n' "$COPYTRADE_SIZE"
     printf 'max_open_usd=%s\n' "$MAX_OPEN_USD"
     printf 'max_per_market_usd=%s\n' "$MAX_PER_MARKET_USD"
+    printf 'max_per_event_usd=%s\n' "$MAX_PER_EVENT_USD"
     printf 'max_open_positions=%s\n' "$MAX_OPEN_POSITIONS"
     printf 'markets=%s\n' "$MARKETS"
     printf 'whale_min_usd=%s\n' "$WHALE_MIN_USD"
     printf 'paper_follow_prompt=%s\n' "$PAPER_FOLLOW_PROMPT"
     printf 'paper_follow_football_score=%s\n' "$PAPER_FOLLOW_FOOTBALL_SCORE"
     printf 'football_score_size=%s\n' "$FOOTBALL_SCORE_SIZE"
+    printf 'football_score_max_event_usd=%s\n' "$FOOTBALL_SCORE_MAX_EVENT_USD"
+    printf 'football_score_max_signal_age=%s\n' "$FOOTBALL_SCORE_MAX_SIGNAL_AGE"
+    printf 'football_score_hold=%s\n' "$FOOTBALL_SCORE_HOLD"
     printf 'slippage_bp=%s\n' "$SLIPPAGE_BP"
     printf 'builder_fee_bp=%s\n' "$BUILDER_FEE_BP"
     printf 'taker_fee_rate=%s\n' "$TAKER_FEE_RATE"
     printf 'exit_poll_interval=%s\n' "$EXIT_POLL_INTERVAL"
     printf 'event_post_start_hold=%s\n' "$EVENT_POST_START_HOLD"
     printf 'timeout_reentry_cooldown=%s\n' "$TIMEOUT_REENTRY_COOLDOWN"
+    printf 'policy_version=%s\n' "$POLICY_VERSION"
     printf 'wallet_count=%s\n' "$WALLET_COUNT"
     printf 'wallets_file=%s\n' "$WALLETS_FILE"
     printf 'wallet_tiers=%s\n' "$WALLET_TIERS"
@@ -171,6 +189,9 @@ run_loop() {
     export COPYTRADE_PAPER_FOLLOW_PROMPT="$PAPER_FOLLOW_PROMPT"
     export COPYTRADE_PAPER_FOLLOW_FOOTBALL_SCORE="$PAPER_FOLLOW_FOOTBALL_SCORE"
     export COPYTRADE_PAPER_FOOTBALL_SCORE_SIZE="$FOOTBALL_SCORE_SIZE"
+    export COPYTRADE_FOOTBALL_SCORE_MAX_SIGNAL_AGE="$FOOTBALL_SCORE_MAX_SIGNAL_AGE"
+    export COPYTRADE_FOOTBALL_SCORE_HOLD="$FOOTBALL_SCORE_HOLD"
+    export PAPER_POLICY_VERSION="$POLICY_VERSION"
     "$ROOT/bin/bot" \
       -mode=detect \
       -signal_mode=copytrade \
@@ -202,6 +223,8 @@ run_loop() {
       -tickpath_dir="$STATE_DIR/tickpath" \
       -pos_max_total_open_usd="$MAX_OPEN_USD" \
       -pos_max_per_market_usd="$MAX_PER_MARKET_USD" \
+      -pos_max_per_event_usd="$MAX_PER_EVENT_USD" \
+      -football_score_max_event_usd="$FOOTBALL_SCORE_MAX_EVENT_USD" \
       -pos_max_open_positions="$MAX_OPEN_POSITIONS" &
     child_pid=$!
     echo "$child_pid" > "$CHILD_PIDFILE"
@@ -250,23 +273,26 @@ start() {
 }
 
 stop() {
-  if ! is_running; then
-    echo "smartmoney-paper not running"
-    rm -f "$PIDFILE"
-    return 0
-  fi
   local pid
   pid="$(managed_pid)"
   local child
   child="$(cat "$CHILD_PIDFILE" 2>/dev/null || true)"
+  if { [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null; } && { [ -z "$child" ] || ! kill -0 "$child" 2>/dev/null; }; then
+    echo "smartmoney-paper not running"
+    rm -f "$PIDFILE" "$CHILD_PIDFILE"
+    return 0
+  fi
   [ -n "$child" ] && kill -TERM "$child" 2>/dev/null || true
-  kill -TERM "$pid" 2>/dev/null || true
+  [ -n "$pid" ] && kill -TERM "$pid" 2>/dev/null || true
   for _ in 1 2 3 4 5; do
     sleep 1
     is_running || break
   done
   if is_running; then
     kill -KILL "$pid" 2>/dev/null || true
+  fi
+  if [ -n "$child" ] && kill -0 "$child" 2>/dev/null; then
+    kill -KILL "$child" 2>/dev/null || true
   fi
   rm -f "$PIDFILE" "$CHILD_PIDFILE"
   echo "smartmoney-paper stopped"

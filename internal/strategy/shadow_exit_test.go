@@ -39,6 +39,31 @@ func TestShadowExitTrackerTimeoutsFireOnce(t *testing.T) {
 	}
 }
 
+func TestShadowExitTrackerContinuesAfterActualClose(t *testing.T) {
+	now := time.Now().UTC()
+	tracker := NewShadowExitTracker(DefaultShadowExitConfig())
+	p := shadowPosition(now)
+	tracker.Open(p)
+	p.ExitTime = now.Add(12 * time.Minute)
+	p.ExitReason = ExitLadderTimeout
+	tracker.ActualClose(p)
+
+	got := tracker.OnTick("p1", feed.Tick{Time: now.Add(45 * time.Minute), BestBid: 0.60})
+	if len(got) != 4 || got[3].Policy != "timeout_45m" {
+		t.Fatalf("post-close observations=%+v", got)
+	}
+	if !got[3].ActualCloseAt.Equal(p.ExitTime) || got[3].ActualReason != ExitLadderTimeout {
+		t.Fatalf("actual close context=%+v", got[3])
+	}
+	got = tracker.OnTick("p1", feed.Tick{Time: now.Add(60 * time.Minute), BestBid: 0.62})
+	if len(got) != 1 || got[0].Policy != "timeout_60m" {
+		t.Fatalf("60m observations=%+v", got)
+	}
+	if _, ok := tracker.Snapshot()["p1"]; ok {
+		t.Fatal("tracker retained state after longest timeout")
+	}
+}
+
 func TestShadowExitTrackerNetPnLIncludesSlippageAndBothFees(t *testing.T) {
 	now := time.Now().UTC()
 	cfg := DefaultShadowExitConfig()

@@ -20,12 +20,17 @@ db/strategy_iteration/wallet_activity/
 db/strategy_iteration/*.jsonl
 db/strategy_iteration/*midpoints*.json
 db/strategy_iteration/*decision*.json
+db/smartmoney-paper/
+db/*.lock/
 db/copytrade_backtest_results.generated.json
 db/copytrade_tiers_expanded.json
 db/wallet_candidates.jsonl
 db/wallet_scores.json
 state.json
 screenlog.*
+logs/*.err
+logs/*-sent.json
+exports/
 /wallet-discover
 *.env
 .env*

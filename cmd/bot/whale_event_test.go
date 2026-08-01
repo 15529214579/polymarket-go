@@ -246,6 +246,14 @@ func TestWhaleEventKeyForAlert_SeparatesFootballScores(t *testing.T) {
 	}
 }
 
+func TestCopytradeExposureEventKey_GroupsFootballScoreBasket(t *testing.T) {
+	a := whale.AlertEvent{Question: "Exact Score: Liverpool 1 - 0 Arsenal?", Slug: "liverpool-arsenal-2026-08-01", Outcome: "Yes", ConditionID: "0xscore10"}
+	b := whale.AlertEvent{Question: "Exact Score: Liverpool 1 - 1 Arsenal?", Slug: "liverpool-arsenal-2026-08-01", Outcome: "Yes", ConditionID: "0xscore11"}
+	if copytradeExposureEventKey(a) != copytradeExposureEventKey(b) {
+		t.Fatalf("same match score baskets differ: %q / %q", copytradeExposureEventKey(a), copytradeExposureEventKey(b))
+	}
+}
+
 func TestCopytradeAutoAllowedForAction_PaperPromptOptIn(t *testing.T) {
 	if ok, action := copytradeAutoAllowedForAction("prompt", false, false); ok || action != "prompt" {
 		t.Fatalf("default prompt allowed=%v action=%q, want blocked prompt", ok, action)

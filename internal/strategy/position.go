@@ -55,6 +55,7 @@ type Position struct {
 	Source             string    `json:",omitempty"`
 	WalletLabel        string    `json:",omitempty"`
 	SignalSource       string    `json:",omitempty"`
+	EventKey           string    `json:",omitempty"`
 	OpenOrderID        string    `json:",omitempty"`
 	HoldProfile        string    `json:",omitempty"`
 	EventStart         time.Time `json:",omitempty"`
@@ -67,6 +68,7 @@ type PositionConfig struct {
 	MaxTotalOpenUSD  float64 // Cap on sum(open SizeUSD)
 	MaxOpenPositions int     // Hard cap on concurrent positions
 	MaxPerMarketUSD  float64 // Cap per conditionID (0 = unlimited)
+	MaxPerEventUSD   float64 // Cap across related conditions (0 = unlimited)
 }
 
 func DefaultPositionConfig() PositionConfig {
@@ -75,6 +77,7 @@ func DefaultPositionConfig() PositionConfig {
 		MaxTotalOpenUSD:  300.0,
 		MaxOpenPositions: 60,
 		MaxPerMarketUSD:  30.0,
+		MaxPerEventUSD:   100.0,
 	}
 }
 
@@ -100,6 +103,7 @@ var (
 	ErrMaxPositions     = errors.New("max concurrent positions reached")
 	ErrMaxExposure      = errors.New("max total exposure reached")
 	ErrMaxPerMarket     = errors.New("max per-market exposure reached")
+	ErrMaxPerEvent      = errors.New("max per-event exposure reached")
 	ErrInvalidEntry     = errors.New("invalid entry mid")
 	ErrPositionNotFound = errors.New("no open position for id/asset")
 )
@@ -159,6 +163,12 @@ func (pm *PositionManager) Open(assetID, market string, entry feed.Tick) (*Posit
 // count caps fail. Used by both the auto signal loop and the manual
 // button-select path (Phase 3.5, 1/5/10 USDC per click).
 func (pm *PositionManager) OpenSized(assetID, market string, entry feed.Tick, sizeUSD float64) (*Position, error) {
+	return pm.OpenSizedForEvent(assetID, market, "", entry, sizeUSD, 0)
+}
+
+// OpenSizedForEvent atomically applies both condition-level and event-level
+// exposure caps. maxEventUSD overrides the configured event cap when positive.
+func (pm *PositionManager) OpenSizedForEvent(assetID, market, eventKey string, entry feed.Tick, sizeUSD, maxEventUSD float64) (*Position, error) {
 	if entry.Mid <= 0 || entry.Mid >= 1 {
 		return nil, fmt.Errorf("%w: mid=%v", ErrInvalidEntry, entry.Mid)
 	}
@@ -181,6 +191,16 @@ func (pm *PositionManager) OpenSized(assetID, market string, entry feed.Tick, si
 				pm.marketExposureLocked(market), sizeUSD, pm.cfg.MaxPerMarketUSD)
 		}
 	}
+	eventCap := pm.cfg.MaxPerEventUSD
+	if maxEventUSD > 0 {
+		eventCap = maxEventUSD
+	}
+	if eventCap > 0 && eventKey != "" {
+		if pm.eventExposureLocked(eventKey)+sizeUSD > eventCap+1e-9 {
+			return nil, fmt.Errorf("%w: event=%s existing=$%.2f new=$%.2f cap=$%.2f",
+				ErrMaxPerEvent, eventKey[:min(len(eventKey), 32)], pm.eventExposureLocked(eventKey), sizeUSD, eventCap)
+		}
+	}
 
 	pm.nextID++
 	units := sizeUSD / entry.Mid
@@ -194,6 +214,7 @@ func (pm *PositionManager) OpenSized(assetID, market string, entry feed.Tick, si
 		EntryMid:  entry.Mid,
 		EntryTime: entry.Time,
 		Status:    PosOpen,
+		EventKey:  eventKey,
 	}
 	pm.open[p.ID] = p
 	if pm.byAsset[assetID] == nil {
@@ -255,15 +276,18 @@ func (pm *PositionManager) ConfigureOpenHold(posID string, eventStart time.Time,
 	return *p, nil
 }
 
-// PlannedHold returns a durable timeout plan. Event positioning only applies
-// when the event starts after entry and extends the ordinary short deadline.
+// PlannedHold returns a durable timeout plan. A known event start extends the
+// minimum observation window for both pre-event and in-play entries.
 func PlannedHold(entryTime, eventStart time.Time, maxHold, eventPostStartHold time.Duration) (string, time.Time) {
 	if maxHold <= 0 || entryTime.IsZero() {
 		return HoldProfileShort, time.Time{}
 	}
 	deadline := entryTime.Add(maxHold)
-	if eventStart.After(entryTime) {
-		eventDeadline := eventStart.Add(eventPostStartHold)
+	if !eventStart.IsZero() && eventPostStartHold > 0 {
+		eventDeadline := entryTime.Add(eventPostStartHold)
+		if eventStart.After(entryTime) {
+			eventDeadline = eventStart.Add(eventPostStartHold)
+		}
 		if eventDeadline.After(deadline) {
 			return HoldProfileEvent, eventDeadline
 		}
@@ -374,6 +398,7 @@ func (pm *PositionManager) PartialClose(posID string, closeUnits float64, exit E
 		Source:       p.Source,
 		WalletLabel:  p.WalletLabel,
 		SignalSource: p.SignalSource,
+		EventKey:     p.EventKey,
 		OpenOrderID:  p.OpenOrderID,
 		HoldProfile:  p.HoldProfile,
 		EventStart:   p.EventStart,
@@ -593,6 +618,22 @@ func (pm *PositionManager) marketExposureLocked(market string) float64 {
 		s += p.SizeUSD
 	}
 	return s
+}
+
+func (pm *PositionManager) eventExposureLocked(eventKey string) float64 {
+	var total float64
+	for _, p := range pm.open {
+		if p.EventKey == eventKey {
+			total += p.SizeUSD
+		}
+	}
+	return total
+}
+
+func (pm *PositionManager) ExposureForEvent(eventKey string) float64 {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	return pm.eventExposureLocked(eventKey)
 }
 
 func (pm *PositionManager) ExposureForMarket(market string) float64 {

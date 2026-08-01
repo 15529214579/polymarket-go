@@ -141,7 +141,13 @@ func parseMarketTime(raw string) time.Time {
 	if raw == "" {
 		return time.Time{}
 	}
-	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02T15:04:05Z"} {
+	for _, layout := range []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02T15:04:05Z",
+		"2006-01-02 15:04:05Z07:00",
+		"2006-01-02 15:04:05-07",
+	} {
 		if t, err := time.Parse(layout, raw); err == nil {
 			return t
 		}

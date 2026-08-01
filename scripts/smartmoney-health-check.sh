@@ -156,8 +156,14 @@ if [ "$RESTART_ENABLED" = "1" ] && { [ "$whale_reason" = "not_running" ] || [ "$
   fi
 fi
 
-project_disabled=0
-[ -f "$ROOT/db/project.disabled" ] && project_disabled=1
+live_trading_disabled=0
+research_disabled=0
+monitoring_disabled=0
+legacy_project_disabled=0
+[ -f "$ROOT/db/live-trading.disabled" ] && live_trading_disabled=1
+[ -f "$ROOT/db/research.disabled" ] && research_disabled=1
+[ -f "$ROOT/db/monitoring.disabled" ] && monitoring_disabled=1
+[ -f "$ROOT/db/project.disabled" ] && legacy_project_disabled=1
 
 overall="ok"
 case "$smart_reason:$whale_reason" in
@@ -170,7 +176,12 @@ cat > "$STATE" <<EOF
 {
   "checked_at": "$checked_at",
   "overall": "$overall",
-  "project_disabled_present": $(bool "$project_disabled"),
+  "component_flags": {
+    "live_trading_disabled": $(bool "$live_trading_disabled"),
+    "research_disabled": $(bool "$research_disabled"),
+    "monitoring_disabled": $(bool "$monitoring_disabled"),
+    "legacy_project_disabled_present": $(bool "$legacy_project_disabled")
+  },
   "restart_enabled": $(bool "$([ "$RESTART_ENABLED" = "1" ] && printf 1 || printf 0)"),
   "max_log_age_sec": $MAX_LOG_AGE_SEC,
   "smartmoney_paper": {
@@ -190,5 +201,6 @@ cat > "$STATE" <<EOF
 }
 EOF
 
-printf 'health.result ts=%s overall=%s smart=%s smart_log_age=%s whale=%s whale_log_age=%s project_disabled=%s\n' \
-  "$checked_at" "$overall" "$smart_reason" "$smart_log_age" "$whale_reason" "$whale_log_age" "$project_disabled"
+printf 'health.result ts=%s overall=%s smart=%s smart_log_age=%s whale=%s whale_log_age=%s live_disabled=%s research_disabled=%s monitoring_disabled=%s legacy_project_disabled=%s\n' \
+  "$checked_at" "$overall" "$smart_reason" "$smart_log_age" "$whale_reason" "$whale_log_age" \
+  "$live_trading_disabled" "$research_disabled" "$monitoring_disabled" "$legacy_project_disabled"

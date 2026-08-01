@@ -19,6 +19,7 @@ func TestJournal_AppendAndRead_RoundTrip(t *testing.T) {
 		t.Fatalf("new: %v", err)
 	}
 	t.Cleanup(func() { _ = j.Close() })
+	j.SetPolicyVersion("paper-v3")
 
 	rec := TradeRecord{
 		ID: "p1", AssetID: "A", Market: "M", Question: "Foo?",
@@ -40,7 +41,7 @@ func TestJournal_AppendAndRead_RoundTrip(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("want 1 record, got %d", len(got))
 	}
-	if got[0].ID != "p1" || got[0].PnLUSD != 0.3125 || got[0].SignalSource != "auto" {
+	if got[0].ID != "p1" || got[0].PnLUSD != 0.3125 || got[0].SignalSource != "auto" || got[0].PolicyVersion != "paper-v3" {
 		t.Fatalf("round-trip mismatch: %+v", got[0])
 	}
 }

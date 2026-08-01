@@ -4,7 +4,8 @@ set -u
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT" || exit 0
-[ -f "$ROOT/db/project.disabled" ] && exit 0
+. "$ROOT/scripts/component-flags.sh"
+component_disabled "$ROOT" research && exit 0
 mkdir -p "$ROOT/logs"
 
 now_local=$(date '+%Y-%m-%d %H:%M:%S %Z')
