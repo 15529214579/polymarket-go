@@ -61,10 +61,10 @@ type IterationReport struct {
 	ExitBreakdown  []ExitBreakdown
 	PriceBands     []PriceBand
 
-	SLHitRate      float64
-	TPHitRate      float64
-	TimeoutRate    float64
-	SettleRate     float64
+	SLHitRate   float64
+	TPHitRate   float64
+	TimeoutRate float64
+	SettleRate  float64
 
 	Suggestions []string
 }
@@ -104,7 +104,7 @@ func Analyze(journalDir string, windowDays int) (*IterationReport, error) {
 
 	for i := 0; i < windowDays; i++ {
 		day := now.AddDate(0, 0, -i).Format("2006-01-02")
-		trades, err := journal.Read(journalDir, day)
+		trades, err := journal.ReadClosedDay(journalDir, day)
 		if err != nil {
 			continue
 		}
@@ -121,7 +121,7 @@ func Analyze(journalDir string, windowDays int) (*IterationReport, error) {
 		var w, l int
 		for _, t := range autoTrades {
 			net := t.NetPnLUSD
-			if net == 0 && t.EntryFeeUSD == 0 {
+			if net == 0 && t.EntryFeeUSD == 0 && t.ExitFeeUSD == 0 {
 				net = t.PnLUSD
 			}
 			ds.PnL += net
@@ -167,7 +167,7 @@ func Analyze(journalDir string, windowDays int) (*IterationReport, error) {
 
 	for _, t := range allTrades {
 		net := t.NetPnLUSD
-		if net == 0 && t.EntryFeeUSD == 0 {
+		if net == 0 && t.EntryFeeUSD == 0 && t.ExitFeeUSD == 0 {
 			net = t.PnLUSD
 		}
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"sync"
 	"time"
@@ -27,24 +28,31 @@ const (
 // open time — keep it around so fee apportionment (entry fee × tranche share)
 // stays consistent after a partial close.
 type Position struct {
-	ID          string
-	AssetID     string
-	Market      string // Polymarket conditionID
-	SizeUSD     float64
-	Units       float64 // current remaining units
-	InitUnits   float64 // units at open — invariant after partial closes
-	OpenFeeUSD  float64 // fee paid on the buy; apportioned across tranches
-	EntryMid    float64
-	EntryTime   time.Time
-	ExitMid     float64
-	ExitTime    time.Time
-	ExitReason  ExitReason
-	PnLUSD      float64
-	Status      PositionStatus
-	Question    string `json:",omitempty"`
-	Outcome     string `json:",omitempty"`
-	Source      string `json:",omitempty"`
-	WalletLabel string `json:",omitempty"`
+	ID                 string
+	AssetID            string
+	Market             string // Polymarket conditionID
+	SizeUSD            float64
+	Units              float64 // current remaining units
+	InitUnits          float64 // units at open — invariant after partial closes
+	OpenFeeUSD         float64 // fee paid on the buy; apportioned across tranches
+	EntryFeeChargedUSD float64 // buy fee already assigned to earlier tranches
+	EntryFeeUSD        float64 // apportioned buy fee on a closed position/tranche
+	ExitFeeUSD         float64 // fee paid on the closing fill
+	NetPnLUSD          float64 // gross PnL minus entry and exit fees
+	Accounted          bool    `json:",omitempty"` // distinguishes exact zero net from legacy records
+	EntryMid           float64
+	EntryTime          time.Time
+	ExitMid            float64
+	ExitTime           time.Time
+	ExitReason         ExitReason
+	PnLUSD             float64
+	Status             PositionStatus
+	Question           string `json:",omitempty"`
+	Outcome            string `json:",omitempty"`
+	Source             string `json:",omitempty"`
+	WalletLabel        string `json:",omitempty"`
+	SignalSource       string `json:",omitempty"`
+	OpenOrderID        string `json:",omitempty"`
 }
 
 // PositionConfig drives sizing + exposure caps. SPEC §2 / §6.
@@ -72,6 +80,16 @@ type PositionStats struct {
 	RealizedPnLUSD float64
 }
 
+// ClosedAccounting is the fee-aware accounting persisted in the trade
+// journal. It is used to migrate position snapshots written by older builds.
+type ClosedAccounting struct {
+	ID          string
+	ExitTime    time.Time
+	EntryFeeUSD float64
+	ExitFeeUSD  float64
+	NetPnLUSD   float64
+}
+
 var (
 	ErrMaxPositions     = errors.New("max concurrent positions reached")
 	ErrMaxExposure      = errors.New("max total exposure reached")
@@ -93,6 +111,7 @@ type PositionManager struct {
 	byMarket map[string]map[string]*Position // marketID → posID set
 	closed   []*Position
 	nextID   int
+	saveMu   sync.Mutex
 }
 
 func NewPositionManager(cfg PositionConfig) *PositionManager {
@@ -197,9 +216,23 @@ func (pm *PositionManager) SetOpenFee(posID string, feeUSD float64) error {
 	return nil
 }
 
+// SetOpenAttribution persists the signal source and opening order ID with the
+// position so attribution survives process restarts.
+func (pm *PositionManager) SetOpenAttribution(posID, source, openOrderID string) error {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	p, ok := pm.open[posID]
+	if !ok {
+		return ErrPositionNotFound
+	}
+	p.SignalSource = source
+	p.OpenOrderID = openOrderID
+	return nil
+}
+
 // ApplyOpenFill replaces the provisional signal price and size with the
 // actual fill after the order succeeds.
-func (pm *PositionManager) ApplyOpenFill(posID string, fillPrice, filledUnits float64) error {
+func (pm *PositionManager) ApplyOpenFill(posID string, fillPrice, filledUnits float64, filledAt time.Time) error {
 	if fillPrice <= 0 || fillPrice >= 1 || filledUnits <= 0 {
 		return fmt.Errorf("%w: fill price=%v units=%v", ErrInvalidEntry, fillPrice, filledUnits)
 	}
@@ -213,7 +246,40 @@ func (pm *PositionManager) ApplyOpenFill(posID string, fillPrice, filledUnits fl
 	p.Units = filledUnits
 	p.InitUnits = filledUnits
 	p.SizeUSD = fillPrice * filledUnits
+	if !filledAt.IsZero() {
+		p.EntryTime = filledAt
+	}
 	return nil
+}
+
+// CancelOpen releases a provisional position after order submission fails.
+// It does not create a closed trade or realized PnL.
+func (pm *PositionManager) CancelOpen(posID string) error {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	p, ok := pm.open[posID]
+	if !ok {
+		return ErrPositionNotFound
+	}
+	pm.removeOpenLocked(p)
+	return nil
+}
+
+// OldestByAsset returns the oldest open position for an asset.
+func (pm *PositionManager) OldestByAsset(assetID string) (Position, error) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	set := pm.byAsset[assetID]
+	if len(set) == 0 {
+		return Position{}, ErrPositionNotFound
+	}
+	var oldest *Position
+	for _, p := range set {
+		if oldest == nil || p.EntryTime.Before(oldest.EntryTime) {
+			oldest = p
+		}
+	}
+	return *oldest, nil
 }
 
 // PartialClose closes closeUnits from an open position at the given exit
@@ -235,20 +301,32 @@ func (pm *PositionManager) PartialClose(posID string, closeUnits float64, exit E
 		return *p, nil
 	}
 	tranche := &Position{
-		ID:         p.ID,
-		AssetID:    p.AssetID,
-		Market:     p.Market,
-		SizeUSD:    closeUnits * p.EntryMid,
-		Units:      closeUnits,
-		InitUnits:  closeUnits,
-		EntryMid:   p.EntryMid,
-		EntryTime:  p.EntryTime,
-		ExitMid:    exit.ExitMid,
-		ExitTime:   exit.Time,
-		ExitReason: exit.Reason,
-		PnLUSD:     closeUnits * (exit.ExitMid - p.EntryMid),
-		Status:     PosClosed,
+		ID:           p.ID,
+		AssetID:      p.AssetID,
+		Market:       p.Market,
+		SizeUSD:      closeUnits * p.EntryMid,
+		Units:        closeUnits,
+		InitUnits:    p.InitUnits,
+		OpenFeeUSD:   p.OpenFeeUSD,
+		EntryFeeUSD:  apportionedOpenFee(p, closeUnits),
+		ExitFeeUSD:   exit.ExitFeeUSD,
+		EntryMid:     p.EntryMid,
+		EntryTime:    p.EntryTime,
+		ExitMid:      exit.ExitMid,
+		ExitTime:     exit.Time,
+		ExitReason:   exit.Reason,
+		PnLUSD:       closeUnits * (exit.ExitMid - p.EntryMid),
+		Accounted:    true,
+		Status:       PosClosed,
+		Question:     p.Question,
+		Outcome:      p.Outcome,
+		Source:       p.Source,
+		WalletLabel:  p.WalletLabel,
+		SignalSource: p.SignalSource,
+		OpenOrderID:  p.OpenOrderID,
 	}
+	tranche.NetPnLUSD = tranche.PnLUSD - tranche.EntryFeeUSD - tranche.ExitFeeUSD
+	p.EntryFeeChargedUSD += tranche.EntryFeeUSD
 	p.Units -= closeUnits
 	p.SizeUSD = p.Units * p.EntryMid
 	pm.closed = append(pm.closed, tranche)
@@ -296,8 +374,33 @@ func (pm *PositionManager) closeLocked(p *Position, exit ExitSignal) {
 	p.ExitTime = exit.Time
 	p.ExitReason = exit.Reason
 	p.PnLUSD = p.Units * (exit.ExitMid - p.EntryMid)
+	p.EntryFeeUSD = remainingOpenFee(p)
+	p.ExitFeeUSD = exit.ExitFeeUSD
+	p.NetPnLUSD = p.PnLUSD - p.EntryFeeUSD - p.ExitFeeUSD
+	p.Accounted = true
 	p.Status = PosClosed
 
+	pm.removeOpenLocked(p)
+	pm.closed = append(pm.closed, p)
+}
+
+func apportionedOpenFee(p *Position, units float64) float64 {
+	if p.InitUnits <= 0 || units <= 0 {
+		return 0
+	}
+	return p.OpenFeeUSD * units / p.InitUnits
+}
+
+func remainingOpenFee(p *Position) float64 {
+	remaining := p.OpenFeeUSD - p.EntryFeeChargedUSD
+	if remaining < 0 {
+		return 0
+	}
+	return remaining
+}
+
+// removeOpenLocked removes all open-position indexes. Caller must hold pm.mu.
+func (pm *PositionManager) removeOpenLocked(p *Position) {
 	delete(pm.open, p.ID)
 	if set := pm.byAsset[p.AssetID]; set != nil {
 		delete(set, p.ID)
@@ -313,7 +416,6 @@ func (pm *PositionManager) closeLocked(p *Position, exit ExitSignal) {
 			}
 		}
 	}
-	pm.closed = append(pm.closed, p)
 }
 
 // Snapshot returns a copy of all open positions sorted by entry time.
@@ -344,32 +446,83 @@ func (pm *PositionManager) Stats() PositionStats {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 	var realized float64
+	closedCount := 0
 	for _, p := range pm.closed {
-		realized += p.PnLUSD
+		if p.ExitReason == "submit_failed" {
+			continue
+		}
+		closedCount++
+		if p.Accounted {
+			realized += p.NetPnLUSD
+		} else {
+			realized += p.PnLUSD
+		}
 	}
 	return PositionStats{
 		Open:           len(pm.open),
-		Closed:         len(pm.closed),
+		Closed:         closedCount,
 		TotalExposure:  pm.totalExposureLocked(),
 		RealizedPnLUSD: realized,
 	}
 }
 
-// PurgeSettled closes all open positions whose assetID is in the settledAssets
-// set (zeroed or settled to 1.0). Frees MaxOpen slots for new trades.
-func (pm *PositionManager) PurgeSettled(settledAssets map[string]float64) int {
+// ReconcileClosedAccounting applies journal costs to legacy closed positions.
+// Matching uses position ID plus exact exit time, which also distinguishes
+// multiple partial-close tranches sharing one position ID.
+func (pm *PositionManager) ReconcileClosedAccounting(records []ClosedAccounting) int {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
-	purged := 0
-	for _, p := range pm.open {
-		exitMid, ok := settledAssets[p.AssetID]
+	type key struct {
+		id string
+		t  int64
+	}
+	byKey := make(map[key]ClosedAccounting, len(records))
+	for _, rec := range records {
+		byKey[key{id: rec.ID, t: rec.ExitTime.UnixNano()}] = rec
+	}
+	updated := 0
+	for _, p := range pm.closed {
+		if p.Accounted {
+			continue
+		}
+		rec, ok := byKey[key{id: p.ID, t: p.ExitTime.UnixNano()}]
 		if !ok {
 			continue
 		}
-		pm.closeLocked(p, ExitSignal{ExitMid: exitMid, Time: time.Now(), Reason: ExitSettlement})
-		purged++
+		p.EntryFeeUSD = rec.EntryFeeUSD
+		p.ExitFeeUSD = rec.ExitFeeUSD
+		p.NetPnLUSD = rec.NetPnLUSD
+		p.Accounted = true
+		updated++
 	}
-	return purged
+	return updated
+}
+
+// ReconcileOpenEntryFees restores the entry-fee amount already assigned to
+// partial closes before EntryFeeChargedUSD was added to position snapshots.
+func (pm *PositionManager) ReconcileOpenEntryFees(records []ClosedAccounting) int {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	chargedByID := make(map[string]float64)
+	for _, rec := range records {
+		chargedByID[rec.ID] += rec.EntryFeeUSD
+	}
+	updated := 0
+	for _, p := range pm.open {
+		if p.EntryFeeChargedUSD > 0 {
+			continue
+		}
+		charged := chargedByID[p.ID]
+		if charged <= 0 {
+			continue
+		}
+		if charged > p.OpenFeeUSD {
+			charged = p.OpenFeeUSD
+		}
+		p.EntryFeeChargedUSD = charged
+		updated++
+	}
+	return updated
 }
 
 func (pm *PositionManager) totalExposureLocked() float64 {
@@ -404,13 +557,20 @@ type positionState struct {
 // SaveState writes all open+closed positions to a JSON file so they survive
 // daemon restarts. Called after every Open/Close.
 func (pm *PositionManager) SaveState(path string) error {
+	pm.saveMu.Lock()
+	defer pm.saveMu.Unlock()
+
 	pm.mu.Lock()
 	open := make([]*Position, 0, len(pm.open))
 	for _, p := range pm.open {
-		open = append(open, p)
+		cp := *p
+		open = append(open, &cp)
 	}
-	closed := make([]*Position, len(pm.closed))
-	copy(closed, pm.closed)
+	closed := make([]*Position, 0, len(pm.closed))
+	for _, p := range pm.closed {
+		cp := *p
+		closed = append(closed, &cp)
+	}
 	nextID := pm.nextID
 	pm.mu.Unlock()
 
@@ -419,7 +579,29 @@ func (pm *PositionManager) SaveState(path string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0644)
+	return writeStateAtomic(path, data)
+}
+
+func writeStateAtomic(path string, data []byte) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".positions-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if err := tmp.Chmod(0o644); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, path)
 }
 
 // LoadState restores positions from a JSON file written by SaveState.

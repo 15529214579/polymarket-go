@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -29,6 +30,8 @@ type V2Client struct {
 	clobBase string
 	http     *http.Client
 	negRisk  bool
+	feeMu    sync.Mutex
+	feeRates map[string]float64
 }
 
 func NewV2Client(wallet *Wallet, creds *APICredentials, negRisk bool) *V2Client {
@@ -38,6 +41,7 @@ func NewV2Client(wallet *Wallet, creds *APICredentials, negRisk bool) *V2Client 
 		clobBase: ClobBaseURL,
 		http:     &http.Client{Timeout: 30 * time.Second},
 		negRisk:  negRisk,
+		feeRates: make(map[string]float64),
 	}
 }
 
@@ -54,22 +58,13 @@ func (c *V2Client) Submit(ctx context.Context, in Intent) (Result, error) {
 	}
 
 	now := time.Now()
-	priceCents := int64(in.LimitPx*100 + 0.5)
-	var makerAmt, takerAmt *big.Int
+	makerAmt, takerAmt, err := amountsForIntent(in)
+	if err != nil {
+		return Result{Status: StatusRejected, Error: err.Error()}, err
+	}
 	side := SigBuy
 	if in.Side == Sell {
 		side = SigSell
-	}
-	if side == SigBuy {
-		rawTaker := int64(in.SizeUSD / in.LimitPx * usdcScale)
-		rawTaker = rawTaker - (rawTaker % 10000)
-		takerAmt = big.NewInt(rawTaker)
-		makerAmt = big.NewInt(rawTaker * priceCents / 100)
-	} else {
-		rawMaker := int64(in.SizeUSD / in.LimitPx * usdcScale)
-		rawMaker = rawMaker - (rawMaker % 10000)
-		makerAmt = big.NewInt(rawMaker)
-		takerAmt = big.NewInt(rawMaker * priceCents / 100)
 	}
 
 	tokenID := new(big.Int)
@@ -83,7 +78,7 @@ func (c *V2Client) Submit(ctx context.Context, in Intent) (Result, error) {
 		MakerAmount:   makerAmt,
 		TakerAmount:   takerAmt,
 		Side:          side,
-		SignatureType:  SigTypeEOA,
+		SignatureType: SigTypeEOA,
 		Timestamp:     big.NewInt(now.UnixMilli()),
 	}
 
@@ -167,18 +162,27 @@ func (c *V2Client) Submit(ctx context.Context, in Intent) (Result, error) {
 		return Result{Status: StatusRejected, Error: errMsg}, fmt.Errorf("order: %s", errMsg)
 	}
 
-	if clobResp.Status == "matched" {
+	if strings.EqualFold(clobResp.Status, "matched") {
+		filledSize, avgPrice := fillFromAmounts(in.Side, clobResp.MakingAmount, clobResp.TakingAmount, makerAmt, takerAmt)
+		feeUSD := c.fillFeeUSD(ctx, in.Market, filledSize, avgPrice)
 		slog.Info("v2_order_filled",
 			"order_id", clobResp.OrderID,
-			"trades", len(clobResp.TradeIDs))
+			"trades", len(clobResp.TradeIDs),
+			"filled_size", filledSize,
+			"avg_price", avgPrice,
+			"fee_usd", feeUSD)
 		return Result{
 			OrderID:    clobResp.OrderID,
 			Status:     StatusFilled,
-			FilledSize: in.SizeUSD / in.LimitPx,
-			AvgPrice:   in.LimitPx,
+			FilledSize: filledSize,
+			AvgPrice:   avgPrice,
 			SubmitAt:   now,
 			FilledAt:   time.Now(),
+			FeeUSD:     feeUSD,
 		}, nil
+	}
+	if strings.EqualFold(clobResp.Status, "delayed") {
+		return c.pollUntilFilled(ctx, clobResp.OrderID, in, now)
 	}
 
 	// Anything other than "matched" means not immediately filled — cancel and fail.
@@ -198,13 +202,13 @@ func (c *V2Client) Submit(ctx context.Context, in Intent) (Result, error) {
 func (c *V2Client) pollUntilFilled(ctx context.Context, orderID string, in Intent, submitAt time.Time) (Result, error) {
 	deadline := time.After(pollTimeout)
 
-	// Wait 5s before first poll to let CLOB index the order
+	// Sports orders can enter a one-second matching delay.
 	select {
 	case <-ctx.Done():
 		c.tryCancelOrder(context.Background(), orderID)
 		return Result{OrderID: orderID, Status: StatusExpired, SubmitAt: submitAt,
 			Error: "context cancelled"}, ctx.Err()
-	case <-time.After(5 * time.Second):
+	case <-time.After(1 * time.Second):
 	}
 
 	ticker := time.NewTicker(pollInterval)
@@ -239,10 +243,11 @@ func (c *V2Client) pollUntilFilled(ctx context.Context, orderID string, in Inten
 				continue
 			}
 			consecutive404 = 0
-			switch os.Status {
-			case "matched":
+			status := strings.ToUpper(os.Status)
+			switch status {
+			case "MATCHED", "ORDER_STATUS_MATCHED":
 				slog.Info("v2_order_filled_after_poll", "order_id", orderID,
-					"fills", len(os.Trades), "size_matched", os.SizeMatched)
+					"trades", len(os.AssociateTrades), "size_matched", os.SizeMatched)
 				avgPx := in.LimitPx
 				if os.AvgPrice > 0 {
 					avgPx = os.AvgPrice
@@ -258,12 +263,20 @@ func (c *V2Client) pollUntilFilled(ctx context.Context, orderID string, in Inten
 					AvgPrice:   avgPx,
 					SubmitAt:   submitAt,
 					FilledAt:   time.Now(),
+					FeeUSD:     c.fillFeeUSD(ctx, in.Market, filledSize, avgPx),
 				}, nil
-			case "cancelled":
+			case "CANCELLED", "CANCELED", "ORDER_STATUS_CANCELED", "ORDER_STATUS_CANCELED_MARKET_RESOLVED":
+				if os.SizeMatched > 0 {
+					return c.resultForPartialFill(ctx, orderID, in, submitAt, os), nil
+				}
 				slog.Info("v2_order_cancelled", "order_id", orderID)
 				return Result{OrderID: orderID, Status: StatusExpired, SubmitAt: submitAt,
 					Error: "cancelled"}, nil
 			default:
+				if os.SizeMatched > 0 {
+					c.tryCancelOrder(context.Background(), orderID)
+					return c.resultForPartialFill(ctx, orderID, in, submitAt, os), nil
+				}
 				slog.Debug("v2_poll_still_pending", "order_id", orderID, "status", os.Status)
 			}
 		}
@@ -271,22 +284,17 @@ func (c *V2Client) pollUntilFilled(ctx context.Context, orderID string, in Inten
 }
 
 type OrderStatusResponse struct {
-	ID          string           `json:"id"`
-	Status      string           `json:"status"`
-	Side        string           `json:"side"`
-	MakerAmount string           `json:"maker_amount"`
-	TakerAmount string           `json:"taker_amount"`
-	SizeMatched float64          `json:"-"`
-	AvgPrice    float64          `json:"-"`
-	Trades      []TradeResponse  `json:"associate_trades"`
-	OrigPrice   string           `json:"original_price"`
-	Price       string           `json:"price"`
-}
-
-type TradeResponse struct {
-	ID    string `json:"id"`
-	Price string `json:"price"`
-	Size  string `json:"size"`
+	ID              string   `json:"id"`
+	Status          string   `json:"status"`
+	Side            string   `json:"side"`
+	MakerAmount     string   `json:"maker_amount"`
+	TakerAmount     string   `json:"taker_amount"`
+	SizeMatchedRaw  string   `json:"size_matched"`
+	SizeMatched     float64  `json:"-"`
+	AvgPrice        float64  `json:"-"`
+	AssociateTrades []string `json:"associate_trades"`
+	OrigPrice       string   `json:"original_price"`
+	Price           string   `json:"price"`
 }
 
 func (c *V2Client) GetOrder(ctx context.Context, orderID string) (*OrderStatusResponse, error) {
@@ -316,8 +324,25 @@ func (c *V2Client) GetOrder(ctx context.Context, orderID string) (*OrderStatusRe
 	if err := json.Unmarshal(body, &os); err != nil {
 		return nil, fmt.Errorf("parse order status: %w", err)
 	}
-	os.SizeMatched, os.AvgPrice = computeFillStats(os.Trades)
+	os.SizeMatched = parseFixedAmount(os.SizeMatchedRaw)
+	os.AvgPrice, _ = strconv.ParseFloat(strings.TrimSpace(os.Price), 64)
 	return &os, nil
+}
+
+func (c *V2Client) resultForPartialFill(ctx context.Context, orderID string, in Intent, submitAt time.Time, status *OrderStatusResponse) Result {
+	avgPrice := status.AvgPrice
+	if avgPrice <= 0 {
+		avgPrice = in.LimitPx
+	}
+	return Result{
+		OrderID:    orderID,
+		Status:     StatusFilled,
+		FilledSize: status.SizeMatched,
+		AvgPrice:   avgPrice,
+		SubmitAt:   submitAt,
+		FilledAt:   time.Now(),
+		FeeUSD:     c.fillFeeUSD(ctx, in.Market, status.SizeMatched, avgPrice),
+	}
 }
 
 func (c *V2Client) CancelOrder(ctx context.Context, orderID string) error {
@@ -399,21 +424,141 @@ func (c *V2Client) GetOpenOrders(ctx context.Context) (json.RawMessage, error) {
 	return body, nil
 }
 
-func computeFillStats(trades []TradeResponse) (totalSize, avgPrice float64) {
-	if len(trades) == 0 {
-		return 0, 0
+func amountsForIntent(in Intent) (*big.Int, *big.Int, error) {
+	price, ok := new(big.Rat).SetString(strconv.FormatFloat(in.LimitPx, 'f', 6, 64))
+	if !ok || price.Sign() <= 0 {
+		return nil, nil, fmt.Errorf("invalid limit price %.6f", in.LimitPx)
 	}
-	var totalNotional float64
-	for _, t := range trades {
-		sz, _ := strconv.ParseFloat(strings.TrimSpace(t.Size), 64)
-		px, _ := strconv.ParseFloat(strings.TrimSpace(t.Price), 64)
-		totalSize += sz
-		totalNotional += sz * px
+	num := new(big.Int).Set(price.Num())
+	den := new(big.Int).Set(price.Denom())
+
+	if in.Side == Buy {
+		target := toMicro(in.SizeUSD)
+		k := new(big.Int).Quo(target, num)
+		if k.Sign() <= 0 {
+			return nil, nil, fmt.Errorf("buy size %.6f too small at %.6f", in.SizeUSD, in.LimitPx)
+		}
+		return new(big.Int).Mul(num, k), new(big.Int).Mul(den, k), nil
 	}
-	if totalSize > 0 {
-		avgPrice = totalNotional / totalSize
+
+	shares := in.SizeShares
+	if shares <= 0 {
+		shares = in.SizeUSD / in.LimitPx
+	}
+	target := toMicro(shares)
+	k := new(big.Int).Quo(target, den)
+	if k.Sign() <= 0 {
+		return nil, nil, fmt.Errorf("sell size %.6f too small at %.6f", shares, in.LimitPx)
+	}
+	return new(big.Int).Mul(den, k), new(big.Int).Mul(num, k), nil
+}
+
+func toMicro(v float64) *big.Int {
+	r, ok := new(big.Rat).SetString(strconv.FormatFloat(v, 'f', 6, 64))
+	if !ok {
+		return new(big.Int)
+	}
+	r.Mul(r, big.NewRat(usdcScale, 1))
+	return new(big.Int).Quo(r.Num(), r.Denom())
+}
+
+func parseFixedAmount(raw string) float64 {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0
+	}
+	if strings.Contains(raw, ".") {
+		v, _ := strconv.ParseFloat(raw, 64)
+		return v
+	}
+	v, ok := new(big.Int).SetString(raw, 10)
+	if !ok {
+		return 0
+	}
+	f, _ := new(big.Rat).SetFrac(v, big.NewInt(usdcScale)).Float64()
+	return f
+}
+
+func fillFromAmounts(side Side, makingRaw, takingRaw string, fallbackMaker, fallbackTaker *big.Int) (filledSize, avgPrice float64) {
+	making := parseFixedAmount(makingRaw)
+	taking := parseFixedAmount(takingRaw)
+	if making <= 0 {
+		making = fixedIntFloat(fallbackMaker)
+	}
+	if taking <= 0 {
+		taking = fixedIntFloat(fallbackTaker)
+	}
+	if side == Buy {
+		filledSize = taking
+		if taking > 0 {
+			avgPrice = making / taking
+		}
+		return
+	}
+	filledSize = making
+	if making > 0 {
+		avgPrice = taking / making
 	}
 	return
+}
+
+func fixedIntFloat(v *big.Int) float64 {
+	if v == nil {
+		return 0
+	}
+	f, _ := new(big.Rat).SetFrac(v, big.NewInt(usdcScale)).Float64()
+	return f
+}
+
+func (c *V2Client) fillFeeUSD(ctx context.Context, market string, shares, price float64) float64 {
+	if shares <= 0 || price <= 0 || price >= 1 {
+		return 0
+	}
+	rate := c.marketFeeRate(ctx, market)
+	return shares * rate * price * (1 - price)
+}
+
+func (c *V2Client) marketFeeRate(ctx context.Context, market string) float64 {
+	if market == "" {
+		return 0
+	}
+	c.feeMu.Lock()
+	rate, ok := c.feeRates[market]
+	c.feeMu.Unlock()
+	if ok {
+		return rate
+	}
+
+	feeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(feeCtx, "GET", c.clobBase+"/clob-markets/"+market, nil)
+	if err != nil {
+		return 0
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		slog.Warn("v2_fee_rate_fetch_fail", "market", market, "err", err)
+		return 0
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		slog.Warn("v2_fee_rate_fetch_fail", "market", market, "status", resp.StatusCode)
+		return 0
+	}
+	var info struct {
+		FeeDetails struct {
+			Rate float64 `json:"r"`
+		} `json:"fd"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		slog.Warn("v2_fee_rate_decode_fail", "market", market, "err", err)
+		return 0
+	}
+	rate = info.FeeDetails.Rate
+	c.feeMu.Lock()
+	c.feeRates[market] = rate
+	c.feeMu.Unlock()
+	return rate
 }
 
 type sendOrderPayload struct {
@@ -439,27 +584,13 @@ type orderJSON struct {
 }
 
 type clobOrderResponse struct {
-	Success   bool     `json:"success"`
-	OrderID   string   `json:"orderID"`
-	Status    string   `json:"status"`
-	ErrorMsg  string   `json:"errorMsg"`
-	TradeIDs  []string `json:"tradeIDs"`
-}
-
-func toFixedPoint(usd float64) *big.Int {
-	scaled := int64(usd * usdcScale)
-	return big.NewInt(scaled)
-}
-
-func roundTo(v *big.Int, granularity int64) *big.Int {
-	g := big.NewInt(granularity)
-	mod := new(big.Int).Mod(v, g)
-	rounded := new(big.Int).Sub(v, mod)
-	half := new(big.Int).Div(g, big.NewInt(2))
-	if mod.Cmp(half) >= 0 {
-		rounded.Add(rounded, g)
-	}
-	return rounded
+	Success      bool     `json:"success"`
+	OrderID      string   `json:"orderID"`
+	Status       string   `json:"status"`
+	ErrorMsg     string   `json:"errorMsg"`
+	MakingAmount string   `json:"makingAmount"`
+	TakingAmount string   `json:"takingAmount"`
+	TradeIDs     []string `json:"tradeIDs"`
 }
 
 type bytesReaderWrapper struct {

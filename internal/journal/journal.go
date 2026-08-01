@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 )
@@ -51,7 +52,7 @@ type TradeRecord struct {
 }
 
 // Journal appends TradeRecords into ./db/trades-YYYY-MM-DD.jsonl partitioned
-// by SGT entry date. Concurrent-safe across goroutines (mu guards the open file
+// by SGT exit date. Concurrent-safe across goroutines (mu guards the open file
 // handle, not the file itself — multiple processes would race, but this bot
 // is single-instance).
 type Journal struct {
@@ -74,10 +75,7 @@ func New(dir string) (*Journal, error) {
 func (j *Journal) Append(rec TradeRecord) error {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	day := rec.EntryTime.In(SGT).Format("2006-01-02")
-	if rec.EntryTime.IsZero() {
-		day = time.Now().In(SGT).Format("2006-01-02")
-	}
+	day := recordDay(rec)
 	if j.f == nil || j.day != day {
 		if err := j.rotateLocked(day); err != nil {
 			return err
@@ -94,6 +92,17 @@ func (j *Journal) Append(rec TradeRecord) error {
 		return err
 	}
 	return j.writer.Flush()
+}
+
+func recordDay(rec TradeRecord) string {
+	t := rec.ExitTime
+	if t.IsZero() {
+		t = rec.EntryTime
+	}
+	if t.IsZero() {
+		t = time.Now()
+	}
+	return t.In(SGT).Format("2006-01-02")
 }
 
 // Close flushes & closes the current file. Safe to call multiple times.
@@ -160,4 +169,44 @@ func Read(dir, day string) ([]TradeRecord, error) {
 		}
 		out = append(out, rec)
 	}
+}
+
+// ReadClosedDay returns trades realized on the requested SGT day, regardless
+// of which file contains them. Scanning all partitions keeps historical
+// reports correct for legacy journals that were partitioned by entry date.
+func ReadClosedDay(dir, day string) ([]TradeRecord, error) {
+	records, err := ReadAll(dir)
+	if err != nil {
+		return nil, err
+	}
+	var out []TradeRecord
+	for _, rec := range records {
+		if recordDay(rec) == day {
+			out = append(out, rec)
+		}
+	}
+	sort.SliceStable(out, func(i, k int) bool {
+		return out[i].ExitTime.Before(out[k].ExitTime)
+	})
+	return out, nil
+}
+
+// ReadAll returns every persisted closed trade in partition order.
+func ReadAll(dir string) ([]TradeRecord, error) {
+	paths, err := filepath.Glob(filepath.Join(dir, "trades-*.jsonl"))
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(paths)
+	var out []TradeRecord
+	for _, path := range paths {
+		fileDay := filepath.Base(path)
+		fileDay = fileDay[len("trades-") : len(fileDay)-len(".jsonl")]
+		records, err := Read(dir, fileDay)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, records...)
+	}
+	return out, nil
 }

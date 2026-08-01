@@ -60,10 +60,18 @@ release_lock() {
   fi
 }
 
-is_running() {
-  [ -s "$PIDFILE" ] || return 1
+managed_pid() {
   local pid
   pid="$(cat "$PIDFILE" 2>/dev/null || true)"
+  if [ -z "$pid" ]; then
+    pid="$(cat "$LOCKDIR/pid" 2>/dev/null || true)"
+  fi
+  printf '%s' "$pid"
+}
+
+is_running() {
+  local pid
+  pid="$(managed_pid)"
   [ -n "$pid" ] || return 1
   kill -0 "$pid" 2>/dev/null || return 1
   local cmd
@@ -239,7 +247,7 @@ stop() {
     return 0
   fi
   local pid
-  pid="$(cat "$PIDFILE")"
+  pid="$(managed_pid)"
   local child
   child="$(cat "$CHILD_PIDFILE" 2>/dev/null || true)"
   [ -n "$child" ] && kill -TERM "$child" 2>/dev/null || true
@@ -258,7 +266,7 @@ stop() {
 status() {
   if is_running; then
     local pid
-    pid="$(cat "$PIDFILE")"
+    pid="$(managed_pid)"
     echo "RUNNING pid=$pid"
     ps -o pid,etime,rss,command -p "$pid" 2>/dev/null | tail -1 || true
     [ -s "$POLICY_FILE" ] && cat "$POLICY_FILE"

@@ -1,6 +1,8 @@
 package journal
 
 import (
+	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -63,6 +65,42 @@ func TestJournal_RotatesOnSGTDay(t *testing.T) {
 	}
 	if len(day2) != 1 || day2[0].ID != "b" {
 		t.Fatalf("day2: %+v", day2)
+	}
+}
+
+func TestJournal_PartitionsAndReadsByExitDay(t *testing.T) {
+	dir := t.TempDir()
+	j, _ := New(dir)
+	t.Cleanup(func() { _ = j.Close() })
+
+	rec := TradeRecord{
+		ID:        "cross-midnight",
+		EntryTime: sgt(2026, 4, 20, 23, 58),
+		ExitTime:  sgt(2026, 4, 21, 0, 3),
+	}
+	if err := j.Append(rec); err != nil {
+		t.Fatal(err)
+	}
+	entryDay, _ := Read(dir, "2026-04-20")
+	exitDay, _ := Read(dir, "2026-04-21")
+	if len(entryDay) != 0 || len(exitDay) != 1 || exitDay[0].ID != rec.ID {
+		t.Fatalf("entry=%+v exit=%+v", entryDay, exitDay)
+	}
+
+	// Simulate a legacy entry-day partition and verify reports still bucket it
+	// by the realized day.
+	legacy := TradeRecord{ID: "legacy", EntryTime: sgt(2026, 4, 19, 23, 0), ExitTime: sgt(2026, 4, 21, 1, 0)}
+	legacyPath := Path(dir, "2026-04-19")
+	legacyJSON, _ := json.Marshal(legacy)
+	if err := os.WriteFile(legacyPath, append(legacyJSON, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	closed, err := ReadClosedDay(dir, "2026-04-21")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(closed) != 2 || closed[0].ID != rec.ID || closed[1].ID != legacy.ID {
+		t.Fatalf("closed day: %+v", closed)
 	}
 }
 

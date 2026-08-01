@@ -29,6 +29,7 @@ type ExitSignal struct {
 	HeldFor    time.Duration
 	ChangePP   float64 // (exit - entry) in pp
 	DrawdownPP float64 // (peak - exit) in pp
+	ExitFeeUSD float64 // fee paid on the closing fill
 	Reason     ExitReason
 }
 

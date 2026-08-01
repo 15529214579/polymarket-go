@@ -158,11 +158,13 @@ func TestPositionManager_InvalidEntry(t *testing.T) {
 
 func TestPositionManager_ApplyOpenFill(t *testing.T) {
 	pm := NewPositionManager(DefaultPositionConfig())
-	p, err := pm.OpenSized("asset", "market", tick(0.50, time.Now()), 5)
+	openedAt := time.Now()
+	filledAt := openedAt.Add(2 * time.Second)
+	p, err := pm.OpenSized("asset", "market", tick(0.50, openedAt), 5)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := pm.ApplyOpenFill(p.ID, 0.505, 5/0.505); err != nil {
+	if err := pm.ApplyOpenFill(p.ID, 0.505, 5/0.505, filledAt); err != nil {
 		t.Fatal(err)
 	}
 	got := pm.Snapshot()[0]
@@ -174,6 +176,50 @@ func TestPositionManager_ApplyOpenFill(t *testing.T) {
 	}
 	if absDiff(got.SizeUSD, 5) > 1e-9 {
 		t.Fatalf("size: want 5 got %v", got.SizeUSD)
+	}
+	if !got.EntryTime.Equal(filledAt) {
+		t.Fatalf("entry time: want %v got %v", filledAt, got.EntryTime)
+	}
+}
+
+func TestPositionManager_CancelOpenDoesNotBookLoss(t *testing.T) {
+	pm := NewPositionManager(DefaultPositionConfig())
+	p, err := pm.OpenSized("asset", "market", tick(0.50, time.Now()), 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := pm.CancelOpen(p.ID); err != nil {
+		t.Fatal(err)
+	}
+	stats := pm.Stats()
+	if stats.Open != 0 || stats.Closed != 0 || stats.RealizedPnLUSD != 0 {
+		t.Fatalf("cancelled reservation affected stats: %+v", stats)
+	}
+}
+
+func TestPositionManager_ReconcileLegacyClosedAccounting(t *testing.T) {
+	pm := NewPositionManager(DefaultPositionConfig())
+	now := time.Now()
+	p, err := pm.Open("asset", "market", tick(0.5, now))
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed, err := pm.Close(p.ID, ExitSignal{Time: now.Add(time.Minute), ExitMid: 0.6})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pm.closed[0].Accounted = false
+	pm.closed[0].NetPnLUSD = 0
+
+	updated := pm.ReconcileClosedAccounting([]ClosedAccounting{{
+		ID: closed.ID, ExitTime: closed.ExitTime,
+		EntryFeeUSD: 0.02, ExitFeeUSD: 0.03, NetPnLUSD: 0.95,
+	}})
+	if updated != 1 {
+		t.Fatalf("updated=%d", updated)
+	}
+	if got := pm.Stats().RealizedPnLUSD; absDiff(got, 0.95) > 1e-9 {
+		t.Fatalf("realized=%v", got)
 	}
 }
 
@@ -188,7 +234,7 @@ func TestPositionManager_PartialClose_Tranches(t *testing.T) {
 	_ = pm.SetOpenFee(p.ID, 0.02)
 
 	// Close 4 units at 0.575 — gross PnL = 4 × (0.575 - 0.50) = 0.30.
-	ex1 := ExitSignal{Time: now.Add(time.Second), EntryMid: 0.50, ExitMid: 0.575, Reason: "ladder_tp1"}
+	ex1 := ExitSignal{Time: now.Add(time.Second), EntryMid: 0.50, ExitMid: 0.575, ExitFeeUSD: 0.01, Reason: "ladder_tp1"}
 	tr1, err := pm.PartialClose(p.ID, 4, ex1)
 	if err != nil {
 		t.Fatalf("partial close: %v", err)
@@ -198,6 +244,9 @@ func TestPositionManager_PartialClose_Tranches(t *testing.T) {
 	}
 	if tr1.Status != PosClosed {
 		t.Fatalf("tranche1 must be closed, got %v", tr1.Status)
+	}
+	if absDiff(tr1.EntryFeeUSD, 0.008) > 1e-9 || absDiff(tr1.NetPnLUSD, 0.282) > 1e-9 {
+		t.Fatalf("tranche1 costs: %+v", tr1)
 	}
 
 	// Verify remaining open: 6 units, SizeUSD = 6 × 0.50 = 3.0.
@@ -217,7 +266,7 @@ func TestPositionManager_PartialClose_Tranches(t *testing.T) {
 	}
 
 	// Final close at 0.60 — gross = 6 × (0.60 - 0.50) = 0.60.
-	ex2 := ExitSignal{Time: now.Add(2 * time.Second), EntryMid: 0.50, ExitMid: 0.60, Reason: "ladder_tp2"}
+	ex2 := ExitSignal{Time: now.Add(2 * time.Second), EntryMid: 0.50, ExitMid: 0.60, ExitFeeUSD: 0.015, Reason: "ladder_tp2"}
 	tr2, err := pm.PartialClose(p.ID, 6, ex2)
 	if err != nil {
 		t.Fatalf("final close: %v", err)
@@ -225,11 +274,61 @@ func TestPositionManager_PartialClose_Tranches(t *testing.T) {
 	if absDiff(tr2.PnLUSD, 0.60) > 1e-9 {
 		t.Fatalf("tranche2 pnl: got %v want 0.60", tr2.PnLUSD)
 	}
+	if absDiff(tr2.EntryFeeUSD, 0.012) > 1e-9 || absDiff(tr2.NetPnLUSD, 0.573) > 1e-9 {
+		t.Fatalf("tranche2 costs: %+v", tr2)
+	}
 	if pm.Has("asset-A") {
 		t.Fatalf("should be fully closed")
 	}
 	if s := pm.Stats(); s.Closed != 2 || s.Open != 0 {
 		t.Fatalf("stats: %+v", s)
+	} else if absDiff(s.RealizedPnLUSD, 0.855) > 1e-9 {
+		t.Fatalf("net stats: %+v", s)
+	}
+}
+
+func TestPositionManager_FinalCloseChargesUnassignedLegacyEntryFee(t *testing.T) {
+	pm := NewPositionManager(DefaultPositionConfig())
+	now := time.Now()
+	p, err := pm.Open("asset", "market", tick(0.5, now))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := pm.SetOpenFee(p.ID, 0.02); err != nil {
+		t.Fatal(err)
+	}
+	// A legacy partial close reduced Units but did not record any apportioned
+	// entry fee on the still-open position.
+	p.Units = 6
+	p.SizeUSD = 3
+	closed, err := pm.Close(p.ID, ExitSignal{Time: now.Add(time.Minute), ExitMid: 0.6})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if absDiff(closed.EntryFeeUSD, 0.02) > 1e-9 {
+		t.Fatalf("entry fee=%v", closed.EntryFeeUSD)
+	}
+}
+
+func TestPositionManager_ReconcileOpenEntryFees(t *testing.T) {
+	pm := NewPositionManager(DefaultPositionConfig())
+	now := time.Now()
+	p, err := pm.Open("asset", "market", tick(0.5, now))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := pm.SetOpenFee(p.ID, 0.02); err != nil {
+		t.Fatal(err)
+	}
+	if updated := pm.ReconcileOpenEntryFees([]ClosedAccounting{{ID: p.ID, EntryFeeUSD: 0.008}}); updated != 1 {
+		t.Fatalf("updated=%d", updated)
+	}
+	closed, err := pm.Close(p.ID, ExitSignal{Time: now.Add(time.Minute), ExitMid: 0.6})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if absDiff(closed.EntryFeeUSD, 0.012) > 1e-9 {
+		t.Fatalf("remaining entry fee=%v", closed.EntryFeeUSD)
 	}
 }
 
