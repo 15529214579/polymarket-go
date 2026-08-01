@@ -10,6 +10,7 @@ import (
 	"math/big"
 	nethttp "net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -35,6 +36,7 @@ func main() {
 	publicReadiness := flag.Bool("readiness-public", false, "read-only public CLOB and Polygon checks; no private key required")
 	expectedAddress := flag.String("expected-address", projectWalletAddress, "wallet address that must match before authenticated operations")
 	redeemAll := flag.Bool("redeem-all", false, "redeem all redeemable positions and exit")
+	redeemedStatePath := flag.String("redeemed-state", "db/live/redeemed.json", "live redemption state path; only used with -redeem-all")
 	liveArmFile := flag.String("live-arm-file", "db/live-trading.enabled", "short-lived, wallet-bound live trading arm file")
 	liveDisableFile := flag.String("live-disable-file", "db/live-trading.disabled", "live trading kill-switch file")
 	liveMaxOrderUSD := flag.Float64("live-max-order-usd", 20.0, "hard maximum notional for one live BUY; exits are not capped")
@@ -108,7 +110,10 @@ func main() {
 			slog.Error("onchain_init_failed", "err", err)
 			os.Exit(1)
 		}
-		runRedeemAll(oc, wallet.Address().Hex())
+		if err := runRedeemAll(oc, wallet.Address().Hex(), *redeemedStatePath); err != nil {
+			slog.Error("redeem_all_failed", "err", err)
+			os.Exit(1)
+		}
 		return
 	}
 	order.InitProxy()
@@ -421,28 +426,37 @@ type dataAPIPosition struct {
 	OutcomeIndex int     `json:"outcomeIndex"`
 }
 
-func runRedeemAll(oc *order.OnChain, walletAddr string) {
-	reqURL := "https://data-api.polymarket.com/positions?user=" + strings.ToLower(walletAddr) + "&sizeThreshold=0.01&limit=200"
-	resp, err := nethttp.Get(reqURL)
+func runRedeemAll(oc *order.OnChain, walletAddr, redeemedStatePath string) error {
+	var err error
+	redeemedStatePath, err = validateLiveRedeemedStatePath(redeemedStatePath)
 	if err != nil {
-		slog.Error("data_api_failed", "err", err)
-		os.Exit(1)
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(redeemedStatePath), 0700); err != nil {
+		return fmt.Errorf("create redeemed state directory: %w", err)
+	}
+	reqURL := "https://data-api.polymarket.com/positions?user=" + strings.ToLower(walletAddr) + "&sizeThreshold=0.01&limit=200"
+	httpClient := &nethttp.Client{Timeout: 30 * time.Second}
+	resp, err := httpClient.Get(reqURL)
+	if err != nil {
+		return fmt.Errorf("data API positions: %w", err)
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return fmt.Errorf("read data API positions: %w", err)
+	}
 	if resp.StatusCode >= 400 {
-		slog.Error("data_api_error", "status", resp.StatusCode, "body", string(body[:min(len(body), 200)]))
-		os.Exit(1)
+		return fmt.Errorf("data API returned HTTP %d: %s", resp.StatusCode, string(body[:min(len(body), 200)]))
 	}
 	var positions []dataAPIPosition
 	if err := json.Unmarshal(body, &positions); err != nil {
-		slog.Error("data_api_decode", "err", err)
-		os.Exit(1)
+		return fmt.Errorf("decode data API positions: %w", err)
 	}
 
 	redeemed := map[string]bool{}
-	if raw, err := os.ReadFile("db/redeemed.json"); err == nil {
-		json.Unmarshal(raw, &redeemed)
+	if raw, err := os.ReadFile(redeemedStatePath); err == nil {
+		_ = json.Unmarshal(raw, &redeemed)
 	}
 
 	var toRedeem []dataAPIPosition
@@ -474,12 +488,14 @@ func runRedeemAll(oc *order.OnChain, walletAddr string) {
 
 	if len(toRedeem) == 0 {
 		fmt.Println("No positions to redeem.")
-		bal, err := oc.PUSDBalance(context.Background())
+		balanceCtx, balanceCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		bal, err := oc.PUSDBalance(balanceCtx)
+		balanceCancel()
 		if err == nil {
 			f, _ := new(big.Float).Quo(new(big.Float).SetInt(bal), new(big.Float).SetFloat64(1e6)).Float64()
 			fmt.Printf("pUSD balance: $%.2f\n", f)
 		}
-		return
+		return nil
 	}
 
 	fmt.Printf("Found %d positions to redeem:\n", len(toRedeem))
@@ -490,32 +506,82 @@ func runRedeemAll(oc *order.OnChain, walletAddr string) {
 	}
 	fmt.Println()
 
-	redeemed_count := 0
+	redeemedCount := 0
+	failedCount := 0
 	for _, p := range toRedeem {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		err := oc.RedeemPosition(ctx, p.ConditionID, p.Asset, p.OutcomeIndex, p.Size, p.NegativeRisk)
 		cancel()
 		if err != nil {
 			slog.Error("redeem_failed", "title", p.Title[:min(len(p.Title), 40)], "err", err)
+			failedCount++
 			continue
 		}
 		redeemed[p.Asset] = true
-		redeemed_count++
+		redeemedCount++
 		val := redeemValue(p)
 		fmt.Printf("✅ Redeemed: %s · %s · $%.2f\n", p.Title[:min(len(p.Title), 50)], p.Outcome, val)
 	}
 
-	if out, err := json.MarshalIndent(redeemed, "", "  "); err == nil {
-		os.WriteFile("db/redeemed.json", out, 0644)
+	out, err := json.MarshalIndent(redeemed, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode redeemed state: %w", err)
+	}
+	if err := os.WriteFile(redeemedStatePath, out, 0600); err != nil {
+		return fmt.Errorf("write redeemed state: %w", err)
 	}
 
-	usdce, usdceErr := oc.USDCeBalance(context.Background())
-	pusd, pusdErr := oc.PUSDBalance(context.Background())
+	balanceCtx, balanceCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	usdce, usdceErr := oc.USDCeBalance(balanceCtx)
+	balanceCancel()
+	balanceCtx, balanceCancel = context.WithTimeout(context.Background(), 15*time.Second)
+	pusd, pusdErr := oc.PUSDBalance(balanceCtx)
+	balanceCancel()
 	if usdceErr == nil && pusdErr == nil {
 		usdceFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(usdce), new(big.Float).SetFloat64(1e6)).Float64()
 		pusdFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(pusd), new(big.Float).SetFloat64(1e6)).Float64()
-		fmt.Printf("\nRedeemed %d positions. USDC.e balance: $%.2f · pUSD balance: $%.2f\n", redeemed_count, usdceFloat, pusdFloat)
+		fmt.Printf("\nRedeemed %d positions. USDC.e balance: $%.2f · pUSD balance: $%.2f\n", redeemedCount, usdceFloat, pusdFloat)
 	}
+	if failedCount > 0 {
+		return fmt.Errorf("%d of %d redemption attempts failed", failedCount, len(toRedeem))
+	}
+	return nil
+}
+
+func validateLiveRedeemedStatePath(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", fmt.Errorf("redeemed state path is required")
+	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve redeemed state path: %w", err)
+	}
+	liveRoot, err := filepath.Abs(filepath.Join("db", "live"))
+	if err != nil {
+		return "", fmt.Errorf("resolve live state root: %w", err)
+	}
+	rel, err := filepath.Rel(liveRoot, absPath)
+	if err != nil {
+		return "", fmt.Errorf("compare redeemed state path: %w", err)
+	}
+	if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return "", fmt.Errorf("redeemed state path must be a file under %s", liveRoot)
+	}
+	if filepath.Dir(absPath) != liveRoot {
+		return "", fmt.Errorf("redeemed state path must be a direct child of %s", liveRoot)
+	}
+	if info, statErr := os.Lstat(liveRoot); statErr == nil && info.Mode()&os.ModeSymlink != 0 {
+		return "", fmt.Errorf("live state root must not be a symlink")
+	} else if statErr != nil && !os.IsNotExist(statErr) {
+		return "", fmt.Errorf("inspect live state root: %w", statErr)
+	}
+	if info, statErr := os.Lstat(absPath); statErr == nil && info.Mode()&os.ModeSymlink != 0 {
+		return "", fmt.Errorf("redeemed state file must not be a symlink")
+	} else if statErr != nil && !os.IsNotExist(statErr) {
+		return "", fmt.Errorf("inspect redeemed state path: %w", statErr)
+	}
+	return absPath, nil
 }
 
 func redeemValue(p dataAPIPosition) float64 {

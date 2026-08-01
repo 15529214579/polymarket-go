@@ -38,9 +38,9 @@ Arm-file schema:
 The automated bot creates a read-only Polygon client. It can query pUSD and
 conditional-token balances, but it cannot wrap, approve, redeem, transfer, sign
 an on-chain transaction, or broadcast one. Redeemable positions generate a
-single manual-maintenance alert.
+single pending-maintenance alert while the separate task owns execution.
 
-Wallet mutations are separate, explicit `trade` invocations that exit without
+Wallet mutations are separate `trade` maintenance invocations that exit without
 placing a CLOB order:
 
 ```text
@@ -55,3 +55,24 @@ expected address before constructing a transaction-capable Polygon client.
 
 The guard does not bypass Polymarket account, jurisdiction, IP, or regional
 availability controls. A CLOB restriction remains a hard failure.
+
+## Hourly Redemption
+
+`com.polymarket-go.hourly-live-redeem` checks once per hour and runs only the
+standalone `trade -redeem-all` maintenance path. It does not run at load and it
+cannot submit or cancel CLOB orders.
+
+The task is fail-closed. All of the following must be true:
+
+- `db/live/redeem.disabled` is absent. Its presence always wins.
+- `db/live/redeem.enabled` is a regular, non-symlink file owned by the current
+  user with mode `0600`.
+- The enable file contains exactly the expected public wallet address.
+- A valid `BW_SESSION` is supplied to the launchd process environment. The
+  session is never stored in the plist, repository, state file, or logs.
+
+The installer loads the hourly schedule but deliberately does not create the
+enable file or provide a Bitwarden session. Runtime status, lock data, alert
+deduplication, and redeemed-position state are all under `db/live/` and are
+gitignored. Paper positions, journals, PnL, and risk state retain their existing
+paths and are never read or written by the redemption task.

@@ -64,3 +64,17 @@ func TestRedeemValueIsZeroForLosingPosition(t *testing.T) {
 		t.Fatalf("redeemValue = %v", got)
 	}
 }
+
+func TestRunRedeemAllRequiresStatePath(t *testing.T) {
+	err := runRedeemAll(nil, projectWalletAddress, "  ")
+	if err == nil || !strings.Contains(err.Error(), "state path is required") {
+		t.Fatalf("expected state path error, got %v", err)
+	}
+}
+
+func TestRunRedeemAllRejectsPaperStatePath(t *testing.T) {
+	err := runRedeemAll(nil, projectWalletAddress, "db/redeemed.json")
+	if err == nil || !strings.Contains(err.Error(), "under") {
+		t.Fatalf("expected live-state isolation error, got %v", err)
+	}
+}

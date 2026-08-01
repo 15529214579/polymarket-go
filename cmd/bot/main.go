@@ -4243,14 +4243,18 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 		go func() {
 			tk := time.NewTicker(1 * time.Hour)
 			defer tk.Stop()
-			alertedFile := filepath.Join("db", "redeem-alerted.json")
+			alertedFile := filepath.Join("db", "live", "redeem-alerted.json")
+			if err := os.MkdirAll(filepath.Dir(alertedFile), 0700); err != nil {
+				slog.Warn("redeem_observer_state_dir_failed", "err", err)
+				return
+			}
 			alerted := make(map[string]bool)
 			if data, err := os.ReadFile(alertedFile); err == nil {
 				_ = json.Unmarshal(data, &alerted)
 			}
 			saveAlerted := func() {
 				if data, err := json.Marshal(alerted); err == nil {
-					_ = os.WriteFile(alertedFile, data, 0644)
+					_ = os.WriteFile(alertedFile, data, 0600)
 				}
 			}
 			checkRedeemable := func() {
@@ -4282,7 +4286,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 					if value <= 0 {
 						value = p.Size * p.CurPrice
 					}
-					slog.Info("redeem_manual_required",
+					slog.Info("redeem_maintenance_pending",
 						"title", p.Title,
 						"outcome", p.Outcome,
 						"size", p.Size,
@@ -4291,7 +4295,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 						"negRisk", p.NegativeRisk,
 						"outcomeIndex", p.OutcomeIndex,
 					)
-					notifier.SidecarAlert(fmt.Sprintf("💰 可赎回 · 需手动维护\n%s\n%s · %.1f份 · 约 $%.2f\n%s SGT",
+					notifier.SidecarAlert(fmt.Sprintf("💰 可赎回 · 等待独立赎回任务\n%s\n%s · %.1f份 · 约 $%.2f\n%s SGT",
 						p.Title, p.Outcome, p.Size, value,
 						time.Now().In(sgt).Format("01/02 15:04")))
 					alerted[p.Asset] = true

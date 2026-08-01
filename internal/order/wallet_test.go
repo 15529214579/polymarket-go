@@ -91,6 +91,18 @@ func TestWallet_SignDigestRejectsShort(t *testing.T) {
 	}
 }
 
+func TestBitwardenCLIPath(t *testing.T) {
+	t.Setenv("POLYMARKET_BW_BIN", "")
+	if got := bitwardenCLIPath(); got != "bw" {
+		t.Fatalf("default bw path = %q", got)
+	}
+
+	t.Setenv("POLYMARKET_BW_BIN", "  /opt/homebrew/bin/bw  ")
+	if got := bitwardenCLIPath(); got != "/opt/homebrew/bin/bw" {
+		t.Fatalf("configured bw path = %q", got)
+	}
+}
+
 func TestEIP712HashV2Order_RequiresBigInts(t *testing.T) {
 	order := V2Order{
 		Maker:         common.HexToAddress(testAddress0),

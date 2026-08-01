@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.polymarket-go.hourly-live-redeem</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/bash</string>
+		<string>/Users/murphyma/work/polymarket-go/scripts/hourly-live-redeem.sh</string>
+		<string>run</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>/Users/murphyma/work/polymarket-go</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>POLYMARKET_GO_ROOT</key>
+		<string>/Users/murphyma/work/polymarket-go</string>
+		<key>POLYMARKET_GO_BIN</key>
+		<string>/usr/local/go/bin/go</string>
+		<key>POLYMARKET_BW_BIN</key>
+		<string>/opt/homebrew/bin/bw</string>
+	</dict>
+	<key>StartInterval</key>
+	<integer>3600</integer>
+	<key>ProcessType</key>
+	<string>Background</string>
+	<key>ThrottleInterval</key>
+	<integer>300</integer>
+	<key>StandardOutPath</key>
+	<string>/Users/murphyma/work/polymarket-go/logs/hourly-live-redeem.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/murphyma/work/polymarket-go/logs/hourly-live-redeem.err</string>
+</dict>
+</plist>

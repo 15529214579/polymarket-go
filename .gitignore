@@ -25,6 +25,7 @@ db/self-optimization/
 db/*.lock/
 db/live-trading.enabled
 db/redeem-alerted.json
+db/live/
 db/copytrade_backtest_results.generated.json
 db/copytrade_tiers_expanded.json
 db/wallet_candidates.jsonl

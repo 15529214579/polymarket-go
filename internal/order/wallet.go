@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -95,7 +96,8 @@ func (w *Wallet) SignDigest(digest []byte) ([]byte, error) {
 // start; the returned string should be handed directly to
 // NewWalletFromMnemonic and dropped. Never logged, never written to disk.
 //
-// Pre-req: BW_SESSION must be set in the environment (see TOOLS.md).
+// Pre-req: BW_SESSION must be set in the environment. POLYMARKET_BW_BIN may
+// point at the bw executable when a service has a minimal PATH.
 func LoadMnemonicFromBitwarden(itemName, fieldName string) (string, error) {
 	itemName = strings.TrimSpace(itemName)
 	fieldName = strings.TrimSpace(fieldName)
@@ -104,7 +106,7 @@ func LoadMnemonicFromBitwarden(itemName, fieldName string) (string, error) {
 	}
 	// Call `bw` directly — no `bash -c`, no shell interpolation — and
 	// parse the JSON locally. Side-steps shell-injection and gosec G204.
-	out, err := exec.Command("bw", "get", "item", itemName).Output()
+	out, err := exec.Command(bitwardenCLIPath(), "get", "item", itemName).Output()
 	if err != nil {
 		return "", fmt.Errorf("order: bw get item %q: %w", itemName, err)
 	}
@@ -130,6 +132,13 @@ func LoadMnemonicFromBitwarden(itemName, fieldName string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("order: bitwarden field %q not found on item %q", fieldName, itemName)
+}
+
+func bitwardenCLIPath() string {
+	if path := strings.TrimSpace(os.Getenv("POLYMARKET_BW_BIN")); path != "" {
+		return path
+	}
+	return "bw"
 }
 
 // LoadWalletFromBitwarden keeps the mnemonic inside the order package and

@@ -158,11 +158,15 @@ fi
 
 live_trading_disabled=0
 live_trading_arm_present=0
+live_redeem_disabled=0
+live_redeem_arm_present=0
 research_disabled=0
 monitoring_disabled=0
 legacy_project_disabled=0
 [ -f "$ROOT/db/live-trading.disabled" ] && live_trading_disabled=1
 [ -f "$ROOT/db/live-trading.enabled" ] && live_trading_arm_present=1
+[ -f "$ROOT/db/live/redeem.disabled" ] && live_redeem_disabled=1
+[ -f "$ROOT/db/live/redeem.enabled" ] && live_redeem_arm_present=1
 [ -f "$ROOT/db/research.disabled" ] && research_disabled=1
 [ -f "$ROOT/db/monitoring.disabled" ] && monitoring_disabled=1
 [ -f "$ROOT/db/project.disabled" ] && legacy_project_disabled=1
@@ -181,6 +185,8 @@ cat > "$STATE" <<EOF
   "component_flags": {
     "live_trading_disabled": $(bool "$live_trading_disabled"),
     "live_trading_arm_present": $(bool "$live_trading_arm_present"),
+    "live_redeem_disabled": $(bool "$live_redeem_disabled"),
+    "live_redeem_arm_present": $(bool "$live_redeem_arm_present"),
     "research_disabled": $(bool "$research_disabled"),
     "monitoring_disabled": $(bool "$monitoring_disabled"),
     "legacy_project_disabled_present": $(bool "$legacy_project_disabled")
@@ -204,6 +210,6 @@ cat > "$STATE" <<EOF
 }
 EOF
 
-printf 'health.result ts=%s overall=%s smart=%s smart_log_age=%s whale=%s whale_log_age=%s live_disabled=%s research_disabled=%s monitoring_disabled=%s legacy_project_disabled=%s\n' \
+printf 'health.result ts=%s overall=%s smart=%s smart_log_age=%s whale=%s whale_log_age=%s live_disabled=%s live_redeem_disabled=%s live_redeem_armed=%s research_disabled=%s monitoring_disabled=%s legacy_project_disabled=%s\n' \
   "$checked_at" "$overall" "$smart_reason" "$smart_log_age" "$whale_reason" "$whale_log_age" \
-  "$live_trading_disabled" "$research_disabled" "$monitoring_disabled" "$legacy_project_disabled"
+  "$live_trading_disabled" "$live_redeem_disabled" "$live_redeem_arm_present" "$research_disabled" "$monitoring_disabled" "$legacy_project_disabled"

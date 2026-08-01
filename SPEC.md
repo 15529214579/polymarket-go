@@ -70,7 +70,7 @@
 - 本地地址策略至少收集 10 个已结仓仓位：净 PnL ≤ -5U 自动加入 `wallets.paper-demoted.txt`，净 PnL ≥ +5U 且 ROI ≥ 2% 才进入 B 级 `wallets.paper-promoted.txt`；每日和每小时任务刷新后重载模拟盘。
 - 所有模式都保留日亏损熔断 + 单笔亏损 flag + feed-silence watchdog，且扣 fee 计净 PnL。
 - 运行停用按组件隔离：`db/live-trading.disabled` 在启动时和运行中阻止实盘；实盘还必须有权限 `0600`、绑定钱包且最长 24h 有效的 `db/live-trading.enabled`。守卫在每次签名前复查，单笔 BUY 默认上限 20U、单进程累计 BUY 默认上限 100U；SELL 作为减仓不受入场金额上限限制。任一检查失败会关闭当前实盘进程。`db/research.disabled` 停研究迭代，`db/monitoring.disabled` 停旧监控；模拟盘和地址迭代不受影响。
-- 自动 bot 的 Polygon 客户端固定为只读，仅查询 pUSD/条件代币余额；可赎回仓位只提醒，不自动发链上交易。wrap/approve 与 redeem 分别由显式 `trade -wrap-approve`、`trade -redeem-all` 维护动作执行，完成后立即退出且不会继续下单。
+- 自动 bot 的 Polygon 客户端固定为只读，仅查询 pUSD/条件代币余额；可赎回仓位只提醒，不在 bot 进程发链上交易。wrap/approve 与 redeem 分别由独立的 `trade -wrap-approve`、`trade -redeem-all` 维护动作执行，完成后立即退出且不会继续下单。赎回由独立 launchd 每小时检查一次，必须同时满足 `db/live/redeem.disabled` 不存在、钱包绑定的 `0600` `db/live/redeem.enabled` 有效、运行环境提供临时 `BW_SESSION`；安装任务本身不自动授权。赎回状态、锁和去重记录只写 `db/live/`，不读写模拟盘仓位、journal、PnL 或风控状态。
 
 ### 2.6 仓位（prompt 模式）
 
