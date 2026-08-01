@@ -4217,8 +4217,22 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 					if !p.Redeemable || p.CurPrice < 0.99 || p.Size < 0.01 {
 						continue
 					}
-					if redeemed[p.Asset] {
+					balanceCtx, balanceCancel := context.WithTimeout(ctx, 15*time.Second)
+					chainBalance, balanceErr := onChain.ConditionalTokenBalance(balanceCtx, p.Asset)
+					balanceCancel()
+					if balanceErr != nil {
+						slog.Warn("redeem_balance_check_failed", "asset", p.Asset, "err", balanceErr)
 						continue
+					}
+					if chainBalance.Sign() <= 0 {
+						if !redeemed[p.Asset] {
+							redeemed[p.Asset] = true
+							saveRedeemed()
+						}
+						continue
+					}
+					if redeemed[p.Asset] {
+						slog.Warn("redeem_local_state_stale", "asset", p.Asset, "onchain_balance", chainBalance.String())
 					}
 					slog.Info("redeem_candidate",
 						"title", p.Title,
@@ -4229,7 +4243,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 						"outcomeIndex", p.OutcomeIndex,
 					)
 					rCtx, rCancel := context.WithTimeout(ctx, 120*time.Second)
-					err := onChain.RedeemPosition(rCtx, p.ConditionID, p.OutcomeIndex, p.Size, p.NegativeRisk)
+					err := onChain.RedeemPosition(rCtx, p.ConditionID, p.Asset, p.OutcomeIndex, p.Size, p.NegativeRisk)
 					rCancel()
 					if err != nil {
 						slog.Error("redeem_failed", "title", p.Title, "err", err)

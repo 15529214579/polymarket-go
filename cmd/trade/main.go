@@ -420,9 +420,20 @@ func runRedeemAll(oc *order.OnChain, walletAddr string) {
 			slog.Info("redeem_skip_zero_value", "asset", p.Asset[:min(len(p.Asset), 20)], "title", p.Title[:min(len(p.Title), 40)])
 			continue
 		}
-		if redeemed[p.Asset] {
-			slog.Info("already_redeemed", "asset", p.Asset[:20], "title", p.Title[:min(len(p.Title), 40)])
+		balanceCtx, balanceCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		chainBalance, err := oc.ConditionalTokenBalance(balanceCtx, p.Asset)
+		balanceCancel()
+		if err != nil {
+			slog.Warn("redeem_balance_check_failed", "asset", p.Asset[:min(len(p.Asset), 20)], "err", err)
 			continue
+		}
+		if chainBalance.Sign() <= 0 {
+			redeemed[p.Asset] = true
+			slog.Info("redeem_skip_zero_chain_balance", "asset", p.Asset[:min(len(p.Asset), 20)], "title", p.Title[:min(len(p.Title), 40)])
+			continue
+		}
+		if redeemed[p.Asset] {
+			slog.Warn("redeem_local_state_stale", "asset", p.Asset[:min(len(p.Asset), 20)], "onchain_balance", chainBalance.String())
 		}
 		toRedeem = append(toRedeem, p)
 	}
@@ -448,7 +459,7 @@ func runRedeemAll(oc *order.OnChain, walletAddr string) {
 	redeemed_count := 0
 	for _, p := range toRedeem {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		err := oc.RedeemPosition(ctx, p.ConditionID, p.OutcomeIndex, p.Size, p.NegativeRisk)
+		err := oc.RedeemPosition(ctx, p.ConditionID, p.Asset, p.OutcomeIndex, p.Size, p.NegativeRisk)
 		cancel()
 		if err != nil {
 			slog.Error("redeem_failed", "title", p.Title[:min(len(p.Title), 40)], "err", err)
@@ -464,10 +475,12 @@ func runRedeemAll(oc *order.OnChain, walletAddr string) {
 		os.WriteFile("db/redeemed.json", out, 0644)
 	}
 
-	bal, err := oc.PUSDBalance(context.Background())
-	if err == nil {
-		f, _ := new(big.Float).Quo(new(big.Float).SetInt(bal), new(big.Float).SetFloat64(1e6)).Float64()
-		fmt.Printf("\nRedeemed %d positions. pUSD balance: $%.2f\n", redeemed_count, f)
+	usdce, usdceErr := oc.USDCeBalance(context.Background())
+	pusd, pusdErr := oc.PUSDBalance(context.Background())
+	if usdceErr == nil && pusdErr == nil {
+		usdceFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(usdce), new(big.Float).SetFloat64(1e6)).Float64()
+		pusdFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(pusd), new(big.Float).SetFloat64(1e6)).Float64()
+		fmt.Printf("\nRedeemed %d positions. USDC.e balance: $%.2f · pUSD balance: $%.2f\n", redeemed_count, usdceFloat, pusdFloat)
 	}
 }
 

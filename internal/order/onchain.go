@@ -50,6 +50,7 @@ func init() {
 		panic("order: parse erc20 abi: " + err.Error())
 	}
 	erc1155ABI, err = abi.JSON(strings.NewReader(`[
+		{"inputs":[{"name":"account","type":"address"},{"name":"id","type":"uint256"}],"name":"balanceOf","outputs":[{"name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
 		{"inputs":[{"name":"account","type":"address"},{"name":"operator","type":"address"}],"name":"isApprovedForAll","outputs":[{"name":"","type":"bool"}],"stateMutability":"view","type":"function"},
 		{"inputs":[{"name":"operator","type":"address"},{"name":"approved","type":"bool"}],"name":"setApprovalForAll","outputs":[],"stateMutability":"nonpayable","type":"function"}
 	]`))
@@ -65,7 +66,9 @@ func init() {
 	}
 
 	ctfRedeemABI, err = abi.JSON(strings.NewReader(`[
-		{"inputs":[{"name":"collateralToken","type":"address"},{"name":"parentCollectionId","type":"bytes32"},{"name":"conditionId","type":"bytes32"},{"name":"indexSets","type":"uint256[]"}],"name":"redeemPositions","outputs":[],"stateMutability":"nonpayable","type":"function"}
+		{"inputs":[{"name":"collateralToken","type":"address"},{"name":"parentCollectionId","type":"bytes32"},{"name":"conditionId","type":"bytes32"},{"name":"indexSets","type":"uint256[]"}],"name":"redeemPositions","outputs":[],"stateMutability":"nonpayable","type":"function"},
+		{"inputs":[{"name":"parentCollectionId","type":"bytes32"},{"name":"conditionId","type":"bytes32"},{"name":"indexSet","type":"uint256"}],"name":"getCollectionId","outputs":[{"name":"","type":"bytes32"}],"stateMutability":"pure","type":"function"},
+		{"inputs":[{"name":"collateralToken","type":"address"},{"name":"collectionId","type":"bytes32"}],"name":"getPositionId","outputs":[{"name":"","type":"uint256"}],"stateMutability":"pure","type":"function"}
 	]`))
 	if err != nil {
 		panic("order: parse ctf redeem abi: " + err.Error())
@@ -195,14 +198,21 @@ func (o *OnChain) ExchangeReadiness(ctx context.Context) (*ExchangeReadiness, er
 }
 
 func (o *OnChain) USDCeBalance(ctx context.Context) (*big.Int, error) {
+	return o.erc20Balance(ctx, common.HexToAddress(USDCeAddress), "USDC.e")
+}
+
+func (o *OnChain) PUSDBalance(ctx context.Context) (*big.Int, error) {
+	return o.erc20Balance(ctx, common.HexToAddress(PUSDAddress), "pUSD")
+}
+
+func (o *OnChain) erc20Balance(ctx context.Context, token common.Address, name string) (*big.Int, error) {
 	data, err := erc20ABI.Pack("balanceOf", o.address)
 	if err != nil {
 		return nil, err
 	}
-	addr := common.HexToAddress(USDCeAddress)
-	result, err := o.client.CallContract(ctx, ethereum.CallMsg{To: &addr, Data: data}, nil)
+	result, err := o.client.CallContract(ctx, ethereum.CallMsg{To: &token, Data: data}, nil)
 	if err != nil {
-		return nil, fmt.Errorf("balanceOf USDC.e: %w", err)
+		return nil, fmt.Errorf("balanceOf %s: %w", name, err)
 	}
 	out, err := erc20ABI.Unpack("balanceOf", result)
 	if err != nil {
@@ -211,17 +221,21 @@ func (o *OnChain) USDCeBalance(ctx context.Context) (*big.Int, error) {
 	return out[0].(*big.Int), nil
 }
 
-func (o *OnChain) PUSDBalance(ctx context.Context) (*big.Int, error) {
-	data, err := erc20ABI.Pack("balanceOf", o.address)
+func (o *OnChain) ConditionalTokenBalance(ctx context.Context, assetID string) (*big.Int, error) {
+	tokenID, ok := new(big.Int).SetString(assetID, 10)
+	if !ok || tokenID.Sign() < 0 {
+		return nil, fmt.Errorf("invalid conditional token ID %q", assetID)
+	}
+	data, err := erc1155ABI.Pack("balanceOf", o.address, tokenID)
 	if err != nil {
 		return nil, err
 	}
-	addr := common.HexToAddress(PUSDAddress)
-	result, err := o.client.CallContract(ctx, ethereum.CallMsg{To: &addr, Data: data}, nil)
+	ctf := common.HexToAddress(ConditionalTokensAddr)
+	result, err := o.client.CallContract(ctx, ethereum.CallMsg{To: &ctf, Data: data}, nil)
 	if err != nil {
-		return nil, fmt.Errorf("balanceOf pUSD: %w", err)
+		return nil, fmt.Errorf("conditional token balanceOf: %w", err)
 	}
-	out, err := erc20ABI.Unpack("balanceOf", result)
+	out, err := erc1155ABI.Unpack("balanceOf", result)
 	if err != nil {
 		return nil, err
 	}
@@ -440,20 +454,45 @@ func formatUSDC(raw *big.Int) string {
 	return f.Text('f', 6)
 }
 
-func (o *OnChain) RedeemPosition(ctx context.Context, conditionIDHex string, outcomeIndex int, size float64, negRisk bool) error {
-	var conditionID common.Hash
-	copy(conditionID[:], common.FromHex(conditionIDHex))
+func (o *OnChain) RedeemPosition(ctx context.Context, conditionIDHex, assetID string, outcomeIndex int, size float64, negRisk bool) error {
+	conditionBytes := common.FromHex(conditionIDHex)
+	if len(conditionBytes) != common.HashLength {
+		return fmt.Errorf("invalid condition ID %q", conditionIDHex)
+	}
+	conditionID := common.BytesToHash(conditionBytes)
+	indexSet := new(big.Int).Lsh(big.NewInt(1), uint(outcomeIndex))
+	collateral, err := o.positionCollateral(ctx, conditionID, indexSet, assetID)
+	if err != nil {
+		return err
+	}
+	tokenBefore, err := o.ConditionalTokenBalance(ctx, assetID)
+	if err != nil {
+		return err
+	}
+	if tokenBefore.Sign() <= 0 {
+		return fmt.Errorf("conditional token %s has zero on-chain balance", assetID)
+	}
+	collateralName := "pUSD"
+	if collateral == common.HexToAddress(USDCeAddress) {
+		collateralName = "USDC.e"
+	}
+	collateralBefore, err := o.erc20Balance(ctx, collateral, collateralName)
+	if err != nil {
+		return err
+	}
 
 	slog.Info("redeem_start",
 		"conditionId", conditionIDHex,
 		"outcomeIndex", outcomeIndex,
 		"size", size,
 		"negRisk", negRisk,
+		"collateral", collateralName,
 	)
 
-	indexSet := new(big.Int).Lsh(big.NewInt(1), uint(outcomeIndex))
-
 	if negRisk {
+		if collateral != common.HexToAddress(PUSDAddress) {
+			return fmt.Errorf("legacy USDC.e NegRisk redemption is not supported by the configured V2 adapter")
+		}
 		// NegRisk: first ensure CTF ERC1155 approval for NegRiskAdapter, then try adapter.
 		// If adapter fails, fall back to CTF direct redeem.
 		if err := o.ensureERC1155Approval(ctx, common.HexToAddress(ConditionalTokensAddr), common.HexToAddress(NegRiskAdapterAddr)); err != nil {
@@ -468,16 +507,16 @@ func (o *OnChain) RedeemPosition(ctx context.Context, conditionIDHex string, out
 		if err != nil {
 			return fmt.Errorf("pack neg-risk redeem: %w", err)
 		}
-		err = o.sendTx(ctx, common.HexToAddress(NegRiskAdapterAddr), data, RedeemGas)
-		if err == nil {
-			return nil
+		if err := o.sendTx(ctx, common.HexToAddress(NegRiskAdapterAddr), data, RedeemGas); err == nil {
+			return o.verifyRedemption(ctx, assetID, collateral, collateralName, tokenBefore, collateralBefore)
+		} else {
+			slog.Warn("negrisk_adapter_redeem_failed_fallback_ctf", "err", err)
 		}
-		slog.Warn("negrisk_adapter_redeem_failed_fallback_ctf", "err", err)
 	}
 
 	// CTF direct redeem (works for non-NegRisk; fallback for NegRisk)
 	data, err := ctfRedeemABI.Pack("redeemPositions",
-		common.HexToAddress(PUSDAddress),
+		collateral,
 		common.Hash{},
 		conditionID,
 		[]*big.Int{indexSet},
@@ -485,7 +524,73 @@ func (o *OnChain) RedeemPosition(ctx context.Context, conditionIDHex string, out
 	if err != nil {
 		return fmt.Errorf("pack ctf redeem: %w", err)
 	}
-	return o.sendTx(ctx, common.HexToAddress(ConditionalTokensAddr), data, RedeemGas)
+	if err := o.sendTx(ctx, common.HexToAddress(ConditionalTokensAddr), data, RedeemGas); err != nil {
+		return err
+	}
+	return o.verifyRedemption(ctx, assetID, collateral, collateralName, tokenBefore, collateralBefore)
+}
+
+func (o *OnChain) positionCollateral(ctx context.Context, conditionID common.Hash, indexSet *big.Int, assetID string) (common.Address, error) {
+	target, ok := new(big.Int).SetString(assetID, 10)
+	if !ok || target.Sign() < 0 {
+		return common.Address{}, fmt.Errorf("invalid conditional token ID %q", assetID)
+	}
+	ctf := common.HexToAddress(ConditionalTokensAddr)
+	collectionData, err := ctfRedeemABI.Pack("getCollectionId", common.Hash{}, conditionID, indexSet)
+	if err != nil {
+		return common.Address{}, err
+	}
+	collectionRaw, err := o.client.CallContract(ctx, ethereum.CallMsg{To: &ctf, Data: collectionData}, nil)
+	if err != nil {
+		return common.Address{}, fmt.Errorf("getCollectionId: %w", err)
+	}
+	collectionOut, err := ctfRedeemABI.Unpack("getCollectionId", collectionRaw)
+	if err != nil {
+		return common.Address{}, err
+	}
+	collectionID := collectionOut[0].([32]byte)
+	for _, candidate := range []common.Address{common.HexToAddress(PUSDAddress), common.HexToAddress(USDCeAddress)} {
+		positionData, err := ctfRedeemABI.Pack("getPositionId", candidate, collectionID)
+		if err != nil {
+			return common.Address{}, err
+		}
+		positionRaw, err := o.client.CallContract(ctx, ethereum.CallMsg{To: &ctf, Data: positionData}, nil)
+		if err != nil {
+			return common.Address{}, fmt.Errorf("getPositionId: %w", err)
+		}
+		positionOut, err := ctfRedeemABI.Unpack("getPositionId", positionRaw)
+		if err != nil {
+			return common.Address{}, err
+		}
+		if positionOut[0].(*big.Int).Cmp(target) == 0 {
+			return candidate, nil
+		}
+	}
+	return common.Address{}, fmt.Errorf("conditional token %s does not match pUSD or USDC.e collateral", assetID)
+}
+
+func (o *OnChain) verifyRedemption(ctx context.Context, assetID string, collateral common.Address, collateralName string, tokenBefore, collateralBefore *big.Int) error {
+	tokenAfter, err := o.ConditionalTokenBalance(ctx, assetID)
+	if err != nil {
+		return fmt.Errorf("verify conditional token balance: %w", err)
+	}
+	collateralAfter, err := o.erc20Balance(ctx, collateral, collateralName)
+	if err != nil {
+		return fmt.Errorf("verify collateral balance: %w", err)
+	}
+	if tokenAfter.Cmp(tokenBefore) >= 0 {
+		return fmt.Errorf("redemption confirmed but conditional token balance did not decrease")
+	}
+	if collateralAfter.Cmp(collateralBefore) <= 0 {
+		return fmt.Errorf("redemption confirmed but %s balance did not increase", collateralName)
+	}
+	slog.Info("redeem_verified",
+		"asset", assetID,
+		"token_burned", new(big.Int).Sub(tokenBefore, tokenAfter).String(),
+		"collateral", collateralName,
+		"collateral_received", new(big.Int).Sub(collateralAfter, collateralBefore).String(),
+	)
+	return nil
 }
 
 func (o *OnChain) ensureERC1155Approval(ctx context.Context, tokenContract, operator common.Address) error {
