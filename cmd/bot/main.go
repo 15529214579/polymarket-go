@@ -606,17 +606,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 	copytradeForWallet := func(wallet string) float64 {
 		tier := walletTiers[strings.ToLower(wallet)]
 		meta := walletMetas[strings.ToLower(wallet)]
-		if meta.FollowAction == "auto-small" && meta.SmartMoneyScore >= 80 {
-			return 20.0
-		}
-		switch tier {
-		case "A":
-			return 10.0
-		case "B":
-			return 5.0
-		default:
-			return copytradeSize
-		}
+		return copytradeWalletSize(copytradeSize, liveTrading, tier, meta.FollowAction, meta.SmartMoneyScore)
 	}
 
 	// hold & ladder both want the settlement watcher on — hold as primary,
@@ -5487,6 +5477,23 @@ func copytradeMarketSize(base float64, footballScore, allowFootballScore bool, s
 		return base
 	}
 	return scoreCap
+}
+
+func copytradeWalletSize(configured float64, live bool, tier, followAction string, smartMoneyScore float64) float64 {
+	if !live && configured > 0 {
+		return configured
+	}
+	if followAction == "auto-small" && smartMoneyScore >= 80 {
+		return 20
+	}
+	switch tier {
+	case "A":
+		return 10
+	case "B":
+		return 5
+	default:
+		return configured
+	}
 }
 
 func targetFollowMarketDecision(q, slug string) (bool, string) {

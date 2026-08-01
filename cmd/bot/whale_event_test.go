@@ -164,11 +164,38 @@ func TestCopytradeFootballScorePriceAndSize(t *testing.T) {
 	if got := copytradeEntryPriceFloor(true, false); got != 0.05 {
 		t.Fatalf("disabled score price floor=%v, want 0.05", got)
 	}
-	if got := copytradeMarketSize(20, true, true, 5); got != 5 {
-		t.Fatalf("score size=%v, want 5", got)
+	if got := copytradeMarketSize(20, true, true, 20); got != 20 {
+		t.Fatalf("score size=%v, want 20", got)
 	}
 	if got := copytradeMarketSize(10, false, true, 5); got != 10 {
 		t.Fatalf("moneyline size=%v, want 10", got)
+	}
+}
+
+func TestCopytradeWalletSize_PaperUsesConfiguredFixedSize(t *testing.T) {
+	for _, tc := range []struct {
+		tier, action string
+		score        float64
+	}{
+		{tier: "A"},
+		{tier: "B"},
+		{tier: "A", action: "auto-small", score: 95},
+	} {
+		if got := copytradeWalletSize(20, false, tc.tier, tc.action, tc.score); got != 20 {
+			t.Fatalf("tier=%s action=%s size=%v, want 20", tc.tier, tc.action, got)
+		}
+	}
+}
+
+func TestCopytradeWalletSize_LiveKeepsTierSizing(t *testing.T) {
+	if got := copytradeWalletSize(20, true, "A", "", 0); got != 10 {
+		t.Fatalf("live tier A size=%v, want 10", got)
+	}
+	if got := copytradeWalletSize(20, true, "B", "", 0); got != 5 {
+		t.Fatalf("live tier B size=%v, want 5", got)
+	}
+	if got := copytradeWalletSize(20, true, "A", "auto-small", 90); got != 20 {
+		t.Fatalf("live auto-small size=%v, want 20", got)
 	}
 }
 
