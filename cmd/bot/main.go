@@ -3528,12 +3528,9 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 								slog.Warn("paper_timeout_price_unavailable", "pos", p.ID, "asset", short(p.AssetID), "market", short(p.Market))
 								continue
 							}
-							timeoutPrice := tail[0].BestBid
-							if timeoutPrice <= 0 {
-								timeoutPrice = tail[0].Mid
-							}
-							if timeoutPrice <= 0 || timeoutPrice >= 1 {
-								slog.Warn("paper_timeout_price_invalid", "pos", p.ID, "asset", short(p.AssetID), "price", timeoutPrice)
+							timeoutPrice, priceOK := paperTimeoutExitPrice(tail[0])
+							if !priceOK {
+								slog.Warn("paper_timeout_best_bid_unavailable", "pos", p.ID, "asset", short(p.AssetID), "mid", tail[0].Mid)
 								continue
 							}
 							res, serr := orderClient.Submit(ctx, order.Intent{
@@ -3663,16 +3660,28 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 					}
 					exitMid := settleMid
 					exitFee := 0.0
+					executableBid := 0.0
 					orderID := fmt.Sprintf("settle-%s", short(p.AssetID))
 					tranche := "settle"
 					if reason == strategy.ExitTimeout {
+						tail, tickOK := sampler.TickTail(p.AssetID, 1)
+						if !tickOK || len(tail) == 0 {
+							slog.Warn("paper_timeout_price_unavailable", "pos", p.ID, "asset", short(p.AssetID), "market", short(p.Market))
+							continue
+						}
+						var priceOK bool
+						executableBid, priceOK = paperTimeoutExitPrice(tail[0])
+						if !priceOK {
+							slog.Warn("paper_timeout_best_bid_unavailable", "pos", p.ID, "asset", short(p.AssetID), "mid", tail[0].Mid)
+							continue
+						}
 						res, serr := orderClient.Submit(ctx, order.Intent{
 							AssetID:              p.AssetID,
 							Market:               p.Market,
 							Side:                 order.Sell,
-							SizeUSD:              p.Units * settleMid,
+							SizeUSD:              p.Units * executableBid,
 							SizeShares:           p.Units,
-							LimitPx:              settleMid,
+							LimitPx:              executableBid,
 							Type:                 order.GTC,
 							TakerFeeRateOverride: marketFeeRateOverride(p.Market),
 						})
@@ -3784,6 +3793,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 						"outcome", paperPositionOutcome(p, m, slotIdx, meta[p.AssetID]),
 						"entry", p.EntryMid,
 						"market_mid", settleMid,
+						"executable_bid", executableBid,
 						"exit_fill", exitMid,
 						"gross_pnl_usd", closed.PnLUSD,
 						"entry_fee_usd", entryFeeShare,
@@ -5869,6 +5879,13 @@ func copytradeEntryPriceFloor(footballScore, allowFootballScore bool) float64 {
 		return footballScoreMinEntryPrice
 	}
 	return followMinEntryPrice
+}
+
+func paperTimeoutExitPrice(tick feed.Tick) (float64, bool) {
+	if tick.BestBid <= 0 || tick.BestBid >= 1 {
+		return 0, false
+	}
+	return tick.BestBid, true
 }
 
 func copytradeMarketSize(base float64, footballScore, allowFootballScore bool, scoreCap float64) float64 {

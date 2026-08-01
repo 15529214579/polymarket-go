@@ -53,6 +53,7 @@
   - 相比老方案 (+30%/+60%/余量 hold) 更激进：拉早 TP1、补足 TP2 清仓、加硬止损、加超时，不保留 hold tail
   - SL 收紧依据：Phase 7.d sweep 显示 SL 是主导杠杆——python pool 中 baseline -30.41 → SL=5% 的 -0.23（top 10 全部 SL=5%）。TP 阈值在 5%~100% 之间只差 7 个点。
 - **成本建模** — `-slippage_bp` 对买卖两边施加不利滑点；动态平台费按 `shares × rate × price × (1-price)` 计算，优先读取 CLOB `/clob-markets/{condition_id}` 的逐市场 `fd.r`，`-taker_fee_rate` 仅作接口失败时的回退；`-fee_bp` 保留给额外固定 builder fee。paper 双边计费写 journal，净 PnL = 毛 PnL − entry_fee − exit_fee。智能钱体育模拟盘默认每边 50bp 滑点、回退费率 0.05。
+- **可成交退出价** — 未结算市场的 timeout 只允许使用订单簿最新 Best Bid，再由 paper client 施加卖出滑点和费率；Best Bid 缺失时延后退出并记录日志，禁止使用 Gamma outcome/mid 代替成交价。
 - ~~**Phase 7.c 长尾市场**~~ — 老板 04-20 21:42 拍板**不做**：周期太长不适合 90 USDC 资金体量。
 - **历史回放** — 把 python trades 的 entry_price × market_id 灌进 Go backtester 验 ladder_TP 期望曲线，Phase 7.d。
 - **逐仓路径** — copytrade/重启恢复仓位会动态加入 WebSocket 标的订阅并记录 1Hz tick；每次 Start 创建独立文件，禁止跨重启向旧 `pN.jsonl` 追加。回测器拒绝混有多个 asset 的旧污染文件，并按真实时间戳计算 timeout。
