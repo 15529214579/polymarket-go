@@ -67,6 +67,32 @@ func TestPaperDynamicTakerFee(t *testing.T) {
 	}
 }
 
+func TestPaperDynamicTakerFeeMarketOverride(t *testing.T) {
+	p := NewPaperClientWithFeeModel(0, 0, 0.05)
+	rate := 0.03
+	r, err := p.Submit(context.Background(), Intent{
+		AssetID: "a", Market: "m", Side: Buy, SizeUSD: 10, LimitPx: 0.50,
+		TakerFeeRateOverride: &rate,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if math.Abs(r.FeeUSD-0.15) > 1e-9 {
+		t.Fatalf("fee: want 0.15 got %v", r.FeeUSD)
+	}
+	zero := 0.0
+	r, err = p.Submit(context.Background(), Intent{
+		AssetID: "a", Market: "m", Side: Sell, SizeUSD: 10, LimitPx: 0.50,
+		TakerFeeRateOverride: &zero,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.FeeUSD != 0 {
+		t.Fatalf("zero-fee override got %v", r.FeeUSD)
+	}
+}
+
 func TestPaperSellFeeUsesExactShares(t *testing.T) {
 	p := NewPaperClientWithFeeModel(100, 0, 0.05)
 	r, err := p.Submit(context.Background(), Intent{

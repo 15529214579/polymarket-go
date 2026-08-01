@@ -19,6 +19,9 @@ type PositionStatus string
 const (
 	PosOpen   PositionStatus = "open"
 	PosClosed PositionStatus = "closed"
+
+	HoldProfileShort = "short"
+	HoldProfileEvent = "event"
 )
 
 // Position represents a single paper (and eventually real) position.
@@ -47,12 +50,15 @@ type Position struct {
 	ExitReason         ExitReason
 	PnLUSD             float64
 	Status             PositionStatus
-	Question           string `json:",omitempty"`
-	Outcome            string `json:",omitempty"`
-	Source             string `json:",omitempty"`
-	WalletLabel        string `json:",omitempty"`
-	SignalSource       string `json:",omitempty"`
-	OpenOrderID        string `json:",omitempty"`
+	Question           string    `json:",omitempty"`
+	Outcome            string    `json:",omitempty"`
+	Source             string    `json:",omitempty"`
+	WalletLabel        string    `json:",omitempty"`
+	SignalSource       string    `json:",omitempty"`
+	OpenOrderID        string    `json:",omitempty"`
+	HoldProfile        string    `json:",omitempty"`
+	EventStart         time.Time `json:",omitempty"`
+	ExitDeadline       time.Time `json:",omitempty"`
 }
 
 // PositionConfig drives sizing + exposure caps. SPEC §2 / §6.
@@ -230,6 +236,51 @@ func (pm *PositionManager) SetOpenAttribution(posID, source, openOrderID string)
 	return nil
 }
 
+// ConfigureOpenHold persists the timeout policy for a filled position. A
+// pre-event sports position is held until EventStart + eventPostStartHold;
+// other positions retain the ordinary EntryTime + maxHold deadline.
+func (pm *PositionManager) ConfigureOpenHold(posID string, eventStart time.Time, maxHold, eventPostStartHold time.Duration) (Position, error) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	p, ok := pm.open[posID]
+	if !ok {
+		return Position{}, ErrPositionNotFound
+	}
+	p.HoldProfile, p.ExitDeadline = PlannedHold(p.EntryTime, eventStart, maxHold, eventPostStartHold)
+	if p.HoldProfile == HoldProfileEvent {
+		p.EventStart = eventStart
+	} else {
+		p.EventStart = time.Time{}
+	}
+	return *p, nil
+}
+
+// PlannedHold returns a durable timeout plan. Event positioning only applies
+// when the event starts after entry and extends the ordinary short deadline.
+func PlannedHold(entryTime, eventStart time.Time, maxHold, eventPostStartHold time.Duration) (string, time.Time) {
+	if maxHold <= 0 || entryTime.IsZero() {
+		return HoldProfileShort, time.Time{}
+	}
+	deadline := entryTime.Add(maxHold)
+	if eventStart.After(entryTime) {
+		eventDeadline := eventStart.Add(eventPostStartHold)
+		if eventDeadline.After(deadline) {
+			return HoldProfileEvent, eventDeadline
+		}
+	}
+	return HoldProfileShort, deadline
+}
+
+// PositionTimeoutDue supports legacy snapshots without ExitDeadline while
+// using the persisted deadline for newly opened event-aware positions.
+func PositionTimeoutDue(p Position, now time.Time, maxHold time.Duration) bool {
+	deadline := p.ExitDeadline
+	if deadline.IsZero() && maxHold > 0 && !p.EntryTime.IsZero() {
+		deadline = p.EntryTime.Add(maxHold)
+	}
+	return !deadline.IsZero() && !now.Before(deadline)
+}
+
 // ApplyOpenFill replaces the provisional signal price and size with the
 // actual fill after the order succeeds.
 func (pm *PositionManager) ApplyOpenFill(posID string, fillPrice, filledUnits float64, filledAt time.Time) error {
@@ -324,6 +375,9 @@ func (pm *PositionManager) PartialClose(posID string, closeUnits float64, exit E
 		WalletLabel:  p.WalletLabel,
 		SignalSource: p.SignalSource,
 		OpenOrderID:  p.OpenOrderID,
+		HoldProfile:  p.HoldProfile,
+		EventStart:   p.EventStart,
+		ExitDeadline: p.ExitDeadline,
 	}
 	tranche.NetPnLUSD = tranche.PnLUSD - tranche.EntryFeeUSD - tranche.ExitFeeUSD
 	p.EntryFeeChargedUSD += tranche.EntryFeeUSD

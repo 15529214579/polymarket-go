@@ -23,12 +23,11 @@ import (
 )
 
 const (
-	wssURL         = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
-	pingInterval   = 10 * time.Second
-	readIdleLimit  = 45 * time.Second
-	backoffMin     = 1 * time.Second
-	backoffMax     = 30 * time.Second
-	maxAssetsBatch = 500
+	wssURL        = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
+	pingInterval  = 10 * time.Second
+	readIdleLimit = 45 * time.Second
+	backoffMin    = 1 * time.Second
+	backoffMax    = 30 * time.Second
 )
 
 // Level is one side of the order book.
@@ -64,6 +63,9 @@ type WSSClient struct {
 	books    chan BookEvent
 	trades   chan TradeEvent
 
+	subMu  sync.Mutex
+	writer jsonWriter
+
 	// lastEventNs is a unix-nano stamp of the most recent book/trade we
 	// decoded. Read by the risk feed-silence watchdog (SPEC §6).
 	lastEventNs atomic.Int64
@@ -78,6 +80,10 @@ type WSSClient struct {
 	orderbks map[string]*bookState // per-assetID local reconstruction
 }
 
+type jsonWriter interface {
+	WriteJSON(v any) error
+}
+
 type bookState struct {
 	market string
 	bids   map[string]float64 // price→size
@@ -87,11 +93,20 @@ type bookState struct {
 
 // NewWSSClient returns a client that will subscribe to assetIDs on Run.
 func NewWSSClient(assetIDs []string) *WSSClient {
-	if len(assetIDs) > maxAssetsBatch {
-		assetIDs = assetIDs[:maxAssetsBatch]
+	seen := make(map[string]struct{}, len(assetIDs))
+	unique := make([]string, 0, len(assetIDs))
+	for _, assetID := range assetIDs {
+		if assetID == "" {
+			continue
+		}
+		if _, ok := seen[assetID]; ok {
+			continue
+		}
+		seen[assetID] = struct{}{}
+		unique = append(unique, assetID)
 	}
 	return &WSSClient{
-		assetIDs: assetIDs,
+		assetIDs: unique,
 		books:    make(chan BookEvent, 256),
 		trades:   make(chan TradeEvent, 256),
 		orderbks: make(map[string]*bookState),
@@ -119,9 +134,54 @@ func (w *WSSClient) LastEventAt() time.Time {
 // (which is always followed by backoff + redial).
 func (w *WSSClient) Connected() bool { return w.connected.Load() }
 
+// SubscribeAssets adds token IDs to the durable subscription set. If the
+// socket is live, the server is updated without reconnecting; otherwise the
+// next connection includes the new IDs in its initial subscription.
+func (w *WSSClient) SubscribeAssets(assetIDs ...string) (int, error) {
+	w.subMu.Lock()
+	defer w.subMu.Unlock()
+
+	seen := make(map[string]struct{}, len(w.assetIDs)+len(assetIDs))
+	for _, assetID := range w.assetIDs {
+		seen[assetID] = struct{}{}
+	}
+	added := make([]string, 0, len(assetIDs))
+	for _, assetID := range assetIDs {
+		if assetID == "" {
+			continue
+		}
+		if _, ok := seen[assetID]; ok {
+			continue
+		}
+		seen[assetID] = struct{}{}
+		w.assetIDs = append(w.assetIDs, assetID)
+		added = append(added, assetID)
+	}
+	if len(added) == 0 || w.writer == nil {
+		return len(added), nil
+	}
+	msg := map[string]any{
+		"assets_ids":             added,
+		"operation":              "subscribe",
+		"custom_feature_enabled": true,
+	}
+	if err := w.writer.WriteJSON(msg); err != nil {
+		return len(added), fmt.Errorf("dynamic subscribe: %w", err)
+	}
+	return len(added), nil
+}
+
+func (w *WSSClient) subscribedAssets() []string {
+	w.subMu.Lock()
+	defer w.subMu.Unlock()
+	out := make([]string, len(w.assetIDs))
+	copy(out, w.assetIDs)
+	return out
+}
+
 // Run blocks until ctx is canceled. Reconnects on error.
 func (w *WSSClient) Run(ctx context.Context) error {
-	if len(w.assetIDs) == 0 {
+	if len(w.subscribedAssets()) == 0 {
 		return errors.New("wss: no assetIDs")
 	}
 	backoff := backoffMin
@@ -167,15 +227,29 @@ func (w *WSSClient) runOnce(ctx context.Context) error {
 		return fmt.Errorf("dial: %w", err)
 	}
 	defer conn.Close()
-	slog.Info("wss: connected", "n_assets", len(w.assetIDs))
 
+	w.subMu.Lock()
+	assets := make([]string, len(w.assetIDs))
+	copy(assets, w.assetIDs)
 	sub := map[string]any{
-		"assets_ids": w.assetIDs,
-		"type":       "market",
+		"assets_ids":             assets,
+		"type":                   "market",
+		"custom_feature_enabled": true,
 	}
 	if err := conn.WriteJSON(sub); err != nil {
+		w.subMu.Unlock()
 		return fmt.Errorf("subscribe: %w", err)
 	}
+	w.writer = conn
+	w.subMu.Unlock()
+	defer func() {
+		w.subMu.Lock()
+		if w.writer == conn {
+			w.writer = nil
+		}
+		w.subMu.Unlock()
+	}()
+	slog.Info("wss: connected", "n_assets", len(assets))
 	w.connected.Store(true)
 	defer w.connected.Store(false)
 

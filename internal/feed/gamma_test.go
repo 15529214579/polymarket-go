@@ -3,12 +3,20 @@ package feed
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
 
 func TestIsLoLMarket(t *testing.T) {
 	cases := []struct {
@@ -495,5 +503,44 @@ func TestGetByClobTokenIDs(t *testing.T) {
 	}
 	if got[0].ConditionID != "0xabc" {
 		t.Fatalf("first condition=%q, want 0xabc", got[0].ConditionID)
+	}
+}
+
+func TestMarketEventStartTime(t *testing.T) {
+	direct := Market{GameStartTime: "2026-08-02T12:30:00Z"}
+	if got := direct.EventStartTime(); got.Format(time.RFC3339) != "2026-08-02T12:30:00Z" {
+		t.Fatalf("direct game start=%v", got)
+	}
+	event := Market{Events: []MarketEvent{{StartTime: "2026-08-03T09:15:00.123Z"}}}
+	if got := event.EventStartTime(); got.Format(time.RFC3339Nano) != "2026-08-03T09:15:00.123Z" {
+		t.Fatalf("event game start=%v", got)
+	}
+}
+
+func TestGetCLOBEventStart(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path != "/clob-markets/0xabc" {
+			t.Fatalf("path=%q", r.URL.Path)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"gst":"2026-08-04T11:00:00Z","fd":{"r":0.03}}`)),
+			Header:     make(http.Header),
+		}, nil
+	})}
+	c := &GammaClient{http: client, clobBase: "https://clob.test"}
+	got, err := c.GetCLOBEventStart(context.Background(), "0xabc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Format(time.RFC3339) != "2026-08-04T11:00:00Z" {
+		t.Fatalf("game start=%v", got)
+	}
+	info, err := c.GetCLOBMarketInfo(context.Background(), "0xabc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.FeeRateKnown || info.TakerFeeRate != 0.03 {
+		t.Fatalf("fee info=%+v", info)
 	}
 }

@@ -42,15 +42,16 @@ const (
 // Intent is the minimum the strategy layer owns. The signer/client turns this
 // into a V2-shaped Order before submission.
 type Intent struct {
-	AssetID    string // ERC1155 token id
-	Market     string // conditionID (for dedupe + logs)
-	Side       Side
-	SizeUSD    float64 // notional; units = SizeUSD / Price when SizeShares is zero
-	SizeShares float64 // optional exact share quantity, primarily for paper SELL fees
-	LimitPx    float64 // 0..1 probability
-	Type       OrderType
-	Deadline   time.Time // for GTD; zero for GTC
-	NegRisk    bool      // true for NegRisk markets (different exchange address)
+	AssetID              string // ERC1155 token id
+	Market               string // conditionID (for dedupe + logs)
+	Side                 Side
+	SizeUSD              float64 // notional; units = SizeUSD / Price when SizeShares is zero
+	SizeShares           float64 // optional exact share quantity, primarily for paper SELL fees
+	LimitPx              float64 // 0..1 probability
+	Type                 OrderType
+	Deadline             time.Time // for GTD; zero for GTC
+	NegRisk              bool      // true for NegRisk markets (different exchange address)
+	TakerFeeRateOverride *float64  // paper only; nil uses the client's fallback rate
 }
 
 // Result is what Submit returns — unified for paper + real.

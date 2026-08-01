@@ -66,6 +66,7 @@ type ladderState struct {
 	AssetID   string
 	Market    string
 	EntryTime time.Time
+	Deadline  time.Time
 	EntryMid  float64
 	InitUnits float64
 	RemUnits  float64
@@ -87,6 +88,12 @@ func NewLadderTracker(cfg LadderConfig) *LadderTracker {
 
 // Open registers a new position. No-op if posID is already tracked.
 func (l *LadderTracker) Open(posID, market, assetID string, entry feed.Tick, initUnits float64) {
+	l.OpenWithDeadline(posID, market, assetID, entry, initUnits, time.Time{})
+}
+
+// OpenWithDeadline registers a position with a persisted timeout deadline.
+// A zero deadline preserves the legacy EntryTime + MaxHold behavior.
+func (l *LadderTracker) OpenWithDeadline(posID, market, assetID string, entry feed.Tick, initUnits float64, deadline time.Time) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if _, exists := l.states[posID]; exists {
@@ -97,6 +104,7 @@ func (l *LadderTracker) Open(posID, market, assetID string, entry feed.Tick, ini
 		AssetID:   assetID,
 		Market:    market,
 		EntryTime: entry.Time,
+		Deadline:  deadline,
 		EntryMid:  entry.Mid,
 		InitUnits: initUnits,
 		RemUnits:  initUnits,
@@ -141,7 +149,11 @@ func (l *LadderTracker) OnTick(posID string, t feed.Tick) (LadderExit, bool) {
 	if mid <= slPx {
 		return l.emitLocked(st, t, st.RemUnits, "sl", ExitLadderSL, heldFor), true
 	}
-	if heldFor >= l.cfg.MaxHold {
+	timeoutDue := !st.Deadline.IsZero() && !t.Time.Before(st.Deadline)
+	if st.Deadline.IsZero() {
+		timeoutDue = heldFor >= l.cfg.MaxHold
+	}
+	if timeoutDue {
 		return l.emitLocked(st, t, st.RemUnits, "timeout", ExitLadderTimeout, heldFor), true
 	}
 	if st.TP1Done && mid >= tp2Px {

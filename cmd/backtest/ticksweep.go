@@ -13,15 +13,17 @@ import (
 )
 
 type tickRow struct {
-	PosID string    `json:"pos_id"`
-	Time  time.Time `json:"t"`
-	Mid   float64   `json:"mid"`
+	PosID   string    `json:"pos_id"`
+	AssetID string    `json:"asset_id"`
+	Time    time.Time `json:"t"`
+	Mid     float64   `json:"mid"`
 }
 
 type posPath struct {
 	PosID    string
 	EntryMid float64
 	Ticks    []float64 // mid prices at 1Hz
+	Times    []time.Time
 	Duration time.Duration
 	Journal  *journalTrade // nil if not matched
 }
@@ -88,6 +90,8 @@ func loadTickPaths(tickDir string) ([]posPath, error) {
 			continue
 		}
 		var ticks []tickRow
+		assetID := ""
+		contaminated := false
 		sc := bufio.NewScanner(f)
 		sc.Buffer(make([]byte, 1024*1024), 1024*1024)
 		for sc.Scan() {
@@ -96,24 +100,35 @@ func loadTickPaths(tickDir string) ([]posPath, error) {
 				continue
 			}
 			if row.Mid > 0 {
+				if row.PosID != "" {
+					posID = row.PosID
+				}
+				if assetID == "" {
+					assetID = row.AssetID
+				} else if row.AssetID != "" && row.AssetID != assetID {
+					contaminated = true
+				}
 				ticks = append(ticks, row)
 			}
 		}
 		f.Close()
 
-		if len(ticks) < 2 {
+		if len(ticks) < 2 || contaminated {
 			continue
 		}
 
 		mids := make([]float64, len(ticks))
+		times := make([]time.Time, len(ticks))
 		for i, t := range ticks {
 			mids[i] = t.Mid
+			times[i] = t.Time
 		}
 		dur := ticks[len(ticks)-1].Time.Sub(ticks[0].Time)
 		paths = append(paths, posPath{
 			PosID:    posID,
 			EntryMid: mids[0],
 			Ticks:    mids,
+			Times:    times,
 			Duration: dur,
 		})
 	}
@@ -128,7 +143,7 @@ func loadJournalTrades(journalDir string) ([]journalTrade, error) {
 	}
 	var trades []journalTrade
 	for _, e := range entries {
-		if !strings.HasSuffix(e.Name(), ".jsonl") {
+		if !strings.HasPrefix(e.Name(), "trades-") || !strings.HasSuffix(e.Name(), ".jsonl") {
 			continue
 		}
 		f, err := os.Open(filepath.Join(journalDir, e.Name()))
@@ -161,24 +176,32 @@ func replayPath(p posPath, tpPct, slPct float64, timeoutSec int, feeBP float64) 
 	for i := 1; i < len(p.Ticks); i++ {
 		mid := p.Ticks[i]
 		ret := (mid - entry) / entry
+		holdSec := i
+		if len(p.Times) == len(p.Ticks) && !p.Times[0].IsZero() && !p.Times[i].IsZero() {
+			holdSec = max(0, int(p.Times[i].Sub(p.Times[0]).Seconds()))
+		}
 
-		if timeoutSec > 0 && i >= timeoutSec {
+		if timeoutSec > 0 && holdSec >= timeoutSec {
 			pnlVal := ret - fee
-			return pnlVal * entry * 5 / entry, "timeout", i // normalize to $5 position
+			return pnlVal * entry * 5 / entry, "timeout", holdSec // normalize to $5 position
 		}
 		if tp > 0 && ret >= tp {
 			pnlVal := tp - fee
-			return pnlVal * 5, "tp", i
+			return pnlVal * 5, "tp", holdSec
 		}
 		if sl > 0 && ret <= -sl {
 			pnlVal := -sl - fee
-			return pnlVal * 5, "sl", i
+			return pnlVal * 5, "sl", holdSec
 		}
 	}
 	// path ended (position closed by other means or data ends)
 	lastRet := (p.Ticks[len(p.Ticks)-1] - entry) / entry
 	pnlVal := lastRet - fee
-	return pnlVal * 5, "natural", len(p.Ticks) - 1
+	holdSec = len(p.Ticks) - 1
+	if p.Duration > 0 {
+		holdSec = int(p.Duration.Seconds())
+	}
+	return pnlVal * 5, "natural", holdSec
 }
 
 func sweepTickPaths(paths []posPath, tpPct, slPct float64, timeoutSec int, feeBP float64) tsResult {
@@ -276,7 +299,10 @@ func runTickPathSweep(tickDir, journalDir string, feeBP float64) error {
 	// journal actual performance
 	if len(journal) > 0 {
 		fmt.Printf("\n── journal 真实出场（%d trades）──\n", len(journal))
-		reasons := map[string]struct{ n int; pnl float64 }{}
+		reasons := map[string]struct {
+			n   int
+			pnl float64
+		}{}
 		for _, t := range journal {
 			r := reasons[t.ExitReason]
 			r.n++
@@ -449,4 +475,3 @@ func printTSRowLine(r tsResult) {
 		r.TPPct, r.SLPct, r.N, r.TPHit, r.SLHit, r.Timeout_, r.Natural,
 		r.SumPnL, r.avgPnL(), r.winRate(), r.MaxDD, r.AvgHold)
 }
-

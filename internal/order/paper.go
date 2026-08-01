@@ -67,7 +67,11 @@ func (p *PaperClient) Submit(ctx context.Context, in Intent) (Result, error) {
 	}
 	notional := units * px
 	flatFee := notional * p.feeBp / 10_000
-	platformFee := units * p.takerFeeRate * px * (1 - px)
+	takerFeeRate := p.takerFeeRate
+	if in.TakerFeeRateOverride != nil {
+		takerFeeRate = *in.TakerFeeRateOverride
+	}
+	platformFee := units * takerFeeRate * px * (1 - px)
 	if platformFee > 0 {
 		platformFee = math.Round(platformFee*100_000) / 100_000
 	}
@@ -111,6 +115,9 @@ func validate(in Intent) error {
 	}
 	if in.LimitPx <= 0 || in.LimitPx >= 1 {
 		return fmt.Errorf("LimitPx %v out of (0,1)", in.LimitPx)
+	}
+	if in.TakerFeeRateOverride != nil && (*in.TakerFeeRateOverride < 0 || *in.TakerFeeRateOverride > 1) {
+		return fmt.Errorf("TakerFeeRateOverride %v out of [0,1]", *in.TakerFeeRateOverride)
 	}
 	return nil
 }

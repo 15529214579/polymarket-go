@@ -14,41 +14,140 @@ import (
 	"time"
 )
 
-const gammaBase = "https://gamma-api.polymarket.com"
+const (
+	gammaBase = "https://gamma-api.polymarket.com"
+	clobBase  = "https://clob.polymarket.com"
+)
 
 type GammaClient struct {
-	http *http.Client
-	base string
+	http     *http.Client
+	base     string
+	clobBase string
 }
 
 func NewGammaClient() *GammaClient {
 	return &GammaClient{
-		http: &http.Client{Timeout: 15 * time.Second},
-		base: gammaBase,
+		http:     &http.Client{Timeout: 15 * time.Second},
+		base:     gammaBase,
+		clobBase: clobBase,
 	}
 }
 
+type MarketEvent struct {
+	StartTime string `json:"startTime"`
+}
+
 type Market struct {
-	ID               string  `json:"id"`
-	ConditionID      string  `json:"conditionId"`
-	Slug             string  `json:"slug"`
-	Question         string  `json:"question"`
-	Category         string  `json:"category"`
-	Active           bool    `json:"active"`
-	Closed           bool    `json:"closed"`
-	AcceptingOrders  bool    `json:"acceptingOrders"`
-	EndDate          string  `json:"endDate"`
-	Volume24hr       float64 `json:"volume24hr"`
-	LiquidityClob    float64 `json:"liquidityClob"`
-	ClobTokenIDsRaw  string  `json:"clobTokenIds"`
-	OutcomePricesRaw string  `json:"outcomePrices"`
-	OutcomesRaw      string  `json:"outcomes"`
-	NegRisk          bool    `json:"negRisk"`
+	ID               string        `json:"id"`
+	ConditionID      string        `json:"conditionId"`
+	Slug             string        `json:"slug"`
+	Question         string        `json:"question"`
+	Category         string        `json:"category"`
+	Active           bool          `json:"active"`
+	Closed           bool          `json:"closed"`
+	AcceptingOrders  bool          `json:"acceptingOrders"`
+	EndDate          string        `json:"endDate"`
+	GameStartTime    string        `json:"gameStartTime"`
+	Volume24hr       float64       `json:"volume24hr"`
+	LiquidityClob    float64       `json:"liquidityClob"`
+	ClobTokenIDsRaw  string        `json:"clobTokenIds"`
+	OutcomePricesRaw string        `json:"outcomePrices"`
+	OutcomesRaw      string        `json:"outcomes"`
+	NegRisk          bool          `json:"negRisk"`
+	Events           []MarketEvent `json:"events"`
 }
 
 func (m Market) ClobTokenIDs() []string  { return parseStringArray(m.ClobTokenIDsRaw) }
 func (m Market) Outcomes() []string      { return parseStringArray(m.OutcomesRaw) }
 func (m Market) OutcomePrices() []string { return parseStringArray(m.OutcomePricesRaw) }
+
+// EventStartTime returns the scheduled event start exposed by Gamma. Sports
+// markets usually carry it on the event; some feeds also expose it directly.
+func (m Market) EventStartTime() time.Time {
+	if t := parseMarketTime(m.GameStartTime); !t.IsZero() {
+		return t
+	}
+	for _, event := range m.Events {
+		if t := parseMarketTime(event.StartTime); !t.IsZero() {
+			return t
+		}
+	}
+	return time.Time{}
+}
+
+type CLOBMarketInfo struct {
+	GameStart    time.Time
+	TakerFeeRate float64
+	FeeRateKnown bool
+}
+
+// GetCLOBMarketInfo reads the authoritative game start and fee curve used by
+// CLOB. Both values are market-specific and may legitimately be zero.
+func (c *GammaClient) GetCLOBMarketInfo(ctx context.Context, conditionID string) (CLOBMarketInfo, error) {
+	if strings.TrimSpace(conditionID) == "" {
+		return CLOBMarketInfo{}, fmt.Errorf("empty condition id")
+	}
+	base := c.clobBase
+	if base == "" {
+		base = clobBase
+	}
+	req, err := http.NewRequestWithContext(ctx, "GET", base+"/clob-markets/"+url.PathEscape(conditionID), nil)
+	if err != nil {
+		return CLOBMarketInfo{}, err
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return CLOBMarketInfo{}, fmt.Errorf("clob market info GET: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return CLOBMarketInfo{}, err
+	}
+	if resp.StatusCode >= 400 {
+		return CLOBMarketInfo{}, fmt.Errorf("clob market info %d: %s", resp.StatusCode, truncate(string(body), 200))
+	}
+	var info struct {
+		GameStart  string `json:"gst"`
+		FeeDetails *struct {
+			Rate float64 `json:"r"`
+		} `json:"fd"`
+	}
+	if err := json.Unmarshal(body, &info); err != nil {
+		return CLOBMarketInfo{}, fmt.Errorf("clob market info decode: %w", err)
+	}
+	out := CLOBMarketInfo{GameStart: parseMarketTime(info.GameStart)}
+	if info.FeeDetails != nil {
+		out.TakerFeeRate = info.FeeDetails.Rate
+		out.FeeRateKnown = true
+	}
+	return out, nil
+}
+
+// GetCLOBEventStart is kept for callers that only need sports timing.
+func (c *GammaClient) GetCLOBEventStart(ctx context.Context, conditionID string) (time.Time, error) {
+	info, err := c.GetCLOBMarketInfo(ctx, conditionID)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if info.GameStart.IsZero() {
+		return time.Time{}, fmt.Errorf("clob market info has no game start")
+	}
+	return info.GameStart, nil
+}
+
+func parseMarketTime(raw string) time.Time {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}
+	}
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02T15:04:05Z"} {
+		if t, err := time.Parse(layout, raw); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
+}
 
 func parseStringArray(s string) []string {
 	if s == "" {

@@ -182,6 +182,65 @@ func TestPositionManager_ApplyOpenFill(t *testing.T) {
 	}
 }
 
+func TestPositionManager_EventHoldDeadline(t *testing.T) {
+	pm := NewPositionManager(DefaultPositionConfig())
+	entry := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)
+	p, err := pm.Open("asset", "market", tick(0.5, entry))
+	if err != nil {
+		t.Fatal(err)
+	}
+	eventStart := entry.Add(time.Hour)
+	planned, err := pm.ConfigureOpenHold(p.ID, eventStart, 10*time.Minute, 10*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantDeadline := eventStart.Add(10 * time.Minute)
+	if planned.HoldProfile != HoldProfileEvent || !planned.ExitDeadline.Equal(wantDeadline) {
+		t.Fatalf("planned=%+v", planned)
+	}
+	if PositionTimeoutDue(planned, entry.Add(11*time.Minute), 10*time.Minute) {
+		t.Fatal("event position timed out before event")
+	}
+	if !PositionTimeoutDue(planned, wantDeadline, 10*time.Minute) {
+		t.Fatal("event position did not time out at deadline")
+	}
+}
+
+func TestPositionManager_EventHoldSurvivesRestart(t *testing.T) {
+	entry := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)
+	eventStart := entry.Add(time.Hour)
+	pm := NewPositionManager(DefaultPositionConfig())
+	p, err := pm.Open("asset", "market", tick(0.5, entry))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := pm.ConfigureOpenHold(p.ID, eventStart, 10*time.Minute, 10*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := t.TempDir() + "/positions.json"
+	if err := pm.SaveState(path); err != nil {
+		t.Fatal(err)
+	}
+	reloaded := NewPositionManager(DefaultPositionConfig())
+	if err := reloaded.LoadState(path); err != nil {
+		t.Fatal(err)
+	}
+	got := reloaded.Snapshot()
+	if len(got) != 1 || got[0].HoldProfile != HoldProfileEvent ||
+		!got[0].EventStart.Equal(eventStart) || !got[0].ExitDeadline.Equal(want.ExitDeadline) {
+		t.Fatalf("reloaded=%+v", got)
+	}
+}
+
+func TestPlannedHoldUsesShortDeadlineWithoutFutureEvent(t *testing.T) {
+	entry := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)
+	profile, deadline := PlannedHold(entry, entry.Add(-time.Minute), 10*time.Minute, 10*time.Minute)
+	if profile != HoldProfileShort || !deadline.Equal(entry.Add(10*time.Minute)) {
+		t.Fatalf("profile=%s deadline=%v", profile, deadline)
+	}
+}
+
 func TestPositionManager_CancelOpenDoesNotBookLoss(t *testing.T) {
 	pm := NewPositionManager(DefaultPositionConfig())
 	p, err := pm.OpenSized("asset", "market", tick(0.50, time.Now()), 5)

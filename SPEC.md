@@ -45,22 +45,25 @@
 
 ### 2.4 待验证（Phase 7.b+）
 
-- **激进 ladder TP + 止损 + 手续费**（`-exit_mode=ladder`，Phase 7.b 已实现）：
+- **历史 ladder TP + 止损**（`-exit_mode=ladder`，Phase 7.b 已实现，但 copytrade 不直接启用价格 TP/SL）：
   - **TP1** 价格较入场涨 15% → 清 50%（默认；`-ladder_tp1_pct=0.15` `-ladder_tp1_frac=0.50`）
   - **TP2** 价格较入场涨 30% → 清剩余 100%（默认；`-ladder_tp2_pct=0.30` `-ladder_tp2_frac=1.0`）
   - **Stop-loss** 价格较入场跌 5% → 清 100%（`-ladder_sl_pct=0.05`，04-20 22:42 收紧自 0.10）
   - **MaxHold** 4h 强平（避免锁死资金）
   - 相比老方案 (+30%/+60%/余量 hold) 更激进：拉早 TP1、补足 TP2 清仓、加硬止损、加超时，不保留 hold tail
   - SL 收紧依据：Phase 7.d sweep 显示 SL 是主导杠杆——python pool 中 baseline -30.41 → SL=5% 的 -0.23（top 10 全部 SL=5%）。TP 阈值在 5%~100% 之间只差 7 个点。
-- **成本建模** — `-slippage_bp` 对买卖两边施加不利滑点；`-taker_fee_rate` 按 `shares × rate × price × (1-price)` 计算动态平台费；`-fee_bp` 仅保留给额外固定 builder fee。paper 双边计费写 journal，净 PnL = 毛 PnL − entry_fee − exit_fee。智能钱体育模拟盘默认每边 50bp 滑点、动态费率 0.05。
+- **成本建模** — `-slippage_bp` 对买卖两边施加不利滑点；动态平台费按 `shares × rate × price × (1-price)` 计算，优先读取 CLOB `/clob-markets/{condition_id}` 的逐市场 `fd.r`，`-taker_fee_rate` 仅作接口失败时的回退；`-fee_bp` 保留给额外固定 builder fee。paper 双边计费写 journal，净 PnL = 毛 PnL − entry_fee − exit_fee。智能钱体育模拟盘默认每边 50bp 滑点、回退费率 0.05。
 - ~~**Phase 7.c 长尾市场**~~ — 老板 04-20 21:42 拍板**不做**：周期太长不适合 90 USDC 资金体量。
 - **历史回放** — 把 python trades 的 entry_price × market_id 灌进 Go backtester 验 ladder_TP 期望曲线，Phase 7.d。
+- **逐仓路径** — copytrade/重启恢复仓位会动态加入 WebSocket 标的订阅并记录 1Hz tick；每次 Start 创建独立文件，禁止跨重启向旧 `pN.jsonl` 追加。回测器拒绝混有多个 asset 的旧污染文件，并按真实时间戳计算 timeout。
 
 ### 2.5 出场模式
 
 - `-exit_mode=hold`（当前默认，手动点单用）：**买了就等最终结果**——不看 SL/TP/timeout，开仓后**只等 market resolve**，按 gamma `OutcomePrices[SlotIdx]` 清算（赢家侧 1.0、输家侧 0.0）。settlement watcher 每 60s 轮询 gamma，`closed=true` 即清算；5 min 打一行 `hold_status` 便于 grep。
 - `-exit_mode=auto`（legacy）：ExitTracker 按旧版（反转 3 tick / 回撤 2pp / 入场-3pp 止损 / 30min 超时）。
 - `-exit_mode=ladder`（Phase 7.b）：TP1/TP2/SL/Timeout 分级，见 §2.4 参数。paper 期支持 tranche 级别的分批平仓，journal 每个 tranche 一行。
+- 智能钱体育模拟盘的普通短线仓位按成交后 10m 超时；若 Gamma/CLOB 提供未来赛事开赛时间，则持久化为 event 仓位，超时截止延后到开赛后 10m（`-event_post_start_hold`）。到期检查每 5s（`-exit_poll_interval`），常规结算查询仍每 60s；timeout 后同市场默认冷却 30m（`-timeout_reentry_cooldown`）。
+- copytrade 同步运行不下单的退出影子观测：10/20/30m、可成交 bid 连续 15s 命中 -20%/-25%、以及 +30%/+50%；日志事件为 `copytrade_exit_shadow`，用于累计独立赛事样本后再决定是否替换实际退出规则。
 - 所有模式都保留日亏损熔断 + 单笔亏损 flag + feed-silence watchdog，且扣 fee 计净 PnL。
 
 ### 2.6 仓位（prompt 模式）

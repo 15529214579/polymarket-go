@@ -117,20 +117,25 @@ func TestRecorder_StartIdempotent(t *testing.T) {
 	}
 }
 
-func TestRecorder_AppendsAcrossStartStopCycles(t *testing.T) {
+func TestRecorder_CreatesFreshFileAcrossStartStopCycles(t *testing.T) {
 	r, _ := newRec(t)
 	_ = r.Start("p1", "asset-x")
 	_ = r.Record("p1", mkTick(0.30, 1))
 	_ = r.Stop("p1")
+	firstPath := r.Path("p1")
 
-	// Re-Start same posID; new lastSec resets, but file is opened with O_APPEND
-	// so prior rows survive. (lastSec only dedupes within a single Start cycle.)
 	_ = r.Start("p1", "asset-x")
 	_ = r.Record("p1", mkTick(0.31, 2))
 	_ = r.Stop("p1")
-	rows := readRows(t, r.Path("p1"))
-	if len(rows) != 2 {
-		t.Fatalf("want 2 rows across cycles, got %d", len(rows))
+	secondPath := r.Path("p1")
+	if firstPath == secondPath {
+		t.Fatalf("Start reused path %s", firstPath)
+	}
+	if rows := readRows(t, firstPath); len(rows) != 1 || rows[0].Mid != 0.30 {
+		t.Fatalf("first recording changed: %+v", rows)
+	}
+	if rows := readRows(t, secondPath); len(rows) != 1 || rows[0].Mid != 0.31 {
+		t.Fatalf("second recording wrong: %+v", rows)
 	}
 }
 

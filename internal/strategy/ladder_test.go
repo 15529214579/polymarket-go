@@ -125,6 +125,23 @@ func TestLadder_Timeout_Fires(t *testing.T) {
 	}
 }
 
+func TestLadder_EventDeadlineDefersTimeout(t *testing.T) {
+	cfg := lcfg()
+	cfg.MaxHold = 10 * time.Minute
+	l := NewLadderTracker(cfg)
+	t0 := time.Now()
+	deadline := t0.Add(time.Hour)
+	l.OpenWithDeadline("p1", "M", "A", feed.Tick{Time: t0, Mid: 0.50}, 40, deadline)
+
+	if ex, fired := l.OnTick("p1", lt(0.51, t0.Add(11*time.Minute))); fired {
+		t.Fatalf("event hold timed out early: %+v", ex)
+	}
+	ex, fired := l.OnTick("p1", lt(0.51, deadline))
+	if !fired || ex.Reason != ExitLadderTimeout || !ex.Final {
+		t.Fatalf("deadline timeout miss: fired=%v ex=%+v", fired, ex)
+	}
+}
+
 // SL takes priority over timeout on the same tick.
 func TestLadder_SL_BeforeTimeout(t *testing.T) {
 	cfg := lcfg()

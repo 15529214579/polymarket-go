@@ -2,8 +2,9 @@
 // Phase 7.e can replay our own momentum opens against true price paths
 // (instead of the python end-point approximation used in Phase 7.d).
 //
-// One file per position; rows are append-only; deduped to one row per second
-// to match the sampler's 1-Hz cadence. Recorder is safe for concurrent use.
+// One file per recording cycle; rows are deduped to one row per second to
+// match the sampler's 1-Hz cadence. A fresh file on every Start prevents a
+// reused position ID from mixing unrelated assets across process restarts.
 package tickrec
 
 import (
@@ -34,8 +35,10 @@ type TickRow struct {
 type Recorder struct {
 	dir string
 
-	mu   sync.Mutex
-	open map[string]*recording // posID → recording
+	mu       sync.Mutex
+	open     map[string]*recording // posID → recording
+	lastPath map[string]string
+	now      func() time.Time
 }
 
 type recording struct {
@@ -51,7 +54,12 @@ func New(dir string) (*Recorder, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("tickrec mkdir: %w", err)
 	}
-	return &Recorder{dir: dir, open: map[string]*recording{}}, nil
+	return &Recorder{
+		dir:      dir,
+		open:     map[string]*recording{},
+		lastPath: map[string]string{},
+		now:      time.Now,
+	}, nil
 }
 
 // Start begins recording for posID. Idempotent: a second Start with the same
@@ -62,10 +70,24 @@ func (r *Recorder) Start(posID, assetID string) error {
 	if _, ok := r.open[posID]; ok {
 		return nil
 	}
-	path := filepath.Join(r.dir, posID+".jsonl")
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
-		return fmt.Errorf("tickrec open %s: %w", path, err)
+	stamp := r.now().UTC().Format("20060102T150405.000000000Z")
+	base := fmt.Sprintf("%s-%s", posID, stamp)
+	var path string
+	var f *os.File
+	for suffix := 0; ; suffix++ {
+		name := base + ".jsonl"
+		if suffix > 0 {
+			name = fmt.Sprintf("%s-%d.jsonl", base, suffix)
+		}
+		path = filepath.Join(r.dir, name)
+		var err error
+		f, err = os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+		if err == nil {
+			break
+		}
+		if !os.IsExist(err) {
+			return fmt.Errorf("tickrec open %s: %w", path, err)
+		}
 	}
 	r.open[posID] = &recording{
 		posID:   posID,
@@ -73,6 +95,7 @@ func (r *Recorder) Start(posID, assetID string) error {
 		f:       f,
 		enc:     json.NewEncoder(f),
 	}
+	r.lastPath[posID] = path
 	return nil
 }
 
@@ -140,5 +163,10 @@ func (r *Recorder) Snapshot() map[string]string {
 // Path returns the on-disk JSONL path for posID (whether or not currently
 // open). Useful for tests and offline tooling.
 func (r *Recorder) Path(posID string) string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if path := r.lastPath[posID]; path != "" {
+		return path
+	}
 	return filepath.Join(r.dir, posID+".jsonl")
 }
