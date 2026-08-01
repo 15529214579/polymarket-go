@@ -3,10 +3,19 @@
 # evaluate recent whale-push signals, and write an operator summary.
 set -euo pipefail
 
+export PATH="/usr/local/go/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-mkdir -p "$ROOT/logs" "$ROOT/reports"
+mkdir -p "$ROOT/db" "$ROOT/logs" "$ROOT/reports"
+
+LOCK_DIR="$ROOT/db/smartmoney-daily.lock"
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+  printf 'smartmoney daily already running lock=%s\n' "$LOCK_DIR"
+  exit 0
+fi
+trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
 
 DAY="$(date '+%Y-%m-%d')"
 RUN_AT="$(date '+%Y-%m-%d %H:%M:%S %Z')"

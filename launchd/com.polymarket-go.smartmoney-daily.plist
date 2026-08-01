@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.polymarket-go.smartmoney-daily</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/murphyma/work/polymarket-go/scripts/smartmoney-daily.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/murphyma/work/polymarket-go</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>SMARTMONEY_RESTART</key>
+    <string>1</string>
+  </dict>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>0</integer>
+    <key>Minute</key>
+    <integer>10</integer>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/Users/murphyma/work/polymarket-go/logs/smartmoney-daily-launchd.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/murphyma/work/polymarket-go/logs/smartmoney-daily-launchd.err</string>
+</dict>
+</plist>

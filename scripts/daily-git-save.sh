@@ -19,7 +19,7 @@ DAY="$(date '+%Y-%m-%d')"
 git add \
   .gitignore .golangci.yml Makefile README.md SPEC.md TODO.md BTC_TODO.md PRINCIPLES.md \
   go.mod go.sum \
-  archive docs cmd internal scripts reports \
+  archive docs cmd internal launchd scripts reports \
   wallets*.txt
 
 if git diff --cached --quiet; then
