@@ -69,6 +69,8 @@ func TestTargetCategoryAllowed_FocusesRequestedSports(t *testing.T) {
 		{"soccer spread rejected", "Spread: KF Egnatia Rrogozhinë (-1.5)", "other"},
 		{"soccer total rejected", "FC Petrocub Hînceşti vs. KF Egnatia Rrogozhinë: O/U 2.5", "other"},
 		{"soccer player prop rejected", "Will Kylian Mbappe score 13+ goals during the 2026 FIFA World Cup?", "other"},
+		{"soccer exact score", "Exact Score: Liverpool 2 - 1 Arsenal?", "soccer"},
+		{"soccer correct score", "France vs. Morocco: Correct Score 1-0", "soccer"},
 		{"lol", "LoL: T1 vs Gen.G - LCK Spring", "esports"},
 		{"dota", "dota2-gl-heroic-2026-04-22", "esports"},
 		{"nuclear does not contain ucl token", "US-Iran Final Nuclear Deal by August 31, 2026? us-iran-final-nuclear-deal-by-20260621201254412", "other"},
@@ -126,6 +128,16 @@ func TestQualifyingTrade_TargetCategoryFilter(t *testing.T) {
 	tr.Slug = "world-cup-winner"
 	if QualifyingTrade(tr, cfg, allowed) {
 		t.Fatal("long-horizon World Cup outright should not qualify for target follow categories")
+	}
+	tr.Title = "Exact Score: Liverpool 2 - 1 Arsenal?"
+	tr.Slug = "epl-liv-ars-correct-score"
+	tr.Outcome = "Yes"
+	if !QualifyingTrade(tr, cfg, allowed) {
+		t.Fatal("football exact-score Yes trade should qualify for push discovery")
+	}
+	tr.Outcome = "No"
+	if QualifyingTrade(tr, cfg, allowed) {
+		t.Fatal("football exact-score No trade should not qualify for push discovery")
 	}
 	tr.Title = "Counter-Strike: maybe vs Tricksters (BO3) - CCT Europe Contenders #6 Playoffs"
 	tr.Slug = "counter-strike-maybe-tricksters-2026-07-08"

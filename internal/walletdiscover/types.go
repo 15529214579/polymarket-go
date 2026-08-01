@@ -138,6 +138,21 @@ type Market struct {
 	Volume          FlexFloat `json:"volume"`
 	Volume24hr      FlexFloat `json:"volume24hr"`
 	ClobTokenIDsRaw string    `json:"clobTokenIds"`
+	OutcomesRaw     string    `json:"outcomes"`
+}
+
+func (m Market) ClobTokenIDs() []string { return parseStringList(m.ClobTokenIDsRaw) }
+func (m Market) Outcomes() []string     { return parseStringList(m.OutcomesRaw) }
+
+func parseStringList(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	var out []string
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return nil
+	}
+	return out
 }
 
 func (m Market) ParsedEndDate() time.Time {

@@ -19,6 +19,7 @@ mkdir -p "$ROOT/db" "$ROOT/logs" "$ROOT/reports"
 SCORES="${HOURLY_WALLET_SCORES:-$ROOT/db/strategy_iteration/wallet_scores.json}"
 OUT="${HOURLY_PUSH_WALLETS:-$ROOT/wallets.hourly-push.txt}"
 TMP="$(mktemp "$ROOT/db/hourly-wallet-promotion.XXXXXX")"
+FOOTBALL_SCORE_OUT="${HOURLY_FOOTBALL_SCORE_WALLETS:-$ROOT/wallets.football-score-push.txt}"
 
 printf 'hourly-wallet-promotion.start ts=%s scores=%s out=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$SCORES" "$OUT"
 
@@ -44,6 +45,31 @@ if [ "${HOURLY_WALLET_DISCOVER:-1}" = "1" ]; then
       cp "$SCORES_BAK" "$SCORES"
       printf 'hourly-wallet-promotion.discover restored scores=%s\n' "$SCORES"
     fi
+  fi
+fi
+
+if [ "${HOURLY_FOOTBALL_SCORE_DISCOVER:-1}" = "1" ]; then
+  score_tmp="$(mktemp "$ROOT/db/football-score-push.XXXXXX")"
+  printf 'hourly-wallet-promotion.football_score start out=%s\n' "$FOOTBALL_SCORE_OUT"
+  go build -o "$ROOT/bin/sports-holders-push" ./cmd/sports-holders-push
+  if "$ROOT/bin/sports-holders-push" \
+    -out "$score_tmp" \
+    -list football_score_push \
+    -football_score_only \
+    -exclude_wallets "$ROOT/wallets.strategy-quarantine.txt,$ROOT/wallets.strategy-review-noise.txt" \
+    -scores "$SCORES" \
+    -target_categories soccer \
+    -markets "${HOURLY_FOOTBALL_SCORE_MARKETS:-40}" \
+    -holders "${HOURLY_FOOTBALL_SCORE_HOLDERS:-50}" \
+    -max_wallets "${HOURLY_FOOTBALL_SCORE_MAX_WALLETS:-100}" \
+    -min_shares "${HOURLY_FOOTBALL_SCORE_MIN_SHARES:-250}" \
+    -timeout "${HOURLY_FOOTBALL_SCORE_TIMEOUT:-4m}" && \
+    grep -Eq '^0x[0-9a-fA-F]{40}([[:space:]]|$)' "$score_tmp"; then
+    mv "$score_tmp" "$FOOTBALL_SCORE_OUT"
+    printf 'hourly-wallet-promotion.football_score updated count=%s\n' "$(awk '/^0x[0-9a-fA-F]{40}/ {n++} END {print n+0}' "$FOOTBALL_SCORE_OUT")"
+  else
+    rm -f "$score_tmp"
+    printf 'hourly-wallet-promotion.football_score empty_or_failed preserved=%s\n' "$FOOTBALL_SCORE_OUT"
   fi
 fi
 
@@ -88,6 +114,7 @@ already_pushed_files = [
     "wallets.leaderboard-watch.txt",
     "wallets.leaderboard-sports-push.txt",
     "wallets.sports-holders-push.txt",
+    "wallets.football-score-push.txt",
 ]
 
 def wallet_set(paths):

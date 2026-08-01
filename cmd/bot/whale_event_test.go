@@ -108,42 +108,66 @@ func TestTargetFollowMarketDecision_ExplainsFilteredMarkets(t *testing.T) {
 }
 
 func TestWhaleMarketDecision_LeaderboardKeepsTargetCategories(t *testing.T) {
-	if ok, reason := whaleMarketDecision("Boston Red Sox vs. Chicago White Sox", "mlb-bos-cws-2026-07-09", "leaderboard_watch"); ok || reason != "category_filtered" {
+	if ok, reason := whaleMarketDecision("Boston Red Sox vs. Chicago White Sox", "mlb-bos-cws-2026-07-09", "", "leaderboard_watch"); ok || reason != "category_filtered" {
 		t.Fatalf("leaderboard MLB moneyline decision=%v/%q, want category_filtered", ok, reason)
 	}
-	if ok, reason := whaleMarketDecision("Spread: Milwaukee Brewers (-1.5)", "mlb-mil-stl-2026-07-08", "leaderboard_watch"); ok || reason != "derivative_filtered" {
+	if ok, reason := whaleMarketDecision("Spread: Milwaukee Brewers (-1.5)", "mlb-mil-stl-2026-07-08", "", "leaderboard_watch"); ok || reason != "derivative_filtered" {
 		t.Fatalf("leaderboard spread decision=%v/%q, want derivative_filtered", ok, reason)
 	}
-	if ok, reason := whaleMarketDecision("Will France win the 2026 FIFA World Cup?", "world-cup-winner", "leaderboard_watch"); ok || reason != "outright_filtered" {
+	if ok, reason := whaleMarketDecision("Will France win the 2026 FIFA World Cup?", "world-cup-winner", "", "leaderboard_watch"); ok || reason != "outright_filtered" {
 		t.Fatalf("leaderboard world cup outright decision=%v/%q, want outright_filtered", ok, reason)
 	}
-	if ok, reason := whaleMarketDecision("Spain vs. Belgium: Team to Advance", "spain-belgium-team-to-advance", "leaderboard_watch"); !ok || reason != "" {
+	if ok, reason := whaleMarketDecision("Spain vs. Belgium: Team to Advance", "spain-belgium-team-to-advance", "", "leaderboard_watch"); !ok || reason != "" {
 		t.Fatalf("leaderboard soccer decision=%v/%q, want allowed", ok, reason)
 	}
-	if ok, reason := whaleMarketDecision("Golden State Valkyries vs. Toronto Tempo", "", "leaderboard_watch"); !ok || reason != "" {
+	if ok, reason := whaleMarketDecision("Golden State Valkyries vs. Toronto Tempo", "", "", "leaderboard_watch"); !ok || reason != "" {
 		t.Fatalf("leaderboard WNBA decision=%v/%q, want allowed", ok, reason)
 	}
-	if ok, reason := whaleMarketDecision("Lakers vs Celtics", "", "watch"); !ok || reason != "" {
+	if ok, reason := whaleMarketDecision("Lakers vs Celtics", "", "", "watch"); !ok || reason != "" {
 		t.Fatalf("NBA team-name decision=%v/%q, want allowed", ok, reason)
+	}
+}
+
+func TestWhaleMarketDecision_AllowsFootballScoreYesOnly(t *testing.T) {
+	q := "Exact Score: Liverpool 2 - 1 Arsenal?"
+	if ok, reason := whaleMarketDecision(q, "epl-liv-ars-correct-score", "Yes", "football_score_push"); !ok || reason != "" {
+		t.Fatalf("football score Yes decision=%v/%q, want allowed", ok, reason)
+	}
+	if ok, reason := whaleMarketDecision(q, "epl-liv-ars-correct-score", "No", "football_score_push"); ok || reason != "football_score_no_filtered" {
+		t.Fatalf("football score No decision=%v/%q, want filtered", ok, reason)
+	}
+	if ok, reason := targetFollowMarketDecision(q, "epl-liv-ars-correct-score"); ok || reason != "derivative_filtered" {
+		t.Fatalf("automatic follow decision=%v/%q, want derivative_filtered", ok, reason)
 	}
 }
 
 func TestWhalePriceDecision_FiltersExtremeBuyPrices(t *testing.T) {
 	for _, price := range []float64{0.001, 0.049, 0.951, 0.999} {
-		if ok, reason := whalePriceDecision("BUY", price); ok || reason != "price_filtered" {
+		if ok, reason := whalePriceDecision("BUY", price, false); ok || reason != "price_filtered" {
 			t.Fatalf("BUY price %.3f decision=%v/%q, want price_filtered", price, ok, reason)
 		}
 	}
 	for _, price := range []float64{0.05, 0.5, 0.95} {
-		if ok, reason := whalePriceDecision("BUY", price); !ok || reason != "" {
+		if ok, reason := whalePriceDecision("BUY", price, false); !ok || reason != "" {
 			t.Fatalf("BUY price %.3f decision=%v/%q, want allowed", price, ok, reason)
 		}
 	}
-	if ok, reason := whalePriceDecision("SELL", 0.999); ok || reason != "settlement_sell_filtered" {
+	if ok, reason := whalePriceDecision("SELL", 0.999, false); ok || reason != "settlement_sell_filtered" {
 		t.Fatalf("SELL settlement price decision=%v/%q, want settlement_sell_filtered", ok, reason)
 	}
-	if ok, reason := whalePriceDecision("SELL", 0.75); !ok || reason != "" {
+	if ok, reason := whalePriceDecision("SELL", 0.75, false); !ok || reason != "" {
 		t.Fatalf("SELL normal exit price decision=%v/%q, want allowed", ok, reason)
+	}
+	if ok, reason := whalePriceDecision("BUY", 0.02, true); !ok || reason != "" {
+		t.Fatalf("football score BUY decision=%v/%q, want low-price score allowed", ok, reason)
+	}
+}
+
+func TestWhaleEventKeyForAlert_SeparatesFootballScores(t *testing.T) {
+	a := whale.AlertEvent{Question: "Exact Score: Liverpool 1 - 0 Arsenal?", Outcome: "Yes", ConditionID: "0xscore10"}
+	b := whale.AlertEvent{Question: "Exact Score: Liverpool 1 - 1 Arsenal?", Outcome: "Yes", ConditionID: "0xscore11"}
+	if whaleEventKeyForAlert(a) == whaleEventKeyForAlert(b) {
+		t.Fatal("different football score markets must not share an event cooldown key")
 	}
 }
 

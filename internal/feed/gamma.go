@@ -194,6 +194,36 @@ func IsDerivativeFollowMarketText(text string) bool {
 	return false
 }
 
+var (
+	footballScoreResultRE = regexp.MustCompile(`\b(?:to win|draw)\s*\(?\d+\s*[-:]\s*\d+\)?`)
+	footballScoreLabelRE  = regexp.MustCompile(`\bscore\s*[:=-]?\s*\d+\s*[-:]\s*\d+\b`)
+)
+
+// IsFootballScoreMarketText identifies football correct-score markets. These
+// stay outside automatic following, but are useful to the push-only monitor.
+func IsFootballScoreMarketText(text string) bool {
+	text = strings.ToLower(strings.TrimSpace(text))
+	if text == "" {
+		return false
+	}
+	for _, otherSport := range []string{
+		"basketball", "nba", "wnba", "tennis", " atp", " wta",
+		"league of legends", " lol", "dota", "cs2", "csgo", "valorant",
+		"series score", "map score", "game score",
+	} {
+		if strings.Contains(text, otherSport) {
+			return false
+		}
+	}
+	if strings.Contains(text, "exact score") || strings.Contains(text, "correct score") {
+		return true
+	}
+	if footballScoreResultRE.MatchString(text) {
+		return true
+	}
+	return footballScoreLabelRE.MatchString(text)
+}
+
 // IsOutrightFollowMarketText rejects long-horizon championship/futures markets.
 // They can attract large orders but do not fit the short-window whale-follow
 // signals used by the sports/ esports copy-trading system.

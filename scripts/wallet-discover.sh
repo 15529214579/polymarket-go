@@ -37,6 +37,7 @@ if [ -z "${DISCOVER_EXISTING_WALLETS:-}" ]; then
     "$ROOT/wallets.strategy-flow.txt" \
     "$ROOT/wallets.leaderboard-sports-push.txt" \
     "$ROOT/wallets.sports-holders-push.txt" \
+    "$ROOT/wallets.football-score-push.txt" \
     "$ROOT/wallets.strategy-tape.txt" \
     "$ROOT/wallets.strategy-tape-observe.txt" \
     "$ROOT/wallets.strategy-tape-probation.txt" \

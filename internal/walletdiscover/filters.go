@@ -85,6 +85,14 @@ func TradeTargetCategory(t Trade) string {
 	return targetCategory(t.Title + " " + t.Slug + " " + t.EventSlug)
 }
 
+func IsFootballScoreMarket(m Market) bool {
+	return feed.IsFootballScoreMarketText(m.Question + " " + m.Slug + " " + m.Category)
+}
+
+func IsFootballScoreTrade(t Trade) bool {
+	return feed.IsFootballScoreMarketText(t.Title + " " + t.Slug + " " + t.EventSlug)
+}
+
 func TargetCategoryAllowed(category, rawAllowed string) bool {
 	if rawAllowed == "" {
 		return true
@@ -110,6 +118,9 @@ func targetCategory(text string) string {
 	text = strings.ToLower(text)
 	if isNonSportsTargetText(text) {
 		return "other"
+	}
+	if feed.IsFootballScoreMarketText(text) {
+		return "soccer"
 	}
 	if isDerivativeTargetText(text) || feed.IsOutrightFollowMarketText(text) {
 		return "other"
@@ -231,7 +242,11 @@ func QualifyingTrade(t Trade, cfg Config, allowedMarkets map[string]struct{}) bo
 	if !TargetCategoryAllowed(TradeTargetCategory(t), cfg.TargetCategories) {
 		return false
 	}
-	if followTargetCategoriesOnly(cfg.TargetCategories) && !feed.IsFollowTargetMarket(feed.Market{Question: t.Title, Slug: firstNonEmpty(t.Slug, t.EventSlug)}) {
+	scoreMarket := IsFootballScoreTrade(t)
+	if scoreMarket && strings.EqualFold(strings.TrimSpace(t.Outcome), "No") {
+		return false
+	}
+	if followTargetCategoriesOnly(cfg.TargetCategories) && !scoreMarket && !feed.IsFollowTargetMarket(feed.Market{Question: t.Title, Slug: firstNonEmpty(t.Slug, t.EventSlug)}) {
 		return false
 	}
 	if strings.Contains(strings.ToLower(t.Title+" "+t.Slug), "bitcoin up or down") {

@@ -2177,7 +2177,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 			if signalMode != "whale" || side != "BUY" || whaleEventCooldown <= 0 {
 				return false, ""
 			}
-			event := whaleEventKey(ev.Question)
+			event := whaleEventKeyForAlert(ev)
 			key := strings.ToLower(ev.Wallet) + "|" + event
 			whaleEventMu.Lock()
 			defer whaleEventMu.Unlock()
@@ -2535,12 +2535,13 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 			}
 
 			meta := walletFileMetas[strings.ToLower(ev.Wallet)]
-			if ok, filterReason := whaleMarketDecision(ev.Question, ev.Slug, meta.List); !ok {
+			if ok, filterReason := whaleMarketDecision(ev.Question, ev.Slug, ev.Outcome, meta.List); !ok {
 				appendWhaleTrade(ev, "skip", filterReason)
 				slog.Info("whale_market_filtered", "wallet", ev.Label, "reason", filterReason, "market", ev.Question, "slug", ev.Slug)
 				return
 			}
-			if ok, filterReason := whalePriceDecision(side, ev.Price); !ok {
+			isFootballScore := feed.IsFootballScoreMarketText(ev.Question + " " + ev.Slug)
+			if ok, filterReason := whalePriceDecision(side, ev.Price, isFootballScore); !ok {
 				appendWhaleTrade(ev, "skip", filterReason)
 				slog.Info("whale_price_filtered", "wallet", ev.Label, "side", side, "price", ev.Price, "market", ev.Question)
 				return
@@ -4881,10 +4882,14 @@ func whaleConfirmDecisionNote(decision whaleConfirmDecision) string {
 }
 
 func formatWhalePromptContext(ev whale.AlertEvent, meta walletFileMeta, gateNote string) string {
-	parts := []string{
+	parts := make([]string, 0, 6)
+	if feed.IsFootballScoreMarketText(ev.Question + " " + ev.Slug) {
+		parts = append(parts, "⚽ 比分盘")
+	}
+	parts = append(parts,
 		fmt.Sprintf("$%.0f", ev.Notional),
 		fmt.Sprintf("%.0f shares", ev.SizeUnits),
-	}
+	)
 	if gateNote != "" {
 		parts = append(parts, gateNote)
 	}
@@ -4901,7 +4906,7 @@ func formatWhalePromptContext(ev whale.AlertEvent, meta walletFileMeta, gateNote
 }
 
 func (g *whaleConfirmGate) Observe(ev whale.AlertEvent, list string) whaleConfirmDecision {
-	event := whaleEventKey(ev.Question)
+	event := whaleEventKeyForAlert(ev)
 	need := g.minWallets
 	if need <= 1 || g.window <= 0 {
 		return whaleConfirmDecision{Ready: true, Reason: "confirmation_disabled", Event: event, Wallets: 1, Need: need}
@@ -5328,6 +5333,7 @@ var (
 const (
 	followMinEntryPrice         = 0.05
 	followMaxEntryPrice         = 0.95
+	footballScoreMinEntryPrice  = 0.01
 	whaleSettlementSellMinPrice = 0.98
 )
 
@@ -5336,7 +5342,13 @@ func isTargetFollowMarket(q, slug string) bool {
 	return ok
 }
 
-func whaleMarketDecision(q, slug, _ string) (bool, string) {
+func whaleMarketDecision(q, slug, outcome, _ string) (bool, string) {
+	if feed.IsFootballScoreMarketText(q + " " + slug) {
+		if strings.EqualFold(strings.TrimSpace(outcome), "No") {
+			return false, "football_score_no_filtered"
+		}
+		return true, ""
+	}
 	return targetFollowMarketDecision(q, slug)
 }
 
@@ -5381,10 +5393,14 @@ func targetFollowMarketDecision(q, slug string) (bool, string) {
 	return false, "category_filtered"
 }
 
-func whalePriceDecision(side string, price float64) (bool, string) {
+func whalePriceDecision(side string, price float64, footballScore bool) (bool, string) {
 	switch strings.ToUpper(strings.TrimSpace(side)) {
 	case "BUY":
-		if price < followMinEntryPrice || price > followMaxEntryPrice {
+		minPrice := followMinEntryPrice
+		if footballScore {
+			minPrice = footballScoreMinEntryPrice
+		}
+		if price < minPrice || price > followMaxEntryPrice {
 			return false, "price_filtered"
 		}
 	case "SELL":
@@ -5423,6 +5439,18 @@ func whaleEventKey(market string) string {
 	return s
 }
 
+func whaleEventKeyForAlert(ev whale.AlertEvent) string {
+	if !feed.IsFootballScoreMarketText(ev.Question + " " + ev.Slug) {
+		return whaleEventKey(ev.Question)
+	}
+	if conditionID := strings.ToLower(strings.TrimSpace(ev.ConditionID)); conditionID != "" {
+		return "football_score:" + conditionID
+	}
+	market := whaleEventSpaceRE.ReplaceAllString(strings.ToLower(strings.TrimSpace(ev.Question)), " ")
+	outcome := strings.ToLower(strings.TrimSpace(ev.Outcome))
+	return "football_score:" + market + "|" + outcome
+}
+
 func loadWhaleCooldownSeeds(path string, repeatCooldown, eventCooldown time.Duration) (map[string]time.Time, map[string]time.Time, int, int) {
 	repeat := map[string]time.Time{}
 	events := map[string]time.Time{}
@@ -5438,13 +5466,16 @@ func loadWhaleCooldownSeeds(path string, repeatCooldown, eventCooldown time.Dura
 	sc.Buffer(buf, 8*1024*1024)
 	for sc.Scan() {
 		var rec struct {
-			TS      string  `json:"ts"`
-			Wallet  string  `json:"wallet"`
-			Side    string  `json:"side"`
-			Market  string  `json:"market"`
-			AssetID string  `json:"asset_id"`
-			Action  string  `json:"action"`
-			Size    float64 `json:"size"`
+			TS          string  `json:"ts"`
+			Wallet      string  `json:"wallet"`
+			Side        string  `json:"side"`
+			Market      string  `json:"market"`
+			Outcome     string  `json:"outcome"`
+			Slug        string  `json:"slug"`
+			AssetID     string  `json:"asset_id"`
+			ConditionID string  `json:"condition_id"`
+			Action      string  `json:"action"`
+			Size        float64 `json:"size"`
 		}
 		if err := json.Unmarshal(sc.Bytes(), &rec); err != nil {
 			continue
@@ -5471,7 +5502,9 @@ func loadWhaleCooldownSeeds(path string, repeatCooldown, eventCooldown time.Dura
 			}
 		}
 		if eventCooldown > 0 && rec.Market != "" && now.Sub(ts) < eventCooldown {
-			key := wallet + "|" + whaleEventKey(rec.Market)
+			key := wallet + "|" + whaleEventKeyForAlert(whale.AlertEvent{
+				Question: rec.Market, Outcome: rec.Outcome, Slug: rec.Slug, ConditionID: rec.ConditionID,
+			})
 			if ts.After(events[key]) {
 				events[key] = ts
 			}

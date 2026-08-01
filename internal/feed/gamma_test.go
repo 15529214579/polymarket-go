@@ -126,6 +126,29 @@ func TestIsFootballMarket_RejectsSoccerPropsAndDerivatives(t *testing.T) {
 	}
 }
 
+func TestIsFootballScoreMarketText(t *testing.T) {
+	for _, text := range []string{
+		"Exact Score: Liverpool 2 - 1 Arsenal?",
+		"France vs. Morocco: Correct Score 1-0",
+		"Liverpool to win 2-0",
+		"Draw (1-1)",
+	} {
+		if !IsFootballScoreMarketText(text) {
+			t.Fatalf("football score market not recognized: %q", text)
+		}
+	}
+	for _, text := range []string{
+		"LoL series score 2-0",
+		"Dota 2 exact score 2-0",
+		"NBA exact score 110-105",
+		"Both teams to score",
+	} {
+		if IsFootballScoreMarketText(text) {
+			t.Fatalf("non-football score market recognized: %q", text)
+		}
+	}
+}
+
 func TestIsDota2Market(t *testing.T) {
 	cases := []struct {
 		slug string
