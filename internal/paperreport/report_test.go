@@ -93,6 +93,37 @@ func TestAnalyzeWalletPolicyResolvesLegacyAndFullSources(t *testing.T) {
 	}
 }
 
+func TestWalletFromSourceSupportsBroadCollection(t *testing.T) {
+	wallet := "0x3333333333333333333333333333333333333333"
+	for _, source := range []string{
+		"copytrade_collect_wallet:" + wallet,
+		"copytrade_collect_football_score_wallet:" + wallet,
+	} {
+		if got := walletFromSource(source, nil); got != wallet {
+			t.Fatalf("walletFromSource(%q)=%q, want %q", source, got, wallet)
+		}
+	}
+}
+
+func TestAnalyzeSeparatesBroadCollectionCohorts(t *testing.T) {
+	trades := []journal.TradeRecord{
+		{ID: "core", SizeUSD: 20, NetPnLUSD: 1, SignalSource: "copytrade_wallet:0x1111111111111111111111111111111111111111"},
+		{ID: "collect", SizeUSD: 20, NetPnLUSD: -1, SignalSource: "copytrade_collect_wallet:0x2222222222222222222222222222222222222222"},
+		{ID: "score", SizeUSD: 20, NetPnLUSD: 2, SignalSource: "copytrade_collect_football_score_wallet:0x3333333333333333333333333333333333333333"},
+	}
+
+	report := Analyze(trades, nil)
+	if got := findCohort(report.ByStrategy, "copytrade"); got.Positions != 1 {
+		t.Fatalf("core=%+v", got)
+	}
+	if got := findCohort(report.ByStrategy, "copytrade_collect"); got.Positions != 1 || got.NetPnL != -1 {
+		t.Fatalf("collection=%+v", got)
+	}
+	if got := findCohort(report.ByStrategy, "football_score_collect"); got.Positions != 1 || got.NetPnL != 2 {
+		t.Fatalf("score collection=%+v", got)
+	}
+}
+
 func findCohort(rows []Cohort, name string) Cohort {
 	for _, row := range rows {
 		if row.Name == name {

@@ -189,6 +189,40 @@ func TestCopytradeFootballScoreUsesDedicatedFileTier(t *testing.T) {
 	}
 }
 
+func TestPaperCollectionCannotAffectLive(t *testing.T) {
+	if !paperCollectionEnabled(true, "copytrade", false) {
+		t.Fatal("broad collection should be enabled for paper copytrade")
+	}
+	if paperCollectionEnabled(true, "copytrade", true) {
+		t.Fatal("broad collection must be disabled for live trading")
+	}
+	if paperCollectionEnabled(true, "whale", false) {
+		t.Fatal("broad collection must be limited to copytrade mode")
+	}
+}
+
+func TestCopytradeTierAllowed(t *testing.T) {
+	if !copytradeTierAllowed("B", "B") || copytradeTierAllowed("C", "B") {
+		t.Fatal("B core gate should allow A/B and reject C")
+	}
+	if !copytradeTierAllowed("d", "") {
+		t.Fatal("empty tier gate should allow every tier")
+	}
+}
+
+func TestCopytradeCollectionMarketDecisionIsBroadButKeepsScoreNoFilter(t *testing.T) {
+	if ok, reason := copytradeCollectionMarketDecision("Norway vs England: O/U 2.5", "", "Over", true); !ok || reason != "" {
+		t.Fatalf("paper collection derivative=%v/%q, want allowed", ok, reason)
+	}
+	if ok, reason := copytradeCollectionMarketDecision("Wimbledon ATP: A vs B", "atp-a-b", "A", true); !ok || reason != "" {
+		t.Fatalf("paper collection tennis=%v/%q, want allowed", ok, reason)
+	}
+	q := "Exact Score: Liverpool 2 - 1 Arsenal?"
+	if ok, reason := copytradeCollectionMarketDecision(q, "epl-liv-ars-correct-score", "No", true); ok || reason != "football_score_no_filtered" {
+		t.Fatalf("paper collection score No=%v/%q, want filtered", ok, reason)
+	}
+}
+
 func TestCopytradeWalletSize_PaperUsesConfiguredFixedSize(t *testing.T) {
 	for _, tc := range []struct {
 		tier, action string

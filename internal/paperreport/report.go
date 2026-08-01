@@ -259,7 +259,7 @@ func AnalyzeWalletPolicy(trades []journal.TradeRecord, aliases map[string]string
 
 func walletFromSource(source string, aliases map[string]string) string {
 	source = strings.ToLower(strings.TrimSpace(source))
-	for _, prefix := range []string{"copytrade_wallet:", "copytrade_football_score_wallet:"} {
+	for _, prefix := range []string{"copytrade_wallet:", "copytrade_football_score_wallet:", "copytrade_collect_wallet:", "copytrade_collect_football_score_wallet:"} {
 		if strings.HasPrefix(source, prefix) {
 			wallet := strings.TrimPrefix(source, prefix)
 			if len(wallet) == 42 && strings.HasPrefix(wallet, "0x") {
@@ -311,6 +311,10 @@ func strategyLabel(tr journal.TradeRecord) string {
 	source := strings.ToLower(tr.SignalSource)
 	question := strings.ToLower(tr.Question)
 	switch {
+	case strings.HasPrefix(source, "copytrade_collect_football_score"):
+		return "football_score_collect"
+	case strings.HasPrefix(source, "copytrade_collect"):
+		return "copytrade_collect"
 	case strings.HasPrefix(source, "copytrade_football_score"), strings.Contains(question, "exact score"):
 		return "football_score"
 	case strings.HasPrefix(source, "copytrade"):

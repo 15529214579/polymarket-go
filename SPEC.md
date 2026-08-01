@@ -68,6 +68,7 @@
 - 足球比分候选池每小时扫描最多 300 个 Exact Score 市场、每个 token 前 250 名持仓、最低 50 shares、最多保留 500 个地址，更新后自动重载智能钱模拟盘。比分地址保留通用 tier，同时按 Exact Score 的 Yes 侧交易样本、已结算 ROI 和扣滑点后的跟单 ROI 单独评 A/B/C/D；专项 A/B 仅能通过比分模拟盘的 B 级门槛。比分 BUY 必须在 2m 内，同场可跟多个比分但总敞口默认不超过 60U，单笔 20U，最长观察 150m；普通同场多盘口总敞口默认不超过 100U。
 - paper journal 写入 `policy_version` 和完整跟单钱包地址。`reports/smartmoney-paper-pnl.md` 按版本、单笔金额、策略、成本口径和来源拆分毛 PnL、双边费用与净 PnL，同时列出开放敞口和按零价值计的保守 PnL。
 - 本地地址策略至少收集 10 个已结仓仓位：净 PnL ≤ -5U 自动加入 `wallets.paper-demoted.txt`，净 PnL ≥ +5U 且 ROI ≥ 2% 才进入 B 级 `wallets.paper-promoted.txt`；每日和每小时任务刷新后重载模拟盘。
+- 模拟盘默认启用宽口径采集 cohort：A/B 和原有允许项继续作为核心 `copytrade`，其余已跟踪钱包的低 tier、watch/reject 动作及非目标品类仅以 `copytrade_collect` 入模拟仓，不额外推送，并由独立 policy version 汇总。该模式在 `-live` 下强制失效；极端价格、重复交易、比分 No、超长结算、无可成交 Bid、手续费/滑点和敞口一致性约束继续保留。
 - 所有模式都保留日亏损熔断 + 单笔亏损 flag + feed-silence watchdog，且扣 fee 计净 PnL。
 - 运行停用按组件隔离：`db/live-trading.disabled` 在启动时和运行中阻止实盘；实盘还必须有权限 `0600`、绑定钱包且最长 24h 有效的 `db/live-trading.enabled`。守卫在每次签名前复查，单笔 BUY 默认上限 20U、单进程累计 BUY 默认上限 100U；SELL 作为减仓不受入场金额上限限制。任一检查失败会关闭当前实盘进程。`db/research.disabled` 停研究迭代，`db/monitoring.disabled` 停旧监控；模拟盘和地址迭代不受影响。
 - 自动 bot 的 Polygon 客户端固定为只读，仅查询 pUSD/条件代币余额；可赎回仓位只提醒，不在 bot 进程发链上交易。wrap/approve 与 redeem 分别由独立的 `trade -wrap-approve`、`trade -redeem-all` 维护动作执行，完成后立即退出且不会继续下单。赎回由独立 launchd 每小时检查一次，必须同时满足 `db/live/redeem.disabled` 不存在、钱包绑定的 `0600` `db/live/redeem.enabled` 有效、运行环境提供临时 `BW_SESSION`；安装任务本身不自动授权。赎回状态、锁和去重记录只写 `db/live/`，不读写模拟盘仓位、journal、PnL 或风控状态。

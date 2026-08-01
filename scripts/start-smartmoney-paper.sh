@@ -32,16 +32,17 @@ mkdir -p "$STATE_DIR" "$ROOT/logs" "$ROOT/bin"
 INITIAL_CAPITAL="${SMARTMONEY_PAPER_INITIAL_CAPITAL:-5000}"
 MIN_TIER="${SMARTMONEY_PAPER_MIN_TIER:-B}"
 COPYTRADE_SIZE="${SMARTMONEY_PAPER_COPYTRADE_SIZE:-20}"
-MAX_OPEN_USD="${SMARTMONEY_PAPER_MAX_OPEN_USD:-1500}"
+PAPER_COLLECT_BROAD="${SMARTMONEY_PAPER_COLLECT_BROAD:-1}"
+MAX_OPEN_USD="${SMARTMONEY_PAPER_MAX_OPEN_USD:-4000}"
 MAX_PER_MARKET_USD="${SMARTMONEY_PAPER_MAX_PER_MARKET_USD:-100}"
-MAX_PER_EVENT_USD="${SMARTMONEY_PAPER_MAX_PER_EVENT_USD:-100}"
-MAX_OPEN_POSITIONS="${SMARTMONEY_PAPER_MAX_OPEN_POSITIONS:-120}"
+MAX_PER_EVENT_USD="${SMARTMONEY_PAPER_MAX_PER_EVENT_USD:-200}"
+MAX_OPEN_POSITIONS="${SMARTMONEY_PAPER_MAX_OPEN_POSITIONS:-200}"
 MARKETS="${SMARTMONEY_PAPER_MARKETS:-120}"
 WHALE_MIN_USD="${SMARTMONEY_PAPER_WHALE_MIN_USD:-500}"
 PAPER_FOLLOW_PROMPT="${SMARTMONEY_PAPER_FOLLOW_PROMPT:-1}"
 PAPER_FOLLOW_FOOTBALL_SCORE="${SMARTMONEY_PAPER_FOLLOW_FOOTBALL_SCORE:-1}"
 FOOTBALL_SCORE_SIZE="${SMARTMONEY_PAPER_FOOTBALL_SCORE_SIZE:-20}"
-FOOTBALL_SCORE_MAX_EVENT_USD="${SMARTMONEY_PAPER_FOOTBALL_SCORE_MAX_EVENT_USD:-60}"
+FOOTBALL_SCORE_MAX_EVENT_USD="${SMARTMONEY_PAPER_FOOTBALL_SCORE_MAX_EVENT_USD:-120}"
 FOOTBALL_SCORE_MAX_SIGNAL_AGE="${SMARTMONEY_PAPER_FOOTBALL_SCORE_MAX_SIGNAL_AGE:-2m}"
 FOOTBALL_SCORE_HOLD="${SMARTMONEY_PAPER_FOOTBALL_SCORE_HOLD:-150m}"
 SLIPPAGE_BP="${SMARTMONEY_PAPER_SLIPPAGE_BP:-50}"
@@ -50,7 +51,7 @@ TAKER_FEE_RATE="${SMARTMONEY_PAPER_TAKER_FEE_RATE:-0.05}"
 EXIT_POLL_INTERVAL="${SMARTMONEY_PAPER_EXIT_POLL_INTERVAL:-5s}"
 EVENT_POST_START_HOLD="${SMARTMONEY_PAPER_EVENT_POST_START_HOLD:-30m}"
 TIMEOUT_REENTRY_COOLDOWN="${SMARTMONEY_PAPER_TIMEOUT_REENTRY_COOLDOWN:-30m}"
-POLICY_VERSION="${SMARTMONEY_PAPER_POLICY_VERSION:-smartmoney-2026-08-01-v1}"
+POLICY_VERSION="${SMARTMONEY_PAPER_POLICY_VERSION:-smartmoney-2026-08-02-collect-v2}"
 WALLET_TIERS="${SMARTMONEY_PAPER_WALLET_TIERS:-$ROOT/db/strategy_iteration/copytrade_backtest_results.generated.json}"
 SOURCE_WALLETS="${SMARTMONEY_PAPER_SOURCE_WALLETS:-$ROOT/db/smartmoney-paper/wallets.paper-promoted.txt $ROOT/wallets.football-score-push.txt $ROOT/wallets.strategy-push.txt $ROOT/wallets.hourly-push.txt $ROOT/wallets.leaderboard-watch.txt $ROOT/wallets.leaderboard-sports-push.txt}"
 EXCLUDE_WALLETS="${SMARTMONEY_PAPER_EXCLUDE_WALLETS:-$ROOT/db/smartmoney-paper/wallets.paper-demoted.txt $ROOT/wallets.strategy-quarantine.txt $ROOT/wallets.strategy-review-noise.txt $ROOT/db/strategy_iteration/wallets.strategy-exclude.txt}"
@@ -149,6 +150,7 @@ prepare() {
     printf 'initial_capital=%s\n' "$INITIAL_CAPITAL"
     printf 'min_tier=%s\n' "$MIN_TIER"
     printf 'copytrade_size=%s\n' "$COPYTRADE_SIZE"
+    printf 'paper_collect_broad=%s\n' "$PAPER_COLLECT_BROAD"
     printf 'max_open_usd=%s\n' "$MAX_OPEN_USD"
     printf 'max_per_market_usd=%s\n' "$MAX_PER_MARKET_USD"
     printf 'max_per_event_usd=%s\n' "$MAX_PER_EVENT_USD"
@@ -185,7 +187,7 @@ run_loop() {
     restart_count=$((restart_count + 1))
     spawn_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     spawn_epoch="$(date +%s)"
-    echo "smartmoney-paper.spawn restart=$restart_count ts=$spawn_ts capital=$INITIAL_CAPITAL min_tier=$MIN_TIER wallets=$WALLET_COUNT markets=$MARKETS max_open_usd=$MAX_OPEN_USD slippage_bp=$SLIPPAGE_BP taker_fee_rate=$TAKER_FEE_RATE"
+    echo "smartmoney-paper.spawn restart=$restart_count ts=$spawn_ts capital=$INITIAL_CAPITAL min_tier=$MIN_TIER collect_broad=$PAPER_COLLECT_BROAD wallets=$WALLET_COUNT markets=$MARKETS max_open_usd=$MAX_OPEN_USD slippage_bp=$SLIPPAGE_BP taker_fee_rate=$TAKER_FEE_RATE"
     export COPYTRADE_PAPER_FOLLOW_PROMPT="$PAPER_FOLLOW_PROMPT"
     export COPYTRADE_PAPER_FOLLOW_FOOTBALL_SCORE="$PAPER_FOLLOW_FOOTBALL_SCORE"
     export COPYTRADE_PAPER_FOOTBALL_SCORE_SIZE="$FOOTBALL_SCORE_SIZE"
@@ -215,6 +217,7 @@ run_loop() {
       -copytrade_size="$COPYTRADE_SIZE" \
       -wallet_tiers="$WALLET_TIERS" \
       -min_tier="$MIN_TIER" \
+      -paper_collect_broad="$PAPER_COLLECT_BROAD" \
       -initial_capital="$INITIAL_CAPITAL" \
       -positions_state="$STATE_DIR/positions.json" \
       -risk_state="$STATE_DIR/risk_state.json" \
