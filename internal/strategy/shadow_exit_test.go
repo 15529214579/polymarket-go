@@ -1,6 +1,7 @@
 package strategy
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 func shadowPosition(now time.Time) Position {
 	return Position{
 		ID: "p1", AssetID: "asset", Market: "market",
+		SizeUSD: 10, Units: 20, OpenFeeUSD: 0.10,
 		EntryMid: 0.50, EntryTime: now, Status: PosOpen,
 		HoldProfile: HoldProfileEvent,
 		EventStart:  now.Add(time.Hour), ExitDeadline: now.Add(70 * time.Minute),
@@ -21,16 +23,46 @@ func TestShadowExitTrackerTimeoutsFireOnce(t *testing.T) {
 	tracker := NewShadowExitTracker(DefaultShadowExitConfig())
 	tracker.Open(shadowPosition(now))
 
-	got := tracker.OnTick("p1", feed.Tick{Time: now.Add(10 * time.Minute), Mid: 0.55})
+	if got := tracker.OnTick("p1", feed.Tick{Time: now.Add(10 * time.Minute), Mid: 0.55}); len(got) != 0 {
+		t.Fatalf("mid-only timeout observations=%+v", got)
+	}
+	got := tracker.OnTick("p1", feed.Tick{Time: now.Add(10 * time.Minute), BestBid: 0.54, Mid: 0.55})
 	if len(got) != 1 || got[0].Policy != "timeout_10m" || got[0].HoldProfile != HoldProfileEvent {
 		t.Fatalf("10m observations=%+v", got)
 	}
-	if duplicate := tracker.OnTick("p1", feed.Tick{Time: now.Add(15 * time.Minute), Mid: 0.56}); len(duplicate) != 0 {
+	if duplicate := tracker.OnTick("p1", feed.Tick{Time: now.Add(15 * time.Minute), BestBid: 0.55, Mid: 0.56}); len(duplicate) != 0 {
 		t.Fatalf("duplicate observations=%+v", duplicate)
 	}
-	got = tracker.OnTick("p1", feed.Tick{Time: now.Add(30 * time.Minute), Mid: 0.60})
+	got = tracker.OnTick("p1", feed.Tick{Time: now.Add(30 * time.Minute), BestBid: 0.59, Mid: 0.60})
 	if len(got) != 2 || got[0].Policy != "timeout_20m" || got[1].Policy != "timeout_30m" {
 		t.Fatalf("30m observations=%+v", got)
+	}
+}
+
+func TestShadowExitTrackerNetPnLIncludesSlippageAndBothFees(t *testing.T) {
+	now := time.Now().UTC()
+	cfg := DefaultShadowExitConfig()
+	cfg.Timeouts = nil
+	cfg.StopLosses = nil
+	cfg.TakeProfits = []float64{0.30}
+	cfg.SlippageBp = 50
+	cfg.FlatFeeBp = 10
+	cfg.TakerFeeRate = 0.05
+	tracker := NewShadowExitTracker(cfg)
+	tracker.Open(shadowPosition(now))
+
+	got := tracker.OnTick("p1", feed.Tick{Time: now.Add(time.Second), BestBid: 0.65})
+	if len(got) != 1 {
+		t.Fatalf("observations=%+v", got)
+	}
+	obs := got[0]
+	wantFill := 0.65 * 0.995
+	wantGross := (wantFill - 0.50) * 20
+	wantPlatformFee := math.Round((20*0.05*wantFill*(1-wantFill))*100_000) / 100_000
+	wantExitFee := 20*wantFill*10/10_000 + wantPlatformFee
+	wantNet := wantGross - 0.10 - wantExitFee
+	if math.Abs(obs.ExitPrice-wantFill) > 1e-9 || math.Abs(obs.ExitFeeUSD-wantExitFee) > 1e-9 || math.Abs(obs.NetPnLUSD-wantNet) > 1e-9 {
+		t.Fatalf("costed observation=%+v want fill=%.8f exit_fee=%.8f net=%.8f", obs, wantFill, wantExitFee, wantNet)
 	}
 }
 

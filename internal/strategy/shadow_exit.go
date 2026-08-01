@@ -2,6 +2,7 @@ package strategy
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"sync"
 	"time"
@@ -16,6 +17,9 @@ type ShadowExitConfig struct {
 	StopLosses    []float64
 	TakeProfits   []float64
 	SLConfirmTime time.Duration
+	SlippageBp    float64
+	FlatFeeBp     float64
+	TakerFeeRate  float64
 }
 
 func DefaultShadowExitConfig() ShadowExitConfig {
@@ -37,8 +41,16 @@ type ShadowExitObservation struct {
 	ObservedAt     time.Time
 	EntryTime      time.Time
 	EntryMid       float64
+	ExitQuotePrice float64
 	ExitPrice      float64
 	GrossReturnPct float64
+	GrossPnLUSD    float64
+	EntryFeeUSD    float64
+	ExitFeeUSD     float64
+	NetPnLUSD      float64
+	NetReturnPct   float64
+	SlippageBp     float64
+	TakerFeeRate   float64
 	HeldFor        time.Duration
 	ThresholdPct   float64
 	HoldProfile    string
@@ -48,6 +60,7 @@ type ShadowExitObservation struct {
 
 type shadowExitState struct {
 	position   Position
+	feeRate    float64
 	fired      map[string]bool
 	belowSince map[string]time.Time
 }
@@ -71,17 +84,28 @@ func NewShadowExitTracker(cfg ShadowExitConfig) *ShadowExitTracker {
 }
 
 func (s *ShadowExitTracker) Open(p Position) {
+	s.OpenWithFeeRate(p, s.cfg.TakerFeeRate)
+}
+
+// OpenWithFeeRate tracks a position using the same per-market fee rate as the
+// paper order. Rehydrated positions use the configured fallback rate.
+func (s *ShadowExitTracker) OpenWithFeeRate(p Position, feeRate float64) {
 	if p.ID == "" || p.EntryMid <= 0 || p.EntryTime.IsZero() {
 		return
+	}
+	if feeRate < 0 || feeRate > 1 {
+		feeRate = s.cfg.TakerFeeRate
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if state, ok := s.states[p.ID]; ok {
 		state.position = p
+		state.feeRate = feeRate
 		return
 	}
 	s.states[p.ID] = &shadowExitState{
 		position:   p,
+		feeRate:    feeRate,
 		fired:      map[string]bool{},
 		belowSince: map[string]time.Time{},
 	}
@@ -112,8 +136,8 @@ func (s *ShadowExitTracker) OnTick(posID string, tick feed.Tick) []ShadowExitObs
 	}
 
 	price := tick.BestBid
-	if price <= 0 {
-		price = tick.Mid
+	if price <= 0 || price >= 1 {
+		return nil
 	}
 	var out []ShadowExitObservation
 	for _, timeout := range s.cfg.Timeouts {
@@ -122,14 +146,9 @@ func (s *ShadowExitTracker) OnTick(posID string, tick feed.Tick) []ShadowExitObs
 			continue
 		}
 		state.fired[policy] = true
-		out = append(out, shadowObservation(state.position, tick.Time, price, policy, 0))
+		out = append(out, shadowObservation(state.position, tick.Time, price, policy, 0, s.cfg, state.feeRate))
 	}
 
-	// A price policy without a real bid would produce an optimistic and often
-	// untradeable trigger, so mid-only samples are kept for time policies only.
-	if tick.BestBid <= 0 {
-		return out
-	}
 	for _, stop := range s.cfg.StopLosses {
 		policy := percentPolicy("sl", stop)
 		if state.fired[policy] {
@@ -148,7 +167,7 @@ func (s *ShadowExitTracker) OnTick(posID string, tick feed.Tick) []ShadowExitObs
 			continue
 		}
 		state.fired[policy] = true
-		out = append(out, shadowObservation(state.position, tick.Time, tick.BestBid, policy, stop*100))
+		out = append(out, shadowObservation(state.position, tick.Time, tick.BestBid, policy, stop*100, s.cfg, state.feeRate))
 	}
 	for _, take := range s.cfg.TakeProfits {
 		policy := percentPolicy("tp", take)
@@ -156,12 +175,38 @@ func (s *ShadowExitTracker) OnTick(posID string, tick feed.Tick) []ShadowExitObs
 			continue
 		}
 		state.fired[policy] = true
-		out = append(out, shadowObservation(state.position, tick.Time, tick.BestBid, policy, take*100))
+		out = append(out, shadowObservation(state.position, tick.Time, tick.BestBid, policy, take*100, s.cfg, state.feeRate))
 	}
 	return out
 }
 
-func shadowObservation(p Position, observedAt time.Time, exitPrice float64, policy string, thresholdPct float64) ShadowExitObservation {
+func shadowObservation(p Position, observedAt time.Time, exitQuote float64, policy string, thresholdPct float64, cfg ShadowExitConfig, feeRate float64) ShadowExitObservation {
+	exitPrice := exitQuote * (1 - cfg.SlippageBp/10_000)
+	units := p.Units
+	if units <= 0 && p.SizeUSD > 0 {
+		units = p.SizeUSD / p.EntryMid
+	}
+	entryFee := p.OpenFeeUSD
+	if entryFee == 0 {
+		entryFee = p.EntryFeeUSD + p.EntryFeeChargedUSD
+	}
+	grossPnL := (exitPrice - p.EntryMid) * units
+	exitNotional := exitPrice * units
+	flatFee := exitNotional * cfg.FlatFeeBp / 10_000
+	platformFee := units * feeRate * exitPrice * (1 - exitPrice)
+	if platformFee > 0 {
+		platformFee = math.Round(platformFee*100_000) / 100_000
+	}
+	exitFee := flatFee + platformFee
+	netPnL := grossPnL - entryFee - exitFee
+	capital := p.SizeUSD
+	if capital <= 0 {
+		capital = p.EntryMid * units
+	}
+	netReturnPct := 0.0
+	if capital > 0 {
+		netReturnPct = netPnL / capital * 100
+	}
 	return ShadowExitObservation{
 		PosID:          p.ID,
 		AssetID:        p.AssetID,
@@ -170,8 +215,16 @@ func shadowObservation(p Position, observedAt time.Time, exitPrice float64, poli
 		ObservedAt:     observedAt,
 		EntryTime:      p.EntryTime,
 		EntryMid:       p.EntryMid,
+		ExitQuotePrice: exitQuote,
 		ExitPrice:      exitPrice,
 		GrossReturnPct: (exitPrice/p.EntryMid - 1) * 100,
+		GrossPnLUSD:    grossPnL,
+		EntryFeeUSD:    entryFee,
+		ExitFeeUSD:     exitFee,
+		NetPnLUSD:      netPnL,
+		NetReturnPct:   netReturnPct,
+		SlippageBp:     cfg.SlippageBp,
+		TakerFeeRate:   feeRate,
 		HeldFor:        observedAt.Sub(p.EntryTime),
 		ThresholdPct:   thresholdPct,
 		HoldProfile:    p.HoldProfile,

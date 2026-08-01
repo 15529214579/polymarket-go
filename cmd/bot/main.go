@@ -704,7 +704,11 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 	exitCfg := strategy.DefaultExitConfig()
 	exit := strategy.NewExitTracker(exitCfg)
 	ladder := strategy.NewLadderTracker(ladderCfg)
-	shadowExits := strategy.NewShadowExitTracker(strategy.DefaultShadowExitConfig())
+	shadowExitCfg := strategy.DefaultShadowExitConfig()
+	shadowExitCfg.SlippageBp = slippageBp
+	shadowExitCfg.FlatFeeBp = feeBp
+	shadowExitCfg.TakerFeeRate = takerFeeRate
+	shadowExits := strategy.NewShadowExitTracker(shadowExitCfg)
 	posCfg := strategy.DefaultPositionConfig()
 	if posMaxTotalOpenUSD > 0 {
 		posCfg.MaxTotalOpenUSD = posMaxTotalOpenUSD
@@ -1553,8 +1557,16 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 								"market", short(obs.Market),
 								"policy", obs.Policy,
 								"entry", obs.EntryMid,
+								"best_bid", obs.ExitQuotePrice,
 								"executable_exit", obs.ExitPrice,
 								"gross_return_pct", obs.GrossReturnPct,
+								"gross_pnl_usd", obs.GrossPnLUSD,
+								"entry_fee_usd", obs.EntryFeeUSD,
+								"exit_fee_usd", obs.ExitFeeUSD,
+								"net_pnl_usd", obs.NetPnLUSD,
+								"net_return_pct", obs.NetReturnPct,
+								"slippage_bp", obs.SlippageBp,
+								"taker_fee_rate", obs.TakerFeeRate,
 								"held_sec", int(obs.HeldFor.Seconds()),
 								"hold_profile", obs.HoldProfile,
 								"event_start", obs.EventStart,
@@ -2670,7 +2682,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 						}
 						markPositionSource(pm, src, pos.ID, signalSource, result.OrderID)
 						planned := configureHold(pos.ID, followedMeta.GameStart)
-						shadowExits.Open(planned)
+						shadowExits.OpenWithFeeRate(planned, effectiveFeeRate)
 						if added, subErr := ws.SubscribeAssets(ev.AssetID); subErr != nil {
 							slog.Warn("copytrade_wss_subscribe_fail", "pos", pos.ID, "asset", short(ev.AssetID), "err", subErr.Error())
 						} else if added > 0 {
