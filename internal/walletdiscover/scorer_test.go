@@ -151,3 +151,30 @@ func TestScoreWallet_SmartMoneyActionForFocusedWinner(t *testing.T) {
 		t.Fatalf("smart score %.2f too low", score.SmartMoneyScore)
 	}
 }
+
+func TestScoreWalletTracksPositiveFootballScorePerformance(t *testing.T) {
+	cfg := DefaultConfig()
+	var trades []Trade
+	var closed []ClosedPosition
+	for i := 0; i < 10; i++ {
+		asset := fmt.Sprintf("score-asset-%d", i)
+		question := fmt.Sprintf("Exact Score: Arsenal %d - %d Chelsea?", i%4, (i+1)%4)
+		trades = append(trades,
+			Trade{Side: "BUY", Type: "TRADE", Asset: asset, ConditionID: fmt.Sprintf("score-%d", i), Size: 2000, Price: 0.10, Timestamp: 1000 + int64(i*120), Title: question, Outcome: "Yes"},
+			Trade{Side: "SELL", Type: "TRADE", Asset: asset, ConditionID: fmt.Sprintf("score-%d", i), Size: 2000, Price: 0.20, Timestamp: 1060 + int64(i*120), Title: question, Outcome: "Yes"},
+		)
+		closed = append(closed, ClosedPosition{Title: question, Outcome: "Yes", TotalBought: 100, RealizedPnL: 20})
+	}
+
+	score := ScoreWallet("0x5555555555555555555555555555555555555555", nil, trades, closed, cfg)
+	st := score.Stats
+	if st.FootballScoreTrades != 20 || st.FootballScoreLargeTrades != 20 {
+		t.Fatalf("score trades=%d large=%d, want 20/20", st.FootballScoreTrades, st.FootballScoreLargeTrades)
+	}
+	if st.FootballScoreClosed != 10 || st.FootballScoreClosedROI != 20 {
+		t.Fatalf("score closed=%d roi=%.2f, want 10/20", st.FootballScoreClosed, st.FootballScoreClosedROI)
+	}
+	if st.FootballScoreCopyClosed != 10 || st.FootballScoreCopyROI <= 0 {
+		t.Fatalf("score copy closed=%d roi=%.2f, want positive", st.FootballScoreCopyClosed, st.FootballScoreCopyROI)
+	}
+}

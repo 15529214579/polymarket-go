@@ -172,6 +172,23 @@ func TestCopytradeFootballScorePriceAndSize(t *testing.T) {
 	}
 }
 
+func TestCopytradeFootballScoreUsesDedicatedFileTier(t *testing.T) {
+	meta := walletFileMeta{List: "football_score_push", Tier: "B"}
+	if got := copytradeTierForMarket("BOT", meta, true); got != "B" {
+		t.Fatalf("football score tier=%q, want B", got)
+	}
+	if got := copytradeTierForMarket("BOT", meta, false); got != "BOT" {
+		t.Fatalf("ordinary market tier=%q, want BOT", got)
+	}
+	allowed, reason := copytradeAutoAllowedForMarket("reject-bot", false, true, true, true, "B")
+	if !allowed || reason != "football_score_b" {
+		t.Fatalf("score auto allowed=%v reason=%q", allowed, reason)
+	}
+	if allowed, _ := copytradeAutoAllowedForMarket("reject-bot", true, true, true, true, "B"); allowed {
+		t.Fatal("dedicated score tier must not bypass live-trading gate")
+	}
+}
+
 func TestCopytradeWalletSize_PaperUsesConfiguredFixedSize(t *testing.T) {
 	for _, tc := range []struct {
 		tier, action string

@@ -5,6 +5,8 @@ import (
 	"math"
 	"sort"
 	"strings"
+
+	"github.com/15529214579/polymarket-go/internal/feed"
 )
 
 func ScoreWallet(addr string, cand *Candidate, trades []Trade, closed []ClosedPosition, cfg Config) WalletScore {
@@ -94,6 +96,12 @@ func buildStats(trades []Trade, closed []ClosedPosition, cfg Config) WalletStats
 		if cat := coarseCategory(tr.Title + " " + tr.Slug); cat != "" {
 			categoryCounts[cat]++
 		}
+		if isPositiveFootballScoreTrade(tr) {
+			st.FootballScoreTrades++
+			if notional >= cfg.MinNotionalUSD {
+				st.FootballScoreLargeTrades++
+			}
+		}
 		if tr.Timestamp > 0 {
 			minute := tr.Timestamp / 60
 			minuteCounts[minute]++
@@ -133,6 +141,14 @@ func buildStats(trades []Trade, closed []ClosedPosition, cfg Config) WalletStats
 		if p.RealizedPnL > 0 {
 			st.PositiveClosed++
 		}
+		if isPositiveFootballScoreClosed(p) {
+			st.FootballScoreClosed++
+			st.FootballScoreClosedPnL += p.RealizedPnL
+			st.FootballScoreClosedCapital += p.TotalBought
+			if p.RealizedPnL > 0 {
+				st.FootballScoreClosedWins++
+			}
+		}
 	}
 	if st.ClosedCapital > 0 {
 		st.ClosedROI = st.ClosedPnL / st.ClosedCapital * 100
@@ -140,8 +156,12 @@ func buildStats(trades []Trade, closed []ClosedPosition, cfg Config) WalletStats
 	if st.ClosedPositions > 0 {
 		st.ClosedWinRate = float64(st.PositiveClosed) / float64(st.ClosedPositions) * 100
 	}
+	if st.FootballScoreClosedCapital > 0 {
+		st.FootballScoreClosedROI = st.FootballScoreClosedPnL / st.FootballScoreClosedCapital * 100
+	}
 	applyCopySimulation(&st, trades, cfg)
 	applyTargetCopySimulation(&st, trades, cfg)
+	applyFootballScoreCopySimulation(&st, trades, cfg)
 
 	st.ExtremePriceRatio = round4(st.ExtremePriceRatio)
 	st.FixedAmountRatio = round4(st.FixedAmountRatio)
@@ -165,6 +185,14 @@ func buildStats(trades []Trade, closed []ClosedPosition, cfg Config) WalletStats
 	st.TargetCopyROI = round2(st.TargetCopyROI)
 	st.TargetCopyWinRate = round2(st.TargetCopyWinRate)
 	st.TargetCopyOpenCost = round2(st.TargetCopyOpenCost)
+	st.FootballScoreClosedPnL = round2(st.FootballScoreClosedPnL)
+	st.FootballScoreClosedCapital = round2(st.FootballScoreClosedCapital)
+	st.FootballScoreClosedROI = round2(st.FootballScoreClosedROI)
+	st.FootballScoreCopyPnL = round2(st.FootballScoreCopyPnL)
+	st.FootballScoreCopyCapital = round2(st.FootballScoreCopyCapital)
+	st.FootballScoreCopyROI = round2(st.FootballScoreCopyROI)
+	st.FootballScoreCopyWinRate = round2(st.FootballScoreCopyWinRate)
+	st.FootballScoreCopyOpenCost = round2(st.FootballScoreCopyOpenCost)
 	return st
 }
 
@@ -213,6 +241,28 @@ func applyTargetCopySimulation(st *WalletStats, trades []Trade, cfg Config) {
 	st.TargetCopyWinRate = res.WinRate
 	st.TargetCopyOpen = res.OpenPositions
 	st.TargetCopyOpenCost = res.OpenCost
+}
+
+func applyFootballScoreCopySimulation(st *WalletStats, trades []Trade, cfg Config) {
+	res := simulateCopy(trades, cfg, isPositiveFootballScoreTrade)
+	st.FootballScoreCopyBuys = res.Buys
+	st.FootballScoreCopyClosed = res.ClosedTrades
+	st.FootballScoreCopyWins = res.Wins
+	st.FootballScoreCopyPnL = res.PnL
+	st.FootballScoreCopyCapital = res.Capital
+	st.FootballScoreCopyROI = res.ROI
+	st.FootballScoreCopyWinRate = res.WinRate
+	st.FootballScoreCopyOpen = res.OpenPositions
+	st.FootballScoreCopyOpenCost = res.OpenCost
+}
+
+func isPositiveFootballScoreTrade(tr Trade) bool {
+	return IsFootballScoreTrade(tr) && strings.EqualFold(strings.TrimSpace(tr.Outcome), "yes")
+}
+
+func isPositiveFootballScoreClosed(p ClosedPosition) bool {
+	text := p.Title + " " + p.Slug
+	return feed.IsFootballScoreMarketText(text) && strings.EqualFold(strings.TrimSpace(p.Outcome), "yes")
 }
 
 func simulateCopy(trades []Trade, cfg Config, include func(Trade) bool) copySimResult {

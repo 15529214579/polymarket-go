@@ -59,11 +59,11 @@ if [ "${HOURLY_FOOTBALL_SCORE_DISCOVER:-1}" = "1" ]; then
     -exclude_wallets "$ROOT/wallets.strategy-quarantine.txt,$ROOT/wallets.strategy-review-noise.txt" \
     -scores "$SCORES" \
     -target_categories soccer \
-    -markets "${HOURLY_FOOTBALL_SCORE_MARKETS:-40}" \
-    -holders "${HOURLY_FOOTBALL_SCORE_HOLDERS:-50}" \
-    -max_wallets "${HOURLY_FOOTBALL_SCORE_MAX_WALLETS:-100}" \
-    -min_shares "${HOURLY_FOOTBALL_SCORE_MIN_SHARES:-250}" \
-    -timeout "${HOURLY_FOOTBALL_SCORE_TIMEOUT:-4m}" && \
+    -markets "${HOURLY_FOOTBALL_SCORE_MARKETS:-300}" \
+    -holders "${HOURLY_FOOTBALL_SCORE_HOLDERS:-250}" \
+    -max_wallets "${HOURLY_FOOTBALL_SCORE_MAX_WALLETS:-500}" \
+    -min_shares "${HOURLY_FOOTBALL_SCORE_MIN_SHARES:-50}" \
+    -timeout "${HOURLY_FOOTBALL_SCORE_TIMEOUT:-10m}" && \
     grep -Eq '^0x[0-9a-fA-F]{40}([[:space:]]|$)' "$score_tmp"; then
     mv "$score_tmp" "$FOOTBALL_SCORE_OUT"
     printf 'hourly-wallet-promotion.football_score updated count=%s\n' "$(awk '/^0x[0-9a-fA-F]{40}/ {n++} END {print n+0}' "$FOOTBALL_SCORE_OUT")"
@@ -270,6 +270,14 @@ if [ "${HOURLY_PROMOTION_RESTART:-1}" = "1" ]; then
   fi
   sleep 1
   screen -dmS "$screen_name" "$ROOT/scripts/start-whale-push.sh"
+fi
+
+if [ "${HOURLY_SMARTMONEY_REFRESH:-1}" = "1" ] && [ -x "$ROOT/scripts/start-smartmoney-paper.sh" ]; then
+  if "$ROOT/scripts/start-smartmoney-paper.sh" restart; then
+    printf 'hourly-wallet-promotion.smartmoney refreshed\n'
+  else
+    printf 'hourly-wallet-promotion.smartmoney refresh_failed\n' >&2
+  fi
 fi
 
 printf 'hourly-wallet-promotion.done ts=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"

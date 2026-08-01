@@ -37,7 +37,7 @@ EXIT_POLL_INTERVAL="${SMARTMONEY_PAPER_EXIT_POLL_INTERVAL:-5s}"
 EVENT_POST_START_HOLD="${SMARTMONEY_PAPER_EVENT_POST_START_HOLD:-10m}"
 TIMEOUT_REENTRY_COOLDOWN="${SMARTMONEY_PAPER_TIMEOUT_REENTRY_COOLDOWN:-30m}"
 WALLET_TIERS="${SMARTMONEY_PAPER_WALLET_TIERS:-$ROOT/db/strategy_iteration/copytrade_backtest_results.generated.json}"
-SOURCE_WALLETS="${SMARTMONEY_PAPER_SOURCE_WALLETS:-$ROOT/wallets.strategy-push.txt $ROOT/wallets.football-score-push.txt $ROOT/wallets.hourly-push.txt $ROOT/wallets.leaderboard-watch.txt $ROOT/wallets.leaderboard-sports-push.txt}"
+SOURCE_WALLETS="${SMARTMONEY_PAPER_SOURCE_WALLETS:-$ROOT/wallets.football-score-push.txt $ROOT/wallets.strategy-push.txt $ROOT/wallets.hourly-push.txt $ROOT/wallets.leaderboard-watch.txt $ROOT/wallets.leaderboard-sports-push.txt}"
 EXCLUDE_WALLETS="${SMARTMONEY_PAPER_EXCLUDE_WALLETS:-$ROOT/wallets.strategy-quarantine.txt $ROOT/wallets.strategy-review-noise.txt $ROOT/db/strategy_iteration/wallets.strategy-exclude.txt}"
 
 acquire_lock() {

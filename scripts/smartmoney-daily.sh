@@ -552,11 +552,11 @@ run_pipeline() {
     -exclude_wallets "$QUARANTINE,$REVIEW_NOISE" \
     -scores "$ROOT/db/strategy_iteration/wallet_scores.json" \
     -target_categories soccer \
-    -markets "${FOOTBALL_SCORE_PUSH_MARKETS:-80}" \
-    -holders "${FOOTBALL_SCORE_PUSH_HOLDERS:-100}" \
-    -max_wallets "${FOOTBALL_SCORE_PUSH_MAX_WALLETS:-150}" \
-    -min_shares "${FOOTBALL_SCORE_PUSH_MIN_SHARES:-250}" \
-    -timeout "${FOOTBALL_SCORE_PUSH_TIMEOUT:-5m}" && \
+    -markets "${FOOTBALL_SCORE_PUSH_MARKETS:-300}" \
+    -holders "${FOOTBALL_SCORE_PUSH_HOLDERS:-250}" \
+    -max_wallets "${FOOTBALL_SCORE_PUSH_MAX_WALLETS:-500}" \
+    -min_shares "${FOOTBALL_SCORE_PUSH_MIN_SHARES:-50}" \
+    -timeout "${FOOTBALL_SCORE_PUSH_TIMEOUT:-10m}" && \
     grep -Eq '^0x[0-9a-fA-F]{40}([[:space:]]|$)' "$score_tmp"; then
     mv "$score_tmp" "$FOOTBALL_SCORE_PUSH"
   else

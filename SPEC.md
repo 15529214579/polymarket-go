@@ -65,6 +65,7 @@
 - `-exit_mode=ladder`（Phase 7.b）：TP1/TP2/SL/Timeout 分级，见 §2.4 参数。paper 期支持 tranche 级别的分批平仓，journal 每个 tranche 一行。
 - 智能钱体育模拟盘的普通短线仓位按成交后 10m 超时；若 Gamma/CLOB 提供未来赛事开赛时间，则持久化为 event 仓位，超时截止延后到开赛后 10m（`-event_post_start_hold`）。到期检查每 5s（`-exit_poll_interval`），常规结算查询仍每 60s；timeout 后同市场默认冷却 30m（`-timeout_reentry_cooldown`）。
 - copytrade 同步运行不下单的退出影子观测：10/20/30m、可成交 bid 连续 15s 命中 -20%/-25%、以及 +30%/+50%；所有候选退出均按 Best Bid 扣卖出滑点、逐市场平台费和固定费，并扣已支付入场费后输出净 PnL。分批止盈的每个 tranche 独立计退出费，移动止盈按实际触发价计费。日志事件为 `copytrade_exit_shadow`，用于累计独立赛事样本后再决定是否替换实际退出规则。
+- 足球比分候选池每小时扫描最多 300 个 Exact Score 市场、每个 token 前 250 名持仓、最低 50 shares、最多保留 500 个地址，更新后自动重载智能钱模拟盘。比分地址保留通用 tier，同时按 Exact Score 的 Yes 侧交易样本、已结算 ROI 和扣滑点后的跟单 ROI 单独评 A/B/C/D；专项 A/B 仅能通过比分模拟盘的 B 级门槛，普通市场继续使用通用 tier，实盘不允许专项评级绕过通用风控。
 - 所有模式都保留日亏损熔断 + 单笔亏损 flag + feed-silence watchdog，且扣 fee 计净 PnL。
 
 ### 2.6 仓位（prompt 模式）

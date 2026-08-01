@@ -498,6 +498,24 @@ func copytradeAutoAllowedForAction(action string, liveTrading bool, paperFollowP
 	return false, action
 }
 
+func copytradeTierForMarket(globalTier string, fileMeta walletFileMeta, footballScore bool) string {
+	if footballScore && fileMeta.List == "football_score_push" && fileMeta.Tier != "" && fileMeta.Tier != "?" {
+		return strings.ToUpper(fileMeta.Tier)
+	}
+	return strings.ToUpper(globalTier)
+}
+
+func copytradeAutoAllowedForMarket(action string, liveTrading, paperFollowPrompt, footballScoreEnabled, footballScore bool, tier string) (bool, string) {
+	allowed, reason := copytradeAutoAllowedForAction(action, liveTrading, paperFollowPrompt)
+	if allowed {
+		return true, reason
+	}
+	if !liveTrading && footballScoreEnabled && footballScore && (tier == "A" || tier == "B") {
+		return true, "football_score_" + strings.ToLower(tier)
+	}
+	return false, reason
+}
+
 func drainSamplerTicks(ctx context.Context, sampler *feed.Sampler) {
 	ticks := sampler.Ticks()
 	for {
@@ -608,9 +626,14 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 			)
 		}
 	}
-	copytradeAutoAllowed := func(wallet string) (bool, string) {
+	copytradeTier := func(wallet string, footballScore bool) string {
+		key := strings.ToLower(wallet)
+		return copytradeTierForMarket(walletTiers[key], walletFileMetas[key], footballScore)
+	}
+	copytradeAutoAllowed := func(wallet string, footballScore bool) (bool, string) {
 		meta := walletMetas[strings.ToLower(wallet)]
-		return copytradeAutoAllowedForAction(meta.FollowAction, liveTrading, os.Getenv("COPYTRADE_PAPER_FOLLOW_PROMPT") == "1")
+		tier := copytradeTier(wallet, footballScore)
+		return copytradeAutoAllowedForMarket(meta.FollowAction, liveTrading, os.Getenv("COPYTRADE_PAPER_FOLLOW_PROMPT") == "1", paperFollowFootballScore, footballScore, tier)
 	}
 	copytradeForWallet := func(wallet string) float64 {
 		tier := walletTiers[strings.ToLower(wallet)]
@@ -2477,8 +2500,8 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 
 				switch side {
 				case "BUY":
+					wTier := copytradeTier(ev.Wallet, footballScore)
 					if minTierFilter != "" {
-						wTier := walletTiers[strings.ToLower(ev.Wallet)]
 						allowed := false
 						switch strings.ToUpper(minTierFilter) {
 						case "A":
@@ -2501,13 +2524,13 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 							return
 						}
 					}
-					autoAllowed, followAction := copytradeAutoAllowed(ev.Wallet)
+					autoAllowed, followAction := copytradeAutoAllowed(ev.Wallet, footballScore)
 					if !autoAllowed {
 						appendWhaleTrade(ev, "skip", "follow_action:"+followAction)
 						slog.Info("copytrade_follow_action_filtered",
 							"wallet", ev.Label,
 							"action", followAction,
-							"tier", walletTiers[strings.ToLower(ev.Wallet)],
+							"tier", wTier,
 							"market", ev.Question,
 						)
 						alert := baseAlert
@@ -2534,17 +2557,18 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 						)
 						return
 					}
-					// A-tier wallet passed smart-money gates — mark alert with strong recommendation.
+					// A/B or dedicated football-score tier passed the paper smart-money gates.
 					{
 						aLabel := ev.Label
 						if aLabel == "" {
 							aLabel = ev.Wallet
 						}
 						meta := walletMetas[strings.ToLower(ev.Wallet)]
-						baseAlert.Label = fmt.Sprintf("🔥💰 [自动小额] %s (Tier A · smart %.1f)", aLabel, meta.SmartMoneyScore)
+						baseAlert.Label = fmt.Sprintf("🔥💰 [自动模拟] %s (Tier %s · smart %.1f)", aLabel, wTier, meta.SmartMoneyScore)
 					}
-					// Extra DM via sidecar bot so A-tier alerts don't get buried
-					aTierMsg := fmt.Sprintf("🔥💰 A级鲸鱼下单\n%s · %s\n💰 %.0f shares @ %.4f = $%.0f\n🐋 %s\n%s",
+					// Extra DM via sidecar bot so qualified alerts don't get buried.
+					aTierMsg := fmt.Sprintf("🔥💰 Tier %s 智能钱下单\n%s · %s\n💰 %.0f shares @ %.4f = $%.0f\n🐋 %s\n%s",
+						wTier,
 						ev.Question, ev.Outcome,
 						ev.SizeUnits, ev.Price, ev.Notional,
 						baseAlert.Label, ev.LinkURL)
@@ -2568,7 +2592,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 					}
 					tick := feed.Tick{Mid: ev.Price, Time: time.Now()}
 					sizeUSD := copytradeMarketSize(copytradeForWallet(ev.Wallet), footballScore, paperFollowFootballScore, paperFootballScoreSize)
-					tier := walletTiers[strings.ToLower(ev.Wallet)]
+					tier := wTier
 					if tier == "" {
 						tier = "?"
 					}
