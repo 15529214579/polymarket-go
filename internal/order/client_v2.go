@@ -90,8 +90,11 @@ func (c *V2Client) Submit(ctx context.Context, in Intent) (Result, error) {
 		side = SigSell
 	}
 
-	tokenID := new(big.Int)
-	tokenID.SetString(in.AssetID, 10)
+	tokenID, ok := new(big.Int).SetString(in.AssetID, 10)
+	if !ok || tokenID.Sign() < 0 {
+		err := fmt.Errorf("order: invalid decimal asset ID %q", in.AssetID)
+		return Result{Status: StatusRejected, Error: err.Error()}, err
+	}
 
 	order := V2Order{
 		Salt:          NewSalt(),
@@ -137,6 +140,8 @@ func (c *V2Client) Submit(ctx context.Context, in Intent) (Result, error) {
 		},
 		Owner:     c.creds.APIKey,
 		OrderType: orderType,
+		DeferExec: false,
+		PostOnly:  false,
 	}
 
 	bodyBytes, err := json.Marshal(payload)
@@ -321,7 +326,7 @@ type OrderStatusResponse struct {
 }
 
 func (c *V2Client) GetOrder(ctx context.Context, orderID string) (*OrderStatusResponse, error) {
-	path := "/order/" + orderID
+	path := "/data/order/" + orderID
 	headers := buildL2Headers(c.creds, c.wallet.Address(), "GET", path, "")
 
 	req, err := http.NewRequestWithContext(ctx, "GET", c.clobBase+path, nil)
@@ -369,13 +374,20 @@ func (c *V2Client) resultForPartialFill(ctx context.Context, orderID string, in 
 }
 
 func (c *V2Client) CancelOrder(ctx context.Context, orderID string) error {
-	path := "/order/" + orderID
-	headers := buildL2Headers(c.creds, c.wallet.Address(), "DELETE", path, "")
-
-	req, err := http.NewRequestWithContext(ctx, "DELETE", c.clobBase+path, nil)
+	path := "/order"
+	payload, err := json.Marshal(struct {
+		OrderID string `json:"orderID"`
+	}{OrderID: orderID})
 	if err != nil {
 		return err
 	}
+	headers := buildL2Headers(c.creds, c.wallet.Address(), "DELETE", path, string(payload))
+
+	req, err := http.NewRequestWithContext(ctx, "DELETE", c.clobBase+path, bytesReader(payload))
+	if err != nil {
+		return err
+	}
+	req.ContentLength = int64(len(payload))
 	for k, v := range headers {
 		req.Header[k] = v
 	}
@@ -385,10 +397,29 @@ func (c *V2Client) CancelOrder(ctx context.Context, orderID string) error {
 		return fmt.Errorf("DELETE %s: %w", path, err)
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 
 	if resp.StatusCode != 200 && resp.StatusCode != 204 {
 		return fmt.Errorf("DELETE %s %d: %s", path, resp.StatusCode, body)
+	}
+	if resp.StatusCode == http.StatusOK && len(body) > 0 {
+		var result struct {
+			Canceled    []string          `json:"canceled"`
+			NotCanceled map[string]string `json:"not_canceled"`
+		}
+		if err := json.Unmarshal(body, &result); err != nil {
+			return fmt.Errorf("DELETE %s decode: %w", path, err)
+		}
+		for _, canceledID := range result.Canceled {
+			if canceledID == orderID {
+				slog.Info("v2_order_cancelled", "order_id", orderID)
+				return nil
+			}
+		}
+		if reason := result.NotCanceled[orderID]; reason != "" {
+			return fmt.Errorf("cancel order %s: %s", orderID, reason)
+		}
+		return fmt.Errorf("cancel order %s: CLOB did not confirm cancellation", orderID)
 	}
 	slog.Info("v2_order_cancelled", "order_id", orderID)
 	return nil
@@ -692,6 +723,8 @@ type sendOrderPayload struct {
 	Order     orderJSON `json:"order"`
 	Owner     string    `json:"owner"`
 	OrderType string    `json:"orderType"`
+	DeferExec bool      `json:"deferExec"`
+	PostOnly  bool      `json:"postOnly"`
 }
 
 type orderJSON struct {
