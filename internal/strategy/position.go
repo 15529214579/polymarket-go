@@ -197,6 +197,25 @@ func (pm *PositionManager) SetOpenFee(posID string, feeUSD float64) error {
 	return nil
 }
 
+// ApplyOpenFill replaces the provisional signal price and size with the
+// actual fill after the order succeeds.
+func (pm *PositionManager) ApplyOpenFill(posID string, fillPrice, filledUnits float64) error {
+	if fillPrice <= 0 || fillPrice >= 1 || filledUnits <= 0 {
+		return fmt.Errorf("%w: fill price=%v units=%v", ErrInvalidEntry, fillPrice, filledUnits)
+	}
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	p, ok := pm.open[posID]
+	if !ok {
+		return ErrPositionNotFound
+	}
+	p.EntryMid = fillPrice
+	p.Units = filledUnits
+	p.InitUnits = filledUnits
+	p.SizeUSD = fillPrice * filledUnits
+	return nil
+}
+
 // PartialClose closes closeUnits from an open position at the given exit
 // signal and records the closed portion as its own tranche in closed[].
 // If closeUnits covers (effectively) all remaining Units, the position is

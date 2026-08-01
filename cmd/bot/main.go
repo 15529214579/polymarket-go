@@ -59,6 +59,7 @@ func main() {
 	maxEntry := flag.Float64("max_entry_price", 0.60, "signals with mid > this are filtered out")
 	// Phase 7.b ladder TP / SL / timeout + fee modeling. Defaults are SPEC §2.4.
 	feeBp := flag.Float64("fee_bp", 0, "per-side fee in basis points of notional; default 0 matches CLOB V1 reality (update after V2 cutover)")
+	takerFeeRate := flag.Float64("taker_fee_rate", 0, "paper dynamic taker fee rate; fee = shares * rate * price * (1-price)")
 	ladderTP1Pct := flag.Float64("ladder_tp1_pct", 9.99, "ladder TP1 trigger: 9.99 = effectively disabled (ride to settlement/timeout)")
 	ladderTP1Frac := flag.Float64("ladder_tp1_frac", 0.50, "fraction of initial units to close on TP1")
 	ladderTP2Pct := flag.Float64("ladder_tp2_pct", 9.99, "ladder TP2 trigger: 9.99 = effectively disabled")
@@ -229,7 +230,7 @@ func main() {
 			EurovisionInterval: *eurovisionInterval,
 			EurovisionMinEdge:  *eurovisionMinEdge,
 		}
-		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, injCfg, whaleCfg, *confirmDelay, btcCfg, updownCfg, p10, *liveTrading, *fadeMode, *walletsFile, *copytradeSize, *walletTiersFile, *initialCapital, *minTier, *positionsStatePath, *riskStatePath, *buyTimesStatePath, *posMaxTotalOpenUSD, *posMaxOpenPositions, *posMaxPerMarketUSD); err != nil && ctx.Err() == nil {
+		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *takerFeeRate, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *lotteryEnabled, lottCfg, injCfg, whaleCfg, *confirmDelay, btcCfg, updownCfg, p10, *liveTrading, *fadeMode, *walletsFile, *copytradeSize, *walletTiersFile, *initialCapital, *minTier, *positionsStatePath, *riskStatePath, *buyTimesStatePath, *posMaxTotalOpenUSD, *posMaxOpenPositions, *posMaxPerMarketUSD); err != nil && ctx.Err() == nil {
 			slog.Error("detect failed", "err", err)
 			os.Exit(1)
 		}
@@ -508,7 +509,7 @@ func drainSamplerTicks(ctx context.Context, sampler *feed.Sampler) {
 	}
 }
 
-func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, injCfg injury.Config, whaleCfg whale.Config, confirmDelay time.Duration, btcCfg btc.StrategyConfig, updownCfg btc.UpDownConfig, p10 phase10Config, liveTrading bool, fadeMode bool, walletsFile string, copytradeSize float64, walletTiersFile string, initialCapital float64, minTierFilter string, positionsStatePath, riskStatePath, buyTimesStatePath string, posMaxTotalOpenUSD float64, posMaxOpenPositions int, posMaxPerMarketUSD float64) error {
+func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, takerFeeRate, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, injCfg injury.Config, whaleCfg whale.Config, confirmDelay time.Duration, btcCfg btc.StrategyConfig, updownCfg btc.UpDownConfig, p10 phase10Config, liveTrading bool, fadeMode bool, walletsFile string, copytradeSize float64, walletTiersFile string, initialCapital float64, minTierFilter string, positionsStatePath, riskStatePath, buyTimesStatePath string, posMaxTotalOpenUSD float64, posMaxOpenPositions int, posMaxPerMarketUSD float64) error {
 	if signalMode != "auto" && signalMode != "prompt" && signalMode != "whale" && signalMode != "copytrade" {
 		return fmt.Errorf("invalid signal_mode %q (want auto|prompt|whale|copytrade)", signalMode)
 	}
@@ -753,7 +754,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 	var walletAddress string
 	var onChain *order.OnChain
 	pnlTrigger := make(chan struct{}, 4)
-	paper := order.NewPaperClientWithFee(slippageBp, feeBp)
+	paper := order.NewPaperClientWithFeeModel(slippageBp, feeBp, takerFeeRate)
 	orderClient = paper
 	if liveTrading {
 		slog.Info("v2_live_init", "msg", "loading wallet from Bitwarden")
@@ -836,7 +837,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 		"args", fmt.Sprintf("%v", os.Args[1:]),
 		"reason", os.Getenv("RESTART_REASON"),
 	)
-	slog.Info("paper_client.ready", "slippage_bp", slippageBp, "per_pos_usd", posCfg.PerPositionUSD)
+	slog.Info("paper_client.ready", "slippage_bp", slippageBp, "fee_bp", feeBp, "taker_fee_rate", takerFeeRate, "per_pos_usd", posCfg.PerPositionUSD)
 	slog.Info("risk.ready",
 		"bankroll_usd", riskCfg.StartingBankrollUSD,
 		"daily_loss_cap_usd", rm.State().DayLossCapUSD,
@@ -860,6 +861,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 		"mode", exitMode,
 		"want_settlement", wantSettlement,
 		"fee_bp", feeBp,
+		"taker_fee_rate", takerFeeRate,
 		"ladder_tp1_pct", ladderCfg.TP1Pct,
 		"ladder_tp1_frac", ladderCfg.TP1Frac,
 		"ladder_tp2_pct", ladderCfg.TP2Pct,
@@ -1200,12 +1202,13 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						}
 						notional := ex.CloseUnits * ex.ExitMid
 						sellIntent := order.Intent{
-							AssetID: ex.AssetID,
-							Market:  ex.Market,
-							Side:    order.Sell,
-							SizeUSD: notional,
-							LimitPx: ex.ExitMid,
-							Type:    order.GTC,
+							AssetID:    ex.AssetID,
+							Market:     ex.Market,
+							Side:       order.Sell,
+							SizeUSD:    notional,
+							SizeShares: ex.CloseUnits,
+							LimitPx:    ex.ExitMid,
+							Type:       order.GTC,
 						}
 						res, err := orderClient.Submit(ctx, sellIntent)
 						if err != nil {
@@ -2340,6 +2343,10 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					if crossPx > 0.99 {
 						crossPx = 0.99
 					}
+					orderPx := ev.Price
+					if liveTrading {
+						orderPx = crossPx
+					}
 					// Clear any stale orders before placing new one
 					if v2, ok := orderClient.(*order.V2Client); ok {
 						if err := v2.CancelAllOpen(ctx); err != nil {
@@ -2351,7 +2358,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						Market:  ev.ConditionID,
 						Side:    order.Buy,
 						SizeUSD: sizeUSD,
-						LimitPx: crossPx,
+						LimitPx: orderPx,
 						Type:    order.GTC,
 						NegRisk: isNegRisk,
 					}
@@ -2387,6 +2394,9 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						savePositions()
 						appendWhaleTrade(ev, "submit_failed", reason)
 					} else {
+						if err := pm.ApplyOpenFill(pos.ID, result.AvgPrice, result.FilledSize); err != nil {
+							slog.Warn("copytrade_apply_fill_fail", "pos", pos.ID, "err", err.Error())
+						}
 						if err := pm.SetOpenFee(pos.ID, result.FeeUSD); err != nil {
 							slog.Warn("copytrade_set_open_fee_fail", "pos", pos.ID, "err", err.Error())
 						}
@@ -2396,14 +2406,15 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 							"tier", tier,
 							"asset", short(ev.AssetID),
 							"outcome", ev.Outcome,
-							"price", ev.Price,
+							"signal_price", ev.Price,
+							"fill_price", result.AvgPrice,
 							"size_usd", sizeUSD,
 							"order_id", result.OrderID,
 							"fee_usd", result.FeeUSD,
 						)
-						fillMsg := fmt.Sprintf("✅ 跟单成功\n%s · %s\n💰 $%.0f @ %.4f · Tier %s\n🐋 %s 买入 $%.0f\n🆔 %s",
+						fillMsg := fmt.Sprintf("✅ 跟单成功\n%s · %s\n💰 $%.0f @ %.4f · fee %.3fU · Tier %s\n🐋 %s 买入 $%.0f\n🆔 %s",
 							ev.Question, ev.Outcome,
-							sizeUSD, ev.Price, tier,
+							sizeUSD, result.AvgPrice, result.FeeUSD, tier,
 							ev.Label, ev.Notional,
 							result.OrderID)
 						notifier.SidecarAlert(fillMsg)
@@ -2443,17 +2454,41 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					now := time.Now()
 					closed := 0
 					for _, pos := range matches {
+						closeUnits := pos.Units * sellPct
+						exitPrice := ev.Price
+						exitFee := 0.0
+						closeOrderID := "copytrade_sell"
+						if sellPct < 0.95 {
+							closeOrderID = fmt.Sprintf("copytrade_partial_%.0f%%", ev.PctSold)
+						}
+						if !liveTrading {
+							res, serr := orderClient.Submit(ctx, order.Intent{
+								AssetID:    pos.AssetID,
+								Market:     pos.Market,
+								Side:       order.Sell,
+								SizeUSD:    closeUnits * ev.Price,
+								SizeShares: closeUnits,
+								LimitPx:    ev.Price,
+								Type:       order.GTC,
+							})
+							if serr != nil || res.Status != order.StatusFilled {
+								slog.Warn("copytrade_sell_submit_fail", "pos", pos.ID, "err", serr, "status", res.Status)
+								continue
+							}
+							exitPrice = res.AvgPrice
+							exitFee = res.FeeUSD
+							closeOrderID = res.OrderID
+						}
 						exitSig := strategy.ExitSignal{
 							AssetID:  pos.AssetID,
 							Market:   pos.Market,
 							Time:     now,
 							EntryMid: pos.EntryMid,
-							ExitMid:  ev.Price,
+							ExitMid:  exitPrice,
 							HeldFor:  now.Sub(pos.EntryTime),
-							ChangePP: (ev.Price - pos.EntryMid) * 100,
+							ChangePP: (exitPrice - pos.EntryMid) * 100,
 							Reason:   strategy.ExitReason("whale_sell"),
 						}
-						closeUnits := pos.Units * sellPct
 						var closedPos strategy.Position
 						var err error
 						if sellPct >= 0.95 {
@@ -2469,7 +2504,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						if closedPos.InitUnits > 0 {
 							entryFeeShare = closedPos.OpenFeeUSD * (closedPos.Units / closedPos.InitUnits)
 						}
-						netPnL := closedPos.PnLUSD - entryFeeShare
+						netPnL := closedPos.PnLUSD - entryFeeShare - exitFee
 						source, openOID := src.Take(closedPos.ID)
 						if tripped := rm.OnClose(netPnL, now); tripped {
 							rst := rm.State()
@@ -2481,10 +2516,6 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						}
 						if err := rm.SaveState(riskStatePath); err != nil {
 							slog.Warn("risk_save_err", "err", err)
-						}
-						closeReason := "copytrade_sell"
-						if sellPct < 0.95 {
-							closeReason = fmt.Sprintf("copytrade_partial_%.0f%%", ev.PctSold)
 						}
 						if jerr := jrn.Append(journal.TradeRecord{
 							ID:           closedPos.ID,
@@ -2503,9 +2534,10 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 							HeldSec:      int(closedPos.ExitTime.Sub(closedPos.EntryTime).Seconds()),
 							PnLUSD:       closedPos.PnLUSD,
 							EntryFeeUSD:  entryFeeShare,
+							ExitFeeUSD:   exitFee,
 							NetPnLUSD:    netPnL,
 							OpenOrderID:  openOID,
-							CloseOrderID: closeReason,
+							CloseOrderID: closeOrderID,
 							Mode:         "paper",
 							SignalSource: source,
 						}); jerr != nil {
@@ -2517,10 +2549,12 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 							"pct_sold", fmt.Sprintf("%.0f%%", ev.PctSold),
 							"close_units", closeUnits,
 							"remaining", pos.Units-closeUnits,
-							"pnl", closedPos.PnLUSD,
+							"gross_pnl", closedPos.PnLUSD,
+							"exit_fee", exitFee,
+							"net_pnl", netPnL,
 						)
 						pnlIcon := "🟢"
-						if closedPos.PnLUSD < 0 {
+						if netPnL < 0 {
 							pnlIcon = "🔴"
 						}
 						sellType := "全部平仓"
@@ -2530,7 +2564,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						sellMsg := fmt.Sprintf("%s 跟卖 · %s\n%s · %s\n💰 PnL $%+.2f · %.0f shares\n🐋 %s 卖出 %.0f%%",
 							pnlIcon, sellType,
 							ev.Question, ev.Outcome,
-							closedPos.PnLUSD, closeUnits,
+							netPnL, closeUnits,
 							ev.Label, ev.PctSold)
 						notifier.SidecarAlert(sellMsg)
 					}
@@ -3178,13 +3212,26 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					m, ok := byCond[strings.ToLower(conditionID)]
 					if !ok {
 						if !liveTrading && exitMode == "ladder" && ladderCfg.MaxHold > 0 && now.Sub(p.EntryTime) >= ladderCfg.MaxHold {
+							res, serr := orderClient.Submit(ctx, order.Intent{
+								AssetID:    p.AssetID,
+								Market:     p.Market,
+								Side:       order.Sell,
+								SizeUSD:    p.Units * p.EntryMid,
+								SizeShares: p.Units,
+								LimitPx:    p.EntryMid,
+								Type:       order.GTC,
+							})
+							if serr != nil || res.Status != order.StatusFilled {
+								slog.Warn("paper_timeout_flat_sell_fail", "pos", p.ID, "asset", short(p.AssetID), "err", serr, "status", res.Status)
+								continue
+							}
 							sig := strategy.ExitSignal{
 								AssetID:  p.AssetID,
 								Market:   p.Market,
 								Time:     now,
 								EntryMid: p.EntryMid,
 								PeakMid:  p.EntryMid,
-								ExitMid:  p.EntryMid,
+								ExitMid:  res.AvgPrice,
 								HeldFor:  now.Sub(p.EntryTime),
 								Reason:   strategy.ExitTimeout,
 							}
@@ -3198,6 +3245,18 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 							if recorder != nil {
 								if rerr := recorder.Stop(closed.ID); rerr != nil {
 									slog.Warn("tickrec_stop_fail", "pos", closed.ID, "err", rerr.Error())
+								}
+							}
+							entryFeeShare := closed.OpenFeeUSD
+							if closed.InitUnits > 0 {
+								entryFeeShare = closed.OpenFeeUSD * (closed.Units / closed.InitUnits)
+							}
+							netPnL := closed.PnLUSD - entryFeeShare - res.FeeUSD
+							flatSource, _ := src.Peek(closed.ID)
+							if flatSource != "manual" {
+								rm.OnClose(netPnL, now)
+								if err := rm.SaveState(riskStatePath); err != nil {
+									slog.Warn("risk_save_err", "err", err)
 								}
 							}
 							source, openOID := src.Take(closed.ID)
@@ -3215,10 +3274,12 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 								ExitReason:   string(closed.ExitReason),
 								HeldSec:      int(sig.HeldFor.Seconds()),
 								PnLUSD:       closed.PnLUSD,
-								NetPnLUSD:    closed.PnLUSD,
+								EntryFeeUSD:  entryFeeShare,
+								ExitFeeUSD:   res.FeeUSD,
+								NetPnLUSD:    netPnL,
 								Tranche:      "timeout_flat",
 								OpenOrderID:  openOID,
-								CloseOrderID: fmt.Sprintf("timeout-flat-%s", short(p.AssetID)),
+								CloseOrderID: res.OrderID,
 								Mode:         "paper",
 								SignalSource: source,
 							}); jerr != nil {
@@ -3231,6 +3292,10 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 								"q", closed.Question,
 								"outcome", closed.Outcome,
 								"entry", p.EntryMid,
+								"exit_fill", res.AvgPrice,
+								"entry_fee_usd", entryFeeShare,
+								"exit_fee_usd", res.FeeUSD,
+								"net_pnl_usd", netPnL,
 								"held_sec", int(sig.HeldFor.Seconds()),
 								"open_positions", stats.Open,
 								"realized_pnl", stats.RealizedPnLUSD,
@@ -3259,15 +3324,38 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						}
 						reason = strategy.ExitTimeout
 					}
+					exitMid := settleMid
+					exitFee := 0.0
+					orderID := fmt.Sprintf("settle-%s", short(p.AssetID))
+					tranche := "settle"
+					if reason == strategy.ExitTimeout {
+						res, serr := orderClient.Submit(ctx, order.Intent{
+							AssetID:    p.AssetID,
+							Market:     p.Market,
+							Side:       order.Sell,
+							SizeUSD:    p.Units * settleMid,
+							SizeShares: p.Units,
+							LimitPx:    settleMid,
+							Type:       order.GTC,
+						})
+						if serr != nil || res.Status != order.StatusFilled {
+							slog.Warn("paper_timeout_sell_fail", "pos", p.ID, "asset", short(p.AssetID), "err", serr, "status", res.Status)
+							continue
+						}
+						exitMid = res.AvgPrice
+						exitFee = res.FeeUSD
+						orderID = res.OrderID
+						tranche = "timeout"
+					}
 					sig := strategy.ExitSignal{
 						AssetID:  p.AssetID,
 						Market:   p.Market,
 						Time:     now,
 						EntryMid: p.EntryMid,
 						PeakMid:  p.EntryMid,
-						ExitMid:  settleMid,
+						ExitMid:  exitMid,
 						HeldFor:  now.Sub(p.EntryTime),
-						ChangePP: (settleMid - p.EntryMid) * 100,
+						ChangePP: (exitMid - p.EntryMid) * 100,
 						Reason:   reason,
 					}
 					closed, cerr := pm.Close(p.ID, sig)
@@ -3284,15 +3372,13 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 							slog.Warn("tickrec_stop_fail", "pos", closed.ID, "err", rerr.Error())
 						}
 					}
-					orderID := fmt.Sprintf("settle-%s", short(p.AssetID))
 					// Apportion remaining open fee to the portion of units
-					// still open at settlement (p.InitUnits may be > p.Units
-					// if ladder TP1 already fired); settlement has no exit fee.
+					// still open (p.InitUnits may be > p.Units after TP1).
 					entryFeeShare := 0.0
 					if p.InitUnits > 0 {
 						entryFeeShare = p.OpenFeeUSD * (p.Units / p.InitUnits)
 					}
-					netPnL := closed.PnLUSD - entryFeeShare
+					netPnL := closed.PnLUSD - entryFeeShare - exitFee
 					stats := pm.Stats()
 					settleSource, _ := src.Peek(closed.ID)
 					if settleSource != "manual" {
@@ -3322,7 +3408,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 							SizeUSD:  p.SizeUSD,
 							PnLUSD:   netPnL,
 							EntryPx:  p.EntryMid,
-							ExitPx:   settleMid,
+							ExitPx:   exitMid,
 							Reason:   string(reason),
 							HeldSec:  int(sig.HeldFor.Seconds()),
 						})
@@ -3343,9 +3429,9 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						HeldSec:      int(sig.HeldFor.Seconds()),
 						PnLUSD:       closed.PnLUSD,
 						EntryFeeUSD:  entryFeeShare,
-						ExitFeeUSD:   0,
+						ExitFeeUSD:   exitFee,
 						NetPnLUSD:    netPnL,
-						Tranche:      "settle",
+						Tranche:      tranche,
 						OpenOrderID:  openOID,
 						CloseOrderID: orderID,
 						Mode:         "paper",
@@ -3358,9 +3444,11 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						"q", paperPositionQuestion(p, m, meta[p.AssetID]),
 						"outcome", paperPositionOutcome(p, m, slotIdx, meta[p.AssetID]),
 						"entry", p.EntryMid,
-						"settle", settleMid,
+						"market_mid", settleMid,
+						"exit_fill", exitMid,
 						"gross_pnl_usd", closed.PnLUSD,
 						"entry_fee_usd", entryFeeShare,
+						"exit_fee_usd", exitFee,
 						"net_pnl_usd", netPnL,
 						"held_sec", int(sig.HeldFor.Seconds()),
 						"reason", string(reason),
@@ -4186,12 +4274,13 @@ func (h *buyHandler) OnClose(ctx context.Context, nonce string, messageID int64)
 			continue
 		}
 		sellIntent := order.Intent{
-			AssetID: pos.AssetID,
-			Market:  pos.Market,
-			Side:    order.Sell,
-			SizeUSD: pos.SizeUSD,
-			LimitPx: ci.WhalePrice,
-			Type:    order.GTC,
+			AssetID:    pos.AssetID,
+			Market:     pos.Market,
+			Side:       order.Sell,
+			SizeUSD:    pos.SizeUSD,
+			SizeShares: pos.Units,
+			LimitPx:    ci.WhalePrice,
+			Type:       order.GTC,
 		}
 		res, serr := h.paper.Submit(ctx, sellIntent)
 		if serr != nil {

@@ -53,6 +53,37 @@ func TestPaperSlippageSellImprovesThenSuffers(t *testing.T) {
 	}
 }
 
+func TestPaperDynamicTakerFee(t *testing.T) {
+	p := NewPaperClientWithFeeModel(0, 0, 0.05)
+	r, err := p.Submit(context.Background(), Intent{
+		AssetID: "a", Side: Buy, SizeUSD: 5, LimitPx: 0.50, Type: GTC,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 10 shares x 0.05 x 0.50 x 0.50 = 0.125 USDC.
+	if math.Abs(r.FeeUSD-0.125) > 1e-9 {
+		t.Fatalf("fee: want 0.125 got %v", r.FeeUSD)
+	}
+}
+
+func TestPaperSellFeeUsesExactShares(t *testing.T) {
+	p := NewPaperClientWithFeeModel(100, 0, 0.05)
+	r, err := p.Submit(context.Background(), Intent{
+		AssetID: "a", Side: Sell, SizeUSD: 4, SizeShares: 10, LimitPx: 0.40, Type: GTC,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if math.Abs(r.FilledSize-10) > 1e-9 {
+		t.Fatalf("filled shares: want 10 got %v", r.FilledSize)
+	}
+	// Sell fills at 0.396; dynamic fee rounds to five USDC decimals.
+	if math.Abs(r.FeeUSD-0.11959) > 1e-9 {
+		t.Fatalf("fee: want 0.11959 got %v", r.FeeUSD)
+	}
+}
+
 func TestPaperRejectsOutOfRange(t *testing.T) {
 	p := NewPaperClient(0)
 	for _, px := range []float64{0, -0.1, 1, 1.5} {

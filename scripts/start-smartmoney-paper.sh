@@ -30,6 +30,9 @@ WHALE_MIN_USD="${SMARTMONEY_PAPER_WHALE_MIN_USD:-500}"
 PAPER_FOLLOW_PROMPT="${SMARTMONEY_PAPER_FOLLOW_PROMPT:-1}"
 PAPER_FOLLOW_FOOTBALL_SCORE="${SMARTMONEY_PAPER_FOLLOW_FOOTBALL_SCORE:-1}"
 FOOTBALL_SCORE_SIZE="${SMARTMONEY_PAPER_FOOTBALL_SCORE_SIZE:-5}"
+SLIPPAGE_BP="${SMARTMONEY_PAPER_SLIPPAGE_BP:-50}"
+BUILDER_FEE_BP="${SMARTMONEY_PAPER_BUILDER_FEE_BP:-0}"
+TAKER_FEE_RATE="${SMARTMONEY_PAPER_TAKER_FEE_RATE:-0.05}"
 WALLET_TIERS="${SMARTMONEY_PAPER_WALLET_TIERS:-$ROOT/db/strategy_iteration/copytrade_backtest_results.generated.json}"
 SOURCE_WALLETS="${SMARTMONEY_PAPER_SOURCE_WALLETS:-$ROOT/wallets.strategy-push.txt $ROOT/wallets.football-score-push.txt $ROOT/wallets.hourly-push.txt $ROOT/wallets.leaderboard-watch.txt $ROOT/wallets.leaderboard-sports-push.txt}"
 EXCLUDE_WALLETS="${SMARTMONEY_PAPER_EXCLUDE_WALLETS:-$ROOT/wallets.strategy-quarantine.txt $ROOT/wallets.strategy-review-noise.txt $ROOT/db/strategy_iteration/wallets.strategy-exclude.txt}"
@@ -130,6 +133,9 @@ prepare() {
     printf 'paper_follow_prompt=%s\n' "$PAPER_FOLLOW_PROMPT"
     printf 'paper_follow_football_score=%s\n' "$PAPER_FOLLOW_FOOTBALL_SCORE"
     printf 'football_score_size=%s\n' "$FOOTBALL_SCORE_SIZE"
+    printf 'slippage_bp=%s\n' "$SLIPPAGE_BP"
+    printf 'builder_fee_bp=%s\n' "$BUILDER_FEE_BP"
+    printf 'taker_fee_rate=%s\n' "$TAKER_FEE_RATE"
     printf 'wallet_count=%s\n' "$WALLET_COUNT"
     printf 'wallets_file=%s\n' "$WALLETS_FILE"
     printf 'wallet_tiers=%s\n' "$WALLET_TIERS"
@@ -147,7 +153,7 @@ run_loop() {
     restart_count=$((restart_count + 1))
     spawn_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     spawn_epoch="$(date +%s)"
-    echo "smartmoney-paper.spawn restart=$restart_count ts=$spawn_ts capital=$INITIAL_CAPITAL min_tier=$MIN_TIER wallets=$WALLET_COUNT markets=$MARKETS max_open_usd=$MAX_OPEN_USD"
+    echo "smartmoney-paper.spawn restart=$restart_count ts=$spawn_ts capital=$INITIAL_CAPITAL min_tier=$MIN_TIER wallets=$WALLET_COUNT markets=$MARKETS max_open_usd=$MAX_OPEN_USD slippage_bp=$SLIPPAGE_BP taker_fee_rate=$TAKER_FEE_RATE"
     export COPYTRADE_PAPER_FOLLOW_PROMPT="$PAPER_FOLLOW_PROMPT"
     export COPYTRADE_PAPER_FOLLOW_FOOTBALL_SCORE="$PAPER_FOLLOW_FOOTBALL_SCORE"
     export COPYTRADE_PAPER_FOOTBALL_SCORE_SIZE="$FOOTBALL_SCORE_SIZE"
@@ -157,7 +163,9 @@ run_loop() {
       -exit_mode=ladder \
       -markets="$MARKETS" \
       -window=60 \
-      -fee_bp=0 \
+      -slippage_bp="$SLIPPAGE_BP" \
+      -fee_bp="$BUILDER_FEE_BP" \
+      -taker_fee_rate="$TAKER_FEE_RATE" \
       -lottery_enabled=false \
       -ladder_sl_pct=0.20 \
       -ladder_max_hold=10m \

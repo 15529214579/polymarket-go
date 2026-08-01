@@ -156,6 +156,27 @@ func TestPositionManager_InvalidEntry(t *testing.T) {
 	}
 }
 
+func TestPositionManager_ApplyOpenFill(t *testing.T) {
+	pm := NewPositionManager(DefaultPositionConfig())
+	p, err := pm.OpenSized("asset", "market", tick(0.50, time.Now()), 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := pm.ApplyOpenFill(p.ID, 0.505, 5/0.505); err != nil {
+		t.Fatal(err)
+	}
+	got := pm.Snapshot()[0]
+	if absDiff(got.EntryMid, 0.505) > 1e-9 {
+		t.Fatalf("entry: want 0.505 got %v", got.EntryMid)
+	}
+	if absDiff(got.Units, 5/0.505) > 1e-9 {
+		t.Fatalf("units: want %v got %v", 5/0.505, got.Units)
+	}
+	if absDiff(got.SizeUSD, 5) > 1e-9 {
+		t.Fatalf("size: want 5 got %v", got.SizeUSD)
+	}
+}
+
 func TestPositionManager_PartialClose_Tranches(t *testing.T) {
 	pm := NewPositionManager(DefaultPositionConfig())
 	now := time.Now()

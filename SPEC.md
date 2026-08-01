@@ -52,7 +52,7 @@
   - **MaxHold** 4h 强平（避免锁死资金）
   - 相比老方案 (+30%/+60%/余量 hold) 更激进：拉早 TP1、补足 TP2 清仓、加硬止损、加超时，不保留 hold tail
   - SL 收紧依据：Phase 7.d sweep 显示 SL 是主导杠杆——python pool 中 baseline -30.41 → SL=5% 的 -0.23（top 10 全部 SL=5%）。TP 阈值在 5%~100% 之间只差 7 个点。
-- **手续费建模** — `-fee_bp`（per-side 基点，默认 0 匹配 CLOB V1 实测；V2 官方数字发布后更新）。paper 双边计费写 journal，净 PnL = 毛 PnL − entry_fee − exit_fee。
+- **成本建模** — `-slippage_bp` 对买卖两边施加不利滑点；`-taker_fee_rate` 按 `shares × rate × price × (1-price)` 计算动态平台费；`-fee_bp` 仅保留给额外固定 builder fee。paper 双边计费写 journal，净 PnL = 毛 PnL − entry_fee − exit_fee。智能钱体育模拟盘默认每边 50bp 滑点、动态费率 0.05。
 - ~~**Phase 7.c 长尾市场**~~ — 老板 04-20 21:42 拍板**不做**：周期太长不适合 90 USDC 资金体量。
 - **历史回放** — 把 python trades 的 entry_price × market_id 灌进 Go backtester 验 ladder_TP 期望曲线，Phase 7.d。
 

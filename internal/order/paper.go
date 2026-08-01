@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 )
@@ -15,8 +16,9 @@ import (
 // with optional bp slippage and a configurable per-side fee (bp of notional)
 // so net-PnL accounting can model the V2 fee reality ahead of cutover.
 type PaperClient struct {
-	slippageBp float64
-	feeBp      float64
+	slippageBp   float64
+	feeBp        float64
+	takerFeeRate float64
 
 	mu     sync.Mutex
 	orders []Result
@@ -35,6 +37,17 @@ func NewPaperClientWithFee(slippageBp, feeBp float64) *PaperClient {
 	return &PaperClient{slippageBp: slippageBp, feeBp: feeBp}
 }
 
+// NewPaperClientWithFeeModel adds Polymarket's dynamic taker fee curve:
+// shares x feeRate x price x (1-price). feeBp remains available for an
+// additional flat builder fee on filled notional.
+func NewPaperClientWithFeeModel(slippageBp, feeBp, takerFeeRate float64) *PaperClient {
+	return &PaperClient{
+		slippageBp:   slippageBp,
+		feeBp:        feeBp,
+		takerFeeRate: takerFeeRate,
+	}
+}
+
 func (p *PaperClient) Name() string { return "paper" }
 
 func (p *PaperClient) Submit(ctx context.Context, in Intent) (Result, error) {
@@ -49,7 +62,16 @@ func (p *PaperClient) Submit(ctx context.Context, in Intent) (Result, error) {
 			fmt.Errorf("paper: slipped price %.4f out of (0,1)", px)
 	}
 	units := in.SizeUSD / px
-	fee := in.SizeUSD * p.feeBp / 10_000
+	if in.SizeShares > 0 {
+		units = in.SizeShares
+	}
+	notional := units * px
+	flatFee := notional * p.feeBp / 10_000
+	platformFee := units * p.takerFeeRate * px * (1 - px)
+	if platformFee > 0 {
+		platformFee = math.Round(platformFee*100_000) / 100_000
+	}
+	fee := flatFee + platformFee
 
 	r := Result{
 		OrderID:    "paper-" + randHex(6),
