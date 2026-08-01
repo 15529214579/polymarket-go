@@ -107,7 +107,7 @@ func (c *GuardedClient) Submit(ctx context.Context, in Intent) (Result, error) {
 		err := fmt.Errorf("%w: order size must be finite and positive", ErrLiveLimit)
 		return rejectedResult(err), err
 	}
-	if in.SizeUSD > c.cfg.MaxOrderUSD+1e-9 {
+	if in.Side == Buy && in.SizeUSD > c.cfg.MaxOrderUSD+1e-9 {
 		err := fmt.Errorf("%w: order %.2fU > %.2fU", ErrLiveLimit, in.SizeUSD, c.cfg.MaxOrderUSD)
 		return rejectedResult(err), err
 	}

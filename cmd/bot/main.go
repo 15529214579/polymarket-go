@@ -121,7 +121,7 @@ func main() {
 	liveTrading := flag.Bool("live", false, "enable real V2 CLOB order submission (requires wallet mnemonic in Bitwarden)")
 	liveDisableFile := flag.String("live_disable_file", "db/live-trading.disabled", "live trading kill-switch file; ignored in paper/research modes")
 	liveArmFile := flag.String("live_arm_file", "db/live-trading.enabled", "short-lived, wallet-bound live trading arm file")
-	liveMaxOrderUSD := flag.Float64("live_max_order_usd", 20.0, "hard maximum notional for one live order")
+	liveMaxOrderUSD := flag.Float64("live_max_order_usd", 20.0, "hard maximum notional for one live BUY; exits are not capped")
 	liveMaxSessionBuyUSD := flag.Float64("live_max_session_buy_usd", 100.0, "hard maximum filled BUY notional for one live process")
 	liveMaxArmDuration := flag.Duration("live_max_arm_duration", 24*time.Hour, "maximum accepted live arm-file validity window")
 	initialCapital := flag.Float64("initial_capital", 200.0, "initial capital in USD for total P&L calculation")
@@ -573,6 +573,11 @@ func monitorLiveGuard(ctx context.Context, cancel context.CancelFunc, client *or
 	}
 }
 
+type onChainReader interface {
+	PUSDBalance(context.Context) (*big.Int, error)
+	ConditionalTokenBalance(context.Context, string) (*big.Int, error)
+}
+
 func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, takerFeeRate, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, exitPollInterval, eventPostStartHold, timeoutReentryCooldown time.Duration, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, injCfg injury.Config, whaleCfg whale.Config, confirmDelay time.Duration, btcCfg btc.StrategyConfig, updownCfg btc.UpDownConfig, p10 phase10Config, liveTrading bool, liveGuardCfg order.LiveGuardConfig, fadeMode bool, walletsFile string, copytradeSize float64, walletTiersFile string, initialCapital float64, minTierFilter string, positionsStatePath, riskStatePath, buyTimesStatePath string, posMaxTotalOpenUSD float64, posMaxOpenPositions int, posMaxPerMarketUSD, posMaxPerEventUSD, footballScoreMaxEventUSD float64) error {
 	ctx, cancelRun := context.WithCancel(ctx)
 	defer cancelRun()
@@ -1018,7 +1023,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 
 	var orderClient order.Client
 	var walletAddress string
-	var onChain *order.OnChain
+	var chainReader onChainReader
 	pnlTrigger := make(chan struct{}, 4)
 	paper := order.NewPaperClientWithFeeModel(slippageBp, feeBp, takerFeeRate)
 	orderClient = paper
@@ -1036,12 +1041,12 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 			slog.Error("v2_live_guard_rejected", "err", err)
 			os.Exit(1)
 		}
-		oc, ocErr := order.NewOnChain("", wallet)
+		oc, ocErr := order.NewReadOnlyOnChain("", wallet.Address())
 		if ocErr != nil {
-			slog.Warn("onchain_init_failed", "err", ocErr)
+			slog.Warn("onchain_read_only_init_failed", "err", ocErr)
 		} else {
-			onChain = oc
-			slog.Info("onchain_ready", "address", walletAddress)
+			chainReader = oc
+			slog.Info("onchain_read_only_ready", "address", walletAddress)
 		}
 		creds, err := order.DeriveExistingAPIKey(order.ClobBaseURL, wallet)
 		if err != nil {
@@ -4093,8 +4098,8 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 
 			// --- Query wallet balance ---
 			var walletPUSD float64
-			if onChain != nil {
-				if bal, berr := onChain.PUSDBalance(ctx); berr == nil {
+			if chainReader != nil {
+				if bal, berr := chainReader.PUSDBalance(ctx); berr == nil {
 					f, _ := new(big.Float).SetInt(bal).Float64()
 					walletPUSD = f / 1e6
 				} else {
@@ -4232,25 +4237,26 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 		}
 	}()
 
-	// Auto-redeem: every 1h check for redeemable winning positions and redeem on-chain.
-	if onChain != nil && walletAddress != "" {
+	// Redemption observer: report redeemable positions, but never sign or send
+	// an on-chain transaction from the automated bot process.
+	if chainReader != nil && walletAddress != "" {
 		go func() {
 			tk := time.NewTicker(1 * time.Hour)
 			defer tk.Stop()
-			redeemedFile := filepath.Join("db", "redeemed.json")
-			redeemed := make(map[string]bool)
-			if data, err := os.ReadFile(redeemedFile); err == nil {
-				json.Unmarshal(data, &redeemed)
+			alertedFile := filepath.Join("db", "redeem-alerted.json")
+			alerted := make(map[string]bool)
+			if data, err := os.ReadFile(alertedFile); err == nil {
+				_ = json.Unmarshal(data, &alerted)
 			}
-			saveRedeemed := func() {
-				if data, err := json.Marshal(redeemed); err == nil {
-					os.WriteFile(redeemedFile, data, 0644)
+			saveAlerted := func() {
+				if data, err := json.Marshal(alerted); err == nil {
+					_ = os.WriteFile(alertedFile, data, 0644)
 				}
 			}
-			checkRedeem := func() {
+			checkRedeemable := func() {
 				positions, err := fetchDataAPIPositions(walletAddress)
 				if err != nil {
-					slog.Warn("redeem_fetch_err", "err", err)
+					slog.Warn("redeem_observer_fetch_err", "err", err)
 					return
 				}
 				sgt := time.FixedZone("SGT", 8*3600)
@@ -4259,56 +4265,47 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 						continue
 					}
 					balanceCtx, balanceCancel := context.WithTimeout(ctx, 15*time.Second)
-					chainBalance, balanceErr := onChain.ConditionalTokenBalance(balanceCtx, p.Asset)
+					chainBalance, balanceErr := chainReader.ConditionalTokenBalance(balanceCtx, p.Asset)
 					balanceCancel()
 					if balanceErr != nil {
-						slog.Warn("redeem_balance_check_failed", "asset", p.Asset, "err", balanceErr)
+						slog.Warn("redeem_observer_balance_failed", "asset", p.Asset, "err", balanceErr)
 						continue
 					}
 					if chainBalance.Sign() <= 0 {
-						if !redeemed[p.Asset] {
-							redeemed[p.Asset] = true
-							saveRedeemed()
-						}
+						alerted[p.Asset] = true
 						continue
 					}
-					if redeemed[p.Asset] {
-						slog.Warn("redeem_local_state_stale", "asset", p.Asset, "onchain_balance", chainBalance.String())
+					if alerted[p.Asset] {
+						continue
 					}
-					slog.Info("redeem_candidate",
+					value := p.CurrentValue
+					if value <= 0 {
+						value = p.Size * p.CurPrice
+					}
+					slog.Info("redeem_manual_required",
 						"title", p.Title,
 						"outcome", p.Outcome,
 						"size", p.Size,
+						"value", value,
 						"conditionId", p.ConditionID,
 						"negRisk", p.NegativeRisk,
 						"outcomeIndex", p.OutcomeIndex,
 					)
-					rCtx, rCancel := context.WithTimeout(ctx, 120*time.Second)
-					err := onChain.RedeemPosition(rCtx, p.ConditionID, p.Asset, p.OutcomeIndex, p.Size, p.NegativeRisk)
-					rCancel()
-					if err != nil {
-						slog.Error("redeem_failed", "title", p.Title, "err", err)
-						notifier.SidecarAlert(fmt.Sprintf("❌ 赎回失败: %s\n%s · %.1f份\n错误: %s",
-							p.Title, p.Outcome, p.Size, err))
-					} else {
-						redeemed[p.Asset] = true
-						saveRedeemed()
-						pnl := p.CurrentValue - p.InitialValue
-						slog.Info("redeem_success", "title", p.Title, "size", p.Size, "pnl", pnl)
-						notifier.SidecarAlert(fmt.Sprintf("💰 赎回成功: %s\n%s · %.1f份 · $%.2f→$%.2f · P&L $%+.2f\n%s SGT",
-							p.Title, p.Outcome, p.Size, p.InitialValue, p.CurrentValue, pnl,
-							time.Now().In(sgt).Format("01/02 15:04")))
-					}
+					notifier.SidecarAlert(fmt.Sprintf("💰 可赎回 · 需手动维护\n%s\n%s · %.1f份 · 约 $%.2f\n%s SGT",
+						p.Title, p.Outcome, p.Size, value,
+						time.Now().In(sgt).Format("01/02 15:04")))
+					alerted[p.Asset] = true
+					saveAlerted()
 				}
 			}
 			time.Sleep(10 * time.Second)
-			checkRedeem()
+			checkRedeemable()
 			for {
 				select {
 				case <-ctx.Done():
 					return
 				case <-tk.C:
-					checkRedeem()
+					checkRedeemable()
 				}
 			}
 		}()

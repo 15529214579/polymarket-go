@@ -45,6 +45,7 @@ polymarket-go 与 python 的 polymarket-agent 在以下所有维度必须物理�
 - 只允许 `.env.local`（chmod 600 + gitignored）缓存运行时需要的 token
 - **绝不** commit `.env` / `*.key` / 助记词原文
 - 禁止通过命令行参数传私钥；实盘必须使用短期、钱包绑定的本地 arm 文件，且每次签名前动态检查 kill switch
+- 自动交易进程不得持有链上交易发送能力；Polygon 余额查询使用只读客户端，wrap/approve/redeem 必须由独立维护动作执行后退出
 - 接收到的助记词图片等，Bitwarden 存档后立刻从 inbound 目录删除
 
 ## P5. 群聊打断 ≠ 交付（跨项目，auto-memory 也有记录）

@@ -67,7 +67,12 @@ func TestGuardedClientEnforcesOrderAndSessionLimits(t *testing.T) {
 	if _, err := client.Submit(context.Background(), testBuyIntent(math.NaN())); !errors.Is(err, ErrLiveLimit) {
 		t.Fatalf("expected non-finite size rejection, got %v", err)
 	}
-	if inner.calls != 1 {
+	if _, err := client.Submit(context.Background(), Intent{
+		AssetID: "123", Market: "market", Side: Sell, SizeUSD: 25, SizeShares: 50, LimitPx: 0.5, Type: GTC,
+	}); err != nil {
+		t.Fatalf("risk-reducing sell must not be blocked by the buy limit: %v", err)
+	}
+	if inner.calls != 2 {
 		t.Fatalf("inner calls=%d", inner.calls)
 	}
 }

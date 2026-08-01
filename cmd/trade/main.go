@@ -22,13 +22,13 @@ const projectWalletAddress = "0x015282e9b720E072A9B87eEeaE738C6Bb039Bd9e"
 func main() {
 	assetID := flag.String("asset", "", "ERC1155 token ID (YES side)")
 	market := flag.String("market", "", "conditionID for logging")
-	sizeUSD := flag.Float64("size", 0, "order size in USDC (0 = use all available)")
+	sizeUSD := flag.Float64("size", 0, "order size in USDC")
 	limitPx := flag.Float64("price", 0, "limit price (0..1)")
 	side := flag.String("side", "BUY", "BUY or SELL")
 	negRisk := flag.Bool("negrisk", false, "use NegRisk exchange address")
 	dryRun := flag.Bool("dry-run", false, "validate and print intent locally; no network or wallet mutation")
-	autoWrap := flag.Bool("auto-wrap", false, "explicitly wrap USDC.e and approve exchanges before submit")
-	rpcURL := flag.String("rpc", "", "Polygon RPC URL (default: polygon-rpc.com)")
+	wrapApprove := flag.Bool("wrap-approve", false, "wallet maintenance: wrap all USDC.e, approve exchanges, then exit")
+	rpcURL := flag.String("rpc", "", "Polygon RPC URL (default: polygon-bor-rpc.publicnode.com)")
 	queryOpenOrders := flag.Bool("open-orders", false, "query CLOB open orders without cancelling")
 	cancelOpenOrders := flag.Bool("cancel-open-orders", false, "explicitly cancel every open CLOB order")
 	readiness := flag.Bool("readiness", false, "read-only wallet, L1/L2 auth, balance, allowance, and open-order checks")
@@ -37,13 +37,18 @@ func main() {
 	redeemAll := flag.Bool("redeem-all", false, "redeem all redeemable positions and exit")
 	liveArmFile := flag.String("live-arm-file", "db/live-trading.enabled", "short-lived, wallet-bound live trading arm file")
 	liveDisableFile := flag.String("live-disable-file", "db/live-trading.disabled", "live trading kill-switch file")
-	liveMaxOrderUSD := flag.Float64("live-max-order-usd", 20.0, "hard maximum notional for one live order")
+	liveMaxOrderUSD := flag.Float64("live-max-order-usd", 20.0, "hard maximum notional for one live BUY; exits are not capped")
 	liveMaxArmDuration := flag.Duration("live-max-arm-duration", 24*time.Hour, "maximum accepted live arm-file validity window")
 	flag.Parse()
 
-	managementMode := *queryOpenOrders || *cancelOpenOrders || *readiness || *publicReadiness || *redeemAll
+	if err := validateOperationFlags(*wrapApprove, *redeemAll, *readiness, *publicReadiness, *queryOpenOrders, *cancelOpenOrders, *dryRun); err != nil {
+		fmt.Fprintln(os.Stderr, "ERROR:", err)
+		os.Exit(1)
+	}
+	managementMode := *queryOpenOrders || *cancelOpenOrders || *readiness || *publicReadiness || *redeemAll || *wrapApprove
 	if !managementMode && (*assetID == "" || *limitPx <= 0) {
-		fmt.Fprintf(os.Stderr, "Usage: trade -asset <tokenID> -price <0..1> [-size <usd>] [-negrisk] [-dry-run]\n")
+		fmt.Fprintln(os.Stderr, "Usage: trade -asset <tokenID> -price <0..1> -size <usd> [-negrisk] [-dry-run]")
+		fmt.Fprintln(os.Stderr, "Maintenance: trade -wrap-approve | -redeem-all | -readiness | -readiness-public")
 		os.Exit(1)
 	}
 	if *expectedAddress != "" && !common.IsHexAddress(*expectedAddress) {
@@ -53,7 +58,6 @@ func main() {
 
 	slog.Info("trade_init", "asset", *assetID, "size", *sizeUSD, "price", *limitPx, "side", *side, "negrisk", *negRisk)
 
-	order.InitProxy()
 	if *dryRun {
 		intent, err := buildIntent(*assetID, *market, *side, *sizeUSD, *limitPx, *negRisk)
 		if err != nil {
@@ -86,6 +90,28 @@ func main() {
 		slog.Error("wallet_address_mismatch", "loaded", wallet.Address().Hex(), "expected", common.HexToAddress(*expectedAddress).Hex())
 		os.Exit(1)
 	}
+	if *wrapApprove {
+		oc, err := order.NewOnChain(*rpcURL, wallet)
+		if err != nil {
+			slog.Error("onchain_init_failed", "err", err)
+			os.Exit(1)
+		}
+		if err := runWrapApprove(oc); err != nil {
+			slog.Error("wrap_approve_failed", "err", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if *redeemAll {
+		oc, err := order.NewOnChain(*rpcURL, wallet)
+		if err != nil {
+			slog.Error("onchain_init_failed", "err", err)
+			os.Exit(1)
+		}
+		runRedeemAll(oc, wallet.Address().Hex())
+		return
+	}
+	order.InitProxy()
 	var liveGuardCfg order.LiveGuardConfig
 	if !managementMode {
 		liveGuardCfg = order.LiveGuardConfig{
@@ -100,16 +126,6 @@ func main() {
 			slog.Error("live_guard_rejected", "err", err)
 			os.Exit(1)
 		}
-	}
-
-	if *redeemAll {
-		oc, err := order.NewOnChain(*rpcURL, wallet)
-		if err != nil {
-			slog.Error("onchain_init_failed", "err", err)
-			os.Exit(1)
-		}
-		runRedeemAll(oc, wallet.Address().Hex())
-		return
 	}
 
 	creds, err := order.DeriveExistingAPIKey(order.ClobBaseURL, wallet)
@@ -167,47 +183,8 @@ func main() {
 		return
 	}
 
-	if *autoWrap {
-		oc, err := order.NewOnChain(*rpcURL, wallet)
-		if err != nil {
-			slog.Error("onchain_init_failed", "err", err)
-			os.Exit(1)
-		}
-		wrapCtx, wrapCancel := context.WithTimeout(context.Background(), 3*time.Minute)
-		if err := oc.WrapAll(wrapCtx); err != nil {
-			slog.Error("auto_wrap_failed", "err", err)
-			wrapCancel()
-			os.Exit(1)
-		}
-		wrapCancel()
-
-		approveCtx, approveCancel := context.WithTimeout(context.Background(), 3*time.Minute)
-		if err := oc.ApproveExchanges(approveCtx); err != nil {
-			slog.Error("exchange_approve_failed", "err", err)
-			approveCancel()
-			os.Exit(1)
-		}
-		approveCancel()
-
-		pusd, err := oc.PUSDBalance(context.Background())
-		if err != nil {
-			slog.Warn("pusd_balance_check_failed", "err", err)
-		} else {
-			pusdFloat, _ := new(big.Float).Quo(
-				new(big.Float).SetInt(pusd),
-				new(big.Float).SetFloat64(1e6),
-			).Float64()
-			slog.Info("pusd_balance", "raw", pusd.String(), "usd", fmt.Sprintf("%.2f", pusdFloat))
-
-			if *sizeUSD <= 0 {
-				*sizeUSD = pusdFloat * 0.98
-				slog.Info("auto_size", "usd", *sizeUSD, "reason", "using 98% of pUSD balance")
-			}
-		}
-	}
-
 	if *sizeUSD <= 0 {
-		fmt.Fprintf(os.Stderr, "ERROR: -size is required (or use -auto-wrap to auto-detect balance)\n")
+		fmt.Fprintln(os.Stderr, "ERROR: -size is required")
 		os.Exit(1)
 	}
 
@@ -249,6 +226,53 @@ func main() {
 	} else {
 		fmt.Printf("\n⚠️  Status: %s — %s\n", result.Status, result.Error)
 	}
+}
+
+func validateOperationFlags(wrapApprove, redeemAll, readiness, publicReadiness, queryOpenOrders, cancelOpenOrders, dryRun bool) error {
+	clobManagement := queryOpenOrders || cancelOpenOrders
+	if wrapApprove && (redeemAll || readiness || publicReadiness || clobManagement || dryRun) {
+		return fmt.Errorf("-wrap-approve must run as a standalone maintenance action")
+	}
+	if redeemAll && (readiness || publicReadiness || clobManagement || dryRun) {
+		return fmt.Errorf("-redeem-all must run as a standalone maintenance action")
+	}
+	if readiness && (publicReadiness || clobManagement || dryRun) {
+		return fmt.Errorf("-readiness cannot be combined with another operation")
+	}
+	if publicReadiness && (clobManagement || dryRun) {
+		return fmt.Errorf("-readiness-public cannot be combined with another operation")
+	}
+	if dryRun && clobManagement {
+		return fmt.Errorf("-dry-run cannot be combined with CLOB management")
+	}
+	return nil
+}
+
+func runWrapApprove(oc *order.OnChain) error {
+	wrapCtx, wrapCancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	err := oc.WrapAll(wrapCtx)
+	wrapCancel()
+	if err != nil {
+		return fmt.Errorf("wrap USDC.e: %w", err)
+	}
+
+	approveCtx, approveCancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	err = oc.ApproveExchanges(approveCtx)
+	approveCancel()
+	if err != nil {
+		return fmt.Errorf("approve exchanges: %w", err)
+	}
+
+	pusd, err := oc.PUSDBalance(context.Background())
+	if err != nil {
+		return fmt.Errorf("check pUSD balance: %w", err)
+	}
+	pusdFloat, _ := new(big.Float).Quo(
+		new(big.Float).SetInt(pusd),
+		new(big.Float).SetFloat64(1e6),
+	).Float64()
+	fmt.Printf("Wallet maintenance complete. pUSD balance: $%.2f\n", pusdFloat)
+	return nil
 }
 
 func buildIntent(assetID, market, side string, sizeUSD, limitPx float64, negRisk bool) (order.Intent, error) {

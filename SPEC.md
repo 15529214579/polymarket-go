@@ -69,7 +69,8 @@
 - paper journal 写入 `policy_version` 和完整跟单钱包地址。`reports/smartmoney-paper-pnl.md` 按版本、单笔金额、策略、成本口径和来源拆分毛 PnL、双边费用与净 PnL，同时列出开放敞口和按零价值计的保守 PnL。
 - 本地地址策略至少收集 10 个已结仓仓位：净 PnL ≤ -5U 自动加入 `wallets.paper-demoted.txt`，净 PnL ≥ +5U 且 ROI ≥ 2% 才进入 B 级 `wallets.paper-promoted.txt`；每日和每小时任务刷新后重载模拟盘。
 - 所有模式都保留日亏损熔断 + 单笔亏损 flag + feed-silence watchdog，且扣 fee 计净 PnL。
-- 运行停用按组件隔离：`db/live-trading.disabled` 在启动时和运行中阻止实盘；实盘还必须有权限 `0600`、绑定钱包且最长 24h 有效的 `db/live-trading.enabled`。守卫在每次签名前复查，单笔默认上限 20U、单进程累计 BUY 默认上限 100U；任一检查失败会关闭当前实盘进程。`db/research.disabled` 停研究迭代，`db/monitoring.disabled` 停旧监控；模拟盘和地址迭代不受影响。
+- 运行停用按组件隔离：`db/live-trading.disabled` 在启动时和运行中阻止实盘；实盘还必须有权限 `0600`、绑定钱包且最长 24h 有效的 `db/live-trading.enabled`。守卫在每次签名前复查，单笔 BUY 默认上限 20U、单进程累计 BUY 默认上限 100U；SELL 作为减仓不受入场金额上限限制。任一检查失败会关闭当前实盘进程。`db/research.disabled` 停研究迭代，`db/monitoring.disabled` 停旧监控；模拟盘和地址迭代不受影响。
+- 自动 bot 的 Polygon 客户端固定为只读，仅查询 pUSD/条件代币余额；可赎回仓位只提醒，不自动发链上交易。wrap/approve 与 redeem 分别由显式 `trade -wrap-approve`、`trade -redeem-all` 维护动作执行，完成后立即退出且不会继续下单。
 
 ### 2.6 仓位（prompt 模式）
 
@@ -94,6 +95,7 @@
 - Go 侧用 `go-ethereum` 本地 EIP-712 签名 → Polymarket CLOB REST API 下单
 - 零 python 耦合、零订单污染
 - 签名密钥只在本地内存持有，启动时从 Bitwarden 拉；禁止通过命令行参数传私钥，API 凭据和助记词不得进入日志
+- 自动 bot 只使用钱包签 CLOB 订单；不构造带私钥的 Polygon 客户端。链上 wrap、approve、redeem 只允许在独立维护命令中显式执行，不提供任意转账入口
 
 ## 5. 生命周期（2026-04-20 10:36 调整：Polymarket V2 cutover 对齐）
 
