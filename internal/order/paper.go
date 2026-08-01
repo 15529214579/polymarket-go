@@ -110,13 +110,13 @@ func validate(in Intent) error {
 	if in.Side != Buy && in.Side != Sell {
 		return fmt.Errorf("bad side %q", in.Side)
 	}
-	if in.SizeUSD <= 0 {
+	if in.SizeUSD <= 0 || math.IsNaN(in.SizeUSD) || math.IsInf(in.SizeUSD, 0) {
 		return fmt.Errorf("non-positive SizeUSD %v", in.SizeUSD)
 	}
-	if in.LimitPx <= 0 || in.LimitPx >= 1 {
+	if in.LimitPx <= 0 || in.LimitPx >= 1 || math.IsNaN(in.LimitPx) || math.IsInf(in.LimitPx, 0) {
 		return fmt.Errorf("LimitPx %v out of (0,1)", in.LimitPx)
 	}
-	if in.TakerFeeRateOverride != nil && (*in.TakerFeeRateOverride < 0 || *in.TakerFeeRateOverride > 1) {
+	if in.TakerFeeRateOverride != nil && (*in.TakerFeeRateOverride < 0 || *in.TakerFeeRateOverride > 1 || math.IsNaN(*in.TakerFeeRateOverride) || math.IsInf(*in.TakerFeeRateOverride, 0)) {
 		return fmt.Errorf("TakerFeeRateOverride %v out of [0,1]", *in.TakerFeeRateOverride)
 	}
 	return nil

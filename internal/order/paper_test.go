@@ -112,7 +112,7 @@ func TestPaperSellFeeUsesExactShares(t *testing.T) {
 
 func TestPaperRejectsOutOfRange(t *testing.T) {
 	p := NewPaperClient(0)
-	for _, px := range []float64{0, -0.1, 1, 1.5} {
+	for _, px := range []float64{0, -0.1, 1, 1.5, math.NaN(), math.Inf(1)} {
 		if _, err := p.Submit(context.Background(), Intent{
 			AssetID: "a", Side: Buy, SizeUSD: 5, LimitPx: px,
 		}); err == nil {
@@ -127,6 +127,7 @@ func TestPaperRejectsBadIntent(t *testing.T) {
 		{Side: Buy, SizeUSD: 5, LimitPx: 0.5},                // missing AssetID
 		{AssetID: "a", Side: "??", SizeUSD: 5, LimitPx: 0.5}, // bad side
 		{AssetID: "a", Side: Buy, SizeUSD: 0, LimitPx: 0.5},  // zero size
+		{AssetID: "a", Side: Buy, SizeUSD: math.NaN(), LimitPx: 0.5},
 	}
 	for i, c := range cases {
 		if _, err := p.Submit(context.Background(), c); err == nil {

@@ -29,13 +29,16 @@ func main() {
 	dryRun := flag.Bool("dry-run", false, "validate and print intent locally; no network or wallet mutation")
 	autoWrap := flag.Bool("auto-wrap", false, "explicitly wrap USDC.e and approve exchanges before submit")
 	rpcURL := flag.String("rpc", "", "Polygon RPC URL (default: polygon-rpc.com)")
-	hexKey := flag.String("key", "", "hex private key (bypasses Bitwarden mnemonic)")
 	queryOpenOrders := flag.Bool("open-orders", false, "query CLOB open orders without cancelling")
 	cancelOpenOrders := flag.Bool("cancel-open-orders", false, "explicitly cancel every open CLOB order")
 	readiness := flag.Bool("readiness", false, "read-only wallet, L1/L2 auth, balance, allowance, and open-order checks")
 	publicReadiness := flag.Bool("readiness-public", false, "read-only public CLOB and Polygon checks; no private key required")
 	expectedAddress := flag.String("expected-address", projectWalletAddress, "wallet address that must match before authenticated operations")
 	redeemAll := flag.Bool("redeem-all", false, "redeem all redeemable positions and exit")
+	liveArmFile := flag.String("live-arm-file", "db/live-trading.enabled", "short-lived, wallet-bound live trading arm file")
+	liveDisableFile := flag.String("live-disable-file", "db/live-trading.disabled", "live trading kill-switch file")
+	liveMaxOrderUSD := flag.Float64("live-max-order-usd", 20.0, "hard maximum notional for one live order")
+	liveMaxArmDuration := flag.Duration("live-max-arm-duration", 24*time.Hour, "maximum accepted live arm-file validity window")
 	flag.Parse()
 
 	managementMode := *queryOpenOrders || *cancelOpenOrders || *readiness || *publicReadiness || *redeemAll
@@ -73,30 +76,30 @@ func main() {
 		return
 	}
 
-	var wallet *order.Wallet
-	if *hexKey != "" {
-		var err error
-		wallet, err = order.NewWalletFromHexKey(*hexKey)
-		if err != nil {
-			slog.Error("wallet_from_key_failed", "err", err)
-			os.Exit(1)
-		}
-	} else {
-		mnemonic, err := order.LoadMnemonicFromBitwarden("Polymarket-Go Wallet", "mnemonic")
-		if err != nil {
-			slog.Error("wallet_load_failed", "err", err)
-			os.Exit(1)
-		}
-		wallet, err = order.NewWalletFromMnemonic(mnemonic, "")
-		if err != nil {
-			slog.Error("wallet_derive_failed", "err", err)
-			os.Exit(1)
-		}
+	wallet, err := order.LoadWalletFromBitwarden("Polymarket-Go Wallet", "mnemonic", "")
+	if err != nil {
+		slog.Error("wallet_load_failed", "err", err)
+		os.Exit(1)
 	}
 	slog.Info("wallet_loaded", "address", wallet.Address().Hex())
 	if *expectedAddress != "" && wallet.Address() != common.HexToAddress(*expectedAddress) {
 		slog.Error("wallet_address_mismatch", "loaded", wallet.Address().Hex(), "expected", common.HexToAddress(*expectedAddress).Hex())
 		os.Exit(1)
+	}
+	var liveGuardCfg order.LiveGuardConfig
+	if !managementMode {
+		liveGuardCfg = order.LiveGuardConfig{
+			ArmFile:          *liveArmFile,
+			DisableFile:      *liveDisableFile,
+			ExpectedWallet:   wallet.Address().Hex(),
+			MaxOrderUSD:      *liveMaxOrderUSD,
+			MaxSessionBuyUSD: *liveMaxOrderUSD,
+			MaxArmDuration:   *liveMaxArmDuration,
+		}
+		if err := order.CheckLiveGuard(liveGuardCfg); err != nil {
+			slog.Error("live_guard_rejected", "err", err)
+			os.Exit(1)
+		}
 	}
 
 	if *redeemAll {
@@ -109,19 +112,26 @@ func main() {
 		return
 	}
 
-	var creds *order.APICredentials
-	var err error
-	if *readiness || *queryOpenOrders || *cancelOpenOrders {
-		creds, err = order.DeriveExistingAPIKey(order.ClobBaseURL, wallet)
-	} else {
-		creds, err = order.DeriveAPIKey(order.ClobBaseURL, wallet)
-	}
+	creds, err := order.DeriveExistingAPIKey(order.ClobBaseURL, wallet)
 	if err != nil {
 		slog.Error("api_key_derive_failed", "err", err)
 		os.Exit(1)
 	}
 	slog.Info("api_key_derived")
 	client := order.NewV2Client(wallet, creds, *negRisk)
+	var submitClient order.Client = client
+	if !managementMode {
+		guardedClient, err := order.NewGuardedClient(client, liveGuardCfg)
+		if err != nil {
+			slog.Error("live_guard_init_failed", "err", err)
+			os.Exit(1)
+		}
+		if err := guardedClient.CheckReady(); err != nil {
+			slog.Error("live_guard_rejected", "err", err)
+			os.Exit(1)
+		}
+		submitClient = guardedClient
+	}
 
 	if *readiness {
 		if err := runAuthenticatedReadiness(*rpcURL, wallet, client); err != nil {
@@ -219,7 +229,7 @@ func main() {
 	refreshCancel()
 
 	slog.Info("submitting_order")
-	result, err := client.Submit(ctx, intent)
+	result, err := submitClient.Submit(ctx, intent)
 	if err != nil {
 		slog.Error("order_failed", "err", err, "status", result.Status, "error_msg", result.Error)
 		os.Exit(1)

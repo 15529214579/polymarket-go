@@ -23,6 +23,7 @@ db/strategy_iteration/*decision*.json
 db/smartmoney-paper/
 db/self-optimization/
 db/*.lock/
+db/live-trading.enabled
 db/copytrade_backtest_results.generated.json
 db/copytrade_tiers_expanded.json
 db/wallet_candidates.jsonl

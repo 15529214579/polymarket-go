@@ -40,8 +40,9 @@ start() {
   # Default mode (2026-05-30 SGT): copytrade mode, push/follow only the
   # manually selected wallet. Tiered sizing: A=$20, B=$10, C/D=$5.
   # Min trade $100. Poll 60s. Ladder exit SL 20% / timeout 10m.
-  LIVE_FLAG="${POLYMARKET_LIVE:-""}"
-  args=(-mode=detect -signal_mode=copytrade -exit_mode=ladder -markets=20 -window=60 -fee_bp=0 -ladder_sl_pct=0.20 -ladder_max_hold=10m ${LIVE_FLAG} -injury_enabled -injury_interval=1m -whale_enabled -whale_min_usd=100 -whale_interval=10s -wallets_file="$ROOT/wallets.push-only.txt" -copytrade_size=5 -wallet_tiers="$ROOT/db/copytrade_tiers_push_only.json" -min_tier=A)
+  # Live mode is never inherited from the environment. It requires an explicit
+  # custom -live argument plus the short-lived arm file checked by the bot.
+  args=(-mode=detect -signal_mode=copytrade -exit_mode=ladder -markets=20 -window=60 -fee_bp=0 -ladder_sl_pct=0.20 -ladder_max_hold=10m -injury_enabled -injury_interval=1m -whale_enabled -whale_min_usd=100 -whale_interval=10s -wallets_file="$ROOT/wallets.push-only.txt" -copytrade_size=5 -wallet_tiers="$ROOT/db/copytrade_tiers_push_only.json" -min_tier=A)
   if [ "${#shift_args[@]}" -gt 0 ]; then
     args=("${shift_args[@]}")
   fi

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -114,7 +115,7 @@ func createAPIKey(clobBase string, w *Wallet) (*APICredentials, error) {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("order: create api key %d: %s", resp.StatusCode, body)
+		return nil, fmt.Errorf("order: create api key returned HTTP %d", resp.StatusCode)
 	}
 	return parseAPICreds(body)
 }
@@ -138,7 +139,7 @@ func deriveAPIKey(clobBase string, w *Wallet) (*APICredentials, error) {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("order: derive api key %d: %s", resp.StatusCode, body)
+		return nil, fmt.Errorf("order: derive api key returned HTTP %d", resp.StatusCode)
 	}
 	return parseAPICreds(body)
 }
@@ -149,7 +150,7 @@ func parseAPICreds(body []byte) (*APICredentials, error) {
 		return nil, fmt.Errorf("order: parse api creds: %w", err)
 	}
 	if creds.APIKey == "" || creds.Secret == "" {
-		return nil, fmt.Errorf("order: empty api credentials in response: %s", body)
+		return nil, errors.New("order: API credentials response is missing required fields")
 	}
 	return &creds, nil
 }

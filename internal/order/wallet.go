@@ -131,3 +131,16 @@ func LoadMnemonicFromBitwarden(itemName, fieldName string) (string, error) {
 	}
 	return "", fmt.Errorf("order: bitwarden field %q not found on item %q", fieldName, itemName)
 }
+
+// LoadWalletFromBitwarden keeps the mnemonic inside the order package and
+// narrows its lifetime to wallet construction. Callers receive only the
+// derived in-memory wallet and must never log or persist it.
+func LoadWalletFromBitwarden(itemName, fieldName, hdPath string) (*Wallet, error) {
+	mnemonic, err := LoadMnemonicFromBitwarden(itemName, fieldName)
+	if err != nil {
+		return nil, err
+	}
+	wallet, err := NewWalletFromMnemonic(mnemonic, hdPath)
+	mnemonic = ""
+	return wallet, err
+}

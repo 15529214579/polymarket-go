@@ -157,10 +157,12 @@ if [ "$RESTART_ENABLED" = "1" ] && { [ "$whale_reason" = "not_running" ] || [ "$
 fi
 
 live_trading_disabled=0
+live_trading_arm_present=0
 research_disabled=0
 monitoring_disabled=0
 legacy_project_disabled=0
 [ -f "$ROOT/db/live-trading.disabled" ] && live_trading_disabled=1
+[ -f "$ROOT/db/live-trading.enabled" ] && live_trading_arm_present=1
 [ -f "$ROOT/db/research.disabled" ] && research_disabled=1
 [ -f "$ROOT/db/monitoring.disabled" ] && monitoring_disabled=1
 [ -f "$ROOT/db/project.disabled" ] && legacy_project_disabled=1
@@ -178,6 +180,7 @@ cat > "$STATE" <<EOF
   "overall": "$overall",
   "component_flags": {
     "live_trading_disabled": $(bool "$live_trading_disabled"),
+    "live_trading_arm_present": $(bool "$live_trading_arm_present"),
     "research_disabled": $(bool "$research_disabled"),
     "monitoring_disabled": $(bool "$monitoring_disabled"),
     "legacy_project_disabled_present": $(bool "$legacy_project_disabled")

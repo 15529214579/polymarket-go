@@ -120,6 +120,10 @@ func main() {
 	eurovisionMinEdge := flag.Float64("eurovision_min_edge_pp", 5.0, "Eurovision minimum edge in pp to signal")
 	liveTrading := flag.Bool("live", false, "enable real V2 CLOB order submission (requires wallet mnemonic in Bitwarden)")
 	liveDisableFile := flag.String("live_disable_file", "db/live-trading.disabled", "live trading kill-switch file; ignored in paper/research modes")
+	liveArmFile := flag.String("live_arm_file", "db/live-trading.enabled", "short-lived, wallet-bound live trading arm file")
+	liveMaxOrderUSD := flag.Float64("live_max_order_usd", 20.0, "hard maximum notional for one live order")
+	liveMaxSessionBuyUSD := flag.Float64("live_max_session_buy_usd", 100.0, "hard maximum filled BUY notional for one live process")
+	liveMaxArmDuration := flag.Duration("live_max_arm_duration", 24*time.Hour, "maximum accepted live arm-file validity window")
 	initialCapital := flag.Float64("initial_capital", 200.0, "initial capital in USD for total P&L calculation")
 	positionsStatePath := flag.String("positions_state", "db/positions.json", "paper/live position state JSON path")
 	riskStatePath := flag.String("risk_state", "db/risk_state.json", "risk state JSON path")
@@ -245,7 +249,14 @@ func main() {
 			EurovisionInterval: *eurovisionInterval,
 			EurovisionMinEdge:  *eurovisionMinEdge,
 		}
-		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *takerFeeRate, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *exitPollInterval, *eventPostStartHold, *timeoutReentryCooldown, *lotteryEnabled, lottCfg, injCfg, whaleCfg, *confirmDelay, btcCfg, updownCfg, p10, *liveTrading, *fadeMode, *walletsFile, *copytradeSize, *walletTiersFile, *initialCapital, *minTier, *positionsStatePath, *riskStatePath, *buyTimesStatePath, *posMaxTotalOpenUSD, *posMaxOpenPositions, *posMaxPerMarketUSD, *posMaxPerEventUSD, *footballScoreMaxEventUSD); err != nil && ctx.Err() == nil {
+		liveGuardCfg := order.LiveGuardConfig{
+			ArmFile:          *liveArmFile,
+			DisableFile:      *liveDisableFile,
+			MaxOrderUSD:      *liveMaxOrderUSD,
+			MaxSessionBuyUSD: *liveMaxSessionBuyUSD,
+			MaxArmDuration:   *liveMaxArmDuration,
+		}
+		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *takerFeeRate, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *exitPollInterval, *eventPostStartHold, *timeoutReentryCooldown, *lotteryEnabled, lottCfg, injCfg, whaleCfg, *confirmDelay, btcCfg, updownCfg, p10, *liveTrading, liveGuardCfg, *fadeMode, *walletsFile, *copytradeSize, *walletTiersFile, *initialCapital, *minTier, *positionsStatePath, *riskStatePath, *buyTimesStatePath, *posMaxTotalOpenUSD, *posMaxOpenPositions, *posMaxPerMarketUSD, *posMaxPerEventUSD, *footballScoreMaxEventUSD); err != nil && ctx.Err() == nil {
 			slog.Error("detect failed", "err", err)
 			os.Exit(1)
 		}
@@ -545,7 +556,26 @@ func drainSamplerTicks(ctx context.Context, sampler *feed.Sampler) {
 	}
 }
 
-func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, takerFeeRate, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, exitPollInterval, eventPostStartHold, timeoutReentryCooldown time.Duration, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, injCfg injury.Config, whaleCfg whale.Config, confirmDelay time.Duration, btcCfg btc.StrategyConfig, updownCfg btc.UpDownConfig, p10 phase10Config, liveTrading bool, fadeMode bool, walletsFile string, copytradeSize float64, walletTiersFile string, initialCapital float64, minTierFilter string, positionsStatePath, riskStatePath, buyTimesStatePath string, posMaxTotalOpenUSD float64, posMaxOpenPositions int, posMaxPerMarketUSD, posMaxPerEventUSD, footballScoreMaxEventUSD float64) error {
+func monitorLiveGuard(ctx context.Context, cancel context.CancelFunc, client *order.GuardedClient) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := client.CheckReady(); err != nil {
+				slog.Error("v2_live_guard_tripped", "err", err)
+				cancel()
+				return
+			}
+		}
+	}
+}
+
+func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, takerFeeRate, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, exitPollInterval, eventPostStartHold, timeoutReentryCooldown time.Duration, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, injCfg injury.Config, whaleCfg whale.Config, confirmDelay time.Duration, btcCfg btc.StrategyConfig, updownCfg btc.UpDownConfig, p10 phase10Config, liveTrading bool, liveGuardCfg order.LiveGuardConfig, fadeMode bool, walletsFile string, copytradeSize float64, walletTiersFile string, initialCapital float64, minTierFilter string, positionsStatePath, riskStatePath, buyTimesStatePath string, posMaxTotalOpenUSD float64, posMaxOpenPositions int, posMaxPerMarketUSD, posMaxPerEventUSD, footballScoreMaxEventUSD float64) error {
+	ctx, cancelRun := context.WithCancel(ctx)
+	defer cancelRun()
 	if signalMode != "auto" && signalMode != "prompt" && signalMode != "whale" && signalMode != "copytrade" {
 		return fmt.Errorf("invalid signal_mode %q (want auto|prompt|whale|copytrade)", signalMode)
 	}
@@ -994,18 +1024,18 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 	orderClient = paper
 	if liveTrading {
 		slog.Info("v2_live_init", "msg", "loading wallet from Bitwarden")
-		mnemonic, err := order.LoadMnemonicFromBitwarden("Polymarket-Go Wallet", "mnemonic")
+		wallet, err := order.LoadWalletFromBitwarden("Polymarket-Go Wallet", "mnemonic", "")
 		if err != nil {
 			slog.Error("v2_wallet_load_failed", "err", err)
 			os.Exit(1)
 		}
-		wallet, err := order.NewWalletFromMnemonic(mnemonic, "")
-		if err != nil {
-			slog.Error("v2_wallet_derive_failed", "err", err)
-			os.Exit(1)
-		}
 		walletAddress = wallet.Address().Hex()
 		slog.Info("v2_wallet_loaded", "address", walletAddress)
+		liveGuardCfg.ExpectedWallet = walletAddress
+		if err := order.CheckLiveGuard(liveGuardCfg); err != nil {
+			slog.Error("v2_live_guard_rejected", "err", err)
+			os.Exit(1)
+		}
 		oc, ocErr := order.NewOnChain("", wallet)
 		if ocErr != nil {
 			slog.Warn("onchain_init_failed", "err", ocErr)
@@ -1013,15 +1043,26 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 			onChain = oc
 			slog.Info("onchain_ready", "address", walletAddress)
 		}
-		creds, err := order.DeriveAPIKey(order.ClobBaseURL, wallet)
+		creds, err := order.DeriveExistingAPIKey(order.ClobBaseURL, wallet)
 		if err != nil {
 			slog.Error("v2_api_key_derive_failed", "err", err)
 			os.Exit(1)
 		}
 		slog.Info("v2_api_key_derived")
 		v2Client := order.NewV2Client(wallet, creds, false)
-		orderClient = v2Client
-		slog.Info("v2_live_ready", "client", v2Client.Name(), "exchange", order.V2ExchangeAddress)
+		guardedClient, err := order.NewGuardedClient(v2Client, liveGuardCfg)
+		if err != nil {
+			slog.Error("v2_live_guard_init_failed", "err", err)
+			os.Exit(1)
+		}
+		orderClient = guardedClient
+		slog.Info("v2_live_ready",
+			"client", guardedClient.Name(),
+			"exchange", order.V2ExchangeAddress,
+			"max_order_usd", liveGuardCfg.MaxOrderUSD,
+			"max_session_buy_usd", liveGuardCfg.MaxSessionBuyUSD,
+			"arm_expires_within", liveGuardCfg.MaxArmDuration.String())
+		go monitorLiveGuard(ctx, cancelRun, guardedClient)
 		if os.Getenv("POLYMARKET_CANCEL_OPEN_ON_START") == "1" {
 			if err := v2Client.CancelAllOpen(context.Background()); err != nil {
 				slog.Warn("v2_cancel_all_open_failed", "err", err)
