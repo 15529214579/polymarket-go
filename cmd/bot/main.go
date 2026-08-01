@@ -515,6 +515,18 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 	if exitMode != "hold" && exitMode != "auto" && exitMode != "ladder" {
 		return fmt.Errorf("invalid exit_mode %q (want hold|auto|ladder)", exitMode)
 	}
+	paperFollowFootballScore := signalMode == "copytrade" && !liveTrading && os.Getenv("COPYTRADE_PAPER_FOLLOW_FOOTBALL_SCORE") == "1"
+	paperFootballScoreSize := parseWhaleEnvFloat("COPYTRADE_PAPER_FOOTBALL_SCORE_SIZE", 5)
+	if paperFootballScoreSize <= 0 {
+		paperFootballScoreSize = 5
+	}
+	if signalMode == "copytrade" {
+		slog.Info("copytrade_football_config",
+			"score_enabled", paperFollowFootballScore,
+			"score_size_usd", paperFootballScoreSize,
+			"live", liveTrading,
+		)
+	}
 	momentumSignalsEnabled := momentumSignalsEnabledForMode(signalMode)
 	lotteryScannerEnabled := lotteryScannerEnabledForMode(signalMode, lotteryEnabled)
 	// Load wallet metadata for copytrade gradient sizing and bot/smart-money gates.
@@ -581,6 +593,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 				"target", listCounts["target"],
 				"flow", listCounts["flow"],
 				"tape", listCounts["tape"],
+				"football_score", listCounts["football_score_push"],
 				"other", listCounts[""],
 			)
 		}
@@ -2218,7 +2231,8 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					PctSold:     ev.PctSold,
 				}
 
-				if ev.Price < followMinEntryPrice || ev.Price > followMaxEntryPrice {
+				footballScore := feed.IsFootballScoreMarketText(ev.Question + " " + ev.Slug)
+				if ev.Price < copytradeEntryPriceFloor(footballScore, paperFollowFootballScore) || ev.Price > followMaxEntryPrice {
 					appendWhaleTrade(ev, "skip", "price_filtered")
 					slog.Info("copytrade_price_filtered", "wallet", ev.Label, "price", ev.Price, "market", ev.Question)
 					return
@@ -2268,7 +2282,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						notifier.WhaleAlert(alert)
 						return
 					}
-					if ok, filterReason := targetFollowMarketDecision(ev.Question, ev.Slug); !ok {
+					if ok, filterReason := copytradeMarketDecision(ev.Question, ev.Slug, ev.Outcome, paperFollowFootballScore); !ok {
 						appendWhaleTrade(ev, "skip", filterReason)
 						slog.Info("copytrade_market_filtered", "wallet", ev.Label, "reason", filterReason, "market", ev.Question, "slug", ev.Slug)
 						return
@@ -2304,7 +2318,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 						return
 					}
 					tick := feed.Tick{Mid: ev.Price, Time: ev.Timestamp}
-					sizeUSD := copytradeForWallet(ev.Wallet)
+					sizeUSD := copytradeMarketSize(copytradeForWallet(ev.Wallet), footballScore, paperFollowFootballScore, paperFootballScoreSize)
 					tier := walletTiers[strings.ToLower(ev.Wallet)]
 					if tier == "" {
 						tier = "?"
@@ -2318,6 +2332,9 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 					pos.Question = ev.Question
 					pos.Outcome = ev.Outcome
 					pos.Source = "copytrade"
+					if footballScore {
+						pos.Source = "copytrade_football_score"
+					}
 					pos.WalletLabel = ev.Label
 					crossPx := ev.Price * 1.05
 					if crossPx > 0.99 {
@@ -2390,7 +2407,11 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, larg
 							ev.Label, ev.Notional,
 							result.OrderID)
 						notifier.SidecarAlert(fillMsg)
-						src.Mark(pos.ID, "copytrade_"+ev.Label, result.OrderID)
+						signalSource := "copytrade_" + ev.Label
+						if footballScore {
+							signalSource = "copytrade_football_score_" + ev.Label
+						}
+						src.Mark(pos.ID, signalSource, result.OrderID)
 						savePositions()
 						buyTimesMap[ev.AssetID] = time.Now()
 						saveBuyTimes()
@@ -5350,6 +5371,33 @@ func whaleMarketDecision(q, slug, outcome, _ string) (bool, string) {
 		return true, ""
 	}
 	return targetFollowMarketDecision(q, slug)
+}
+
+func copytradeMarketDecision(q, slug, outcome string, allowFootballScore bool) (bool, string) {
+	if feed.IsFootballScoreMarketText(q + " " + slug) {
+		if !allowFootballScore {
+			return false, "derivative_filtered"
+		}
+		if strings.EqualFold(strings.TrimSpace(outcome), "No") {
+			return false, "football_score_no_filtered"
+		}
+		return true, ""
+	}
+	return targetFollowMarketDecision(q, slug)
+}
+
+func copytradeEntryPriceFloor(footballScore, allowFootballScore bool) float64 {
+	if footballScore && allowFootballScore {
+		return footballScoreMinEntryPrice
+	}
+	return followMinEntryPrice
+}
+
+func copytradeMarketSize(base float64, footballScore, allowFootballScore bool, scoreCap float64) float64 {
+	if !footballScore || !allowFootballScore || scoreCap <= 0 || base <= scoreCap {
+		return base
+	}
+	return scoreCap
 }
 
 func targetFollowMarketDecision(q, slug string) (bool, string) {

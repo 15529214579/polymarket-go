@@ -141,6 +141,37 @@ func TestWhaleMarketDecision_AllowsFootballScoreYesOnly(t *testing.T) {
 	}
 }
 
+func TestCopytradeMarketDecision_FootballScoreIsPaperOptIn(t *testing.T) {
+	q := "Exact Score: Liverpool 2 - 1 Arsenal?"
+	if ok, reason := copytradeMarketDecision(q, "epl-liv-ars-correct-score", "Yes", false); ok || reason != "derivative_filtered" {
+		t.Fatalf("disabled score decision=%v/%q, want derivative_filtered", ok, reason)
+	}
+	if ok, reason := copytradeMarketDecision(q, "epl-liv-ars-correct-score", "Yes", true); !ok || reason != "" {
+		t.Fatalf("enabled score decision=%v/%q, want allowed", ok, reason)
+	}
+	if ok, reason := copytradeMarketDecision(q, "epl-liv-ars-correct-score", "No", true); ok || reason != "football_score_no_filtered" {
+		t.Fatalf("score No decision=%v/%q, want filtered", ok, reason)
+	}
+	if ok, reason := copytradeMarketDecision("Will Spain win on 2026-08-01?", "fifwc-esp-fra-2026-08-01", "Yes", true); !ok || reason != "" {
+		t.Fatalf("soccer moneyline decision=%v/%q, want allowed", ok, reason)
+	}
+}
+
+func TestCopytradeFootballScorePriceAndSize(t *testing.T) {
+	if got := copytradeEntryPriceFloor(true, true); got != 0.01 {
+		t.Fatalf("score price floor=%v, want 0.01", got)
+	}
+	if got := copytradeEntryPriceFloor(true, false); got != 0.05 {
+		t.Fatalf("disabled score price floor=%v, want 0.05", got)
+	}
+	if got := copytradeMarketSize(20, true, true, 5); got != 5 {
+		t.Fatalf("score size=%v, want 5", got)
+	}
+	if got := copytradeMarketSize(10, false, true, 5); got != 10 {
+		t.Fatalf("moneyline size=%v, want 10", got)
+	}
+}
+
 func TestWhalePriceDecision_FiltersExtremeBuyPrices(t *testing.T) {
 	for _, price := range []float64{0.001, 0.049, 0.951, 0.999} {
 		if ok, reason := whalePriceDecision("BUY", price, false); ok || reason != "price_filtered" {
