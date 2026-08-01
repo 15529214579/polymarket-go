@@ -377,6 +377,7 @@ func saveBuyTime(asset string) {
 type dataAPIPosition struct {
 	Size         float64 `json:"size"`
 	CurPrice     float64 `json:"curPrice"`
+	CurrentValue float64 `json:"currentValue"`
 	Title        string  `json:"title"`
 	Outcome      string  `json:"outcome"`
 	Asset        string  `json:"asset"`
@@ -415,6 +416,10 @@ func runRedeemAll(oc *order.OnChain, walletAddr string) {
 		if !p.Redeemable || p.Size < 0.01 {
 			continue
 		}
+		if redeemValue(p) <= 0 {
+			slog.Info("redeem_skip_zero_value", "asset", p.Asset[:min(len(p.Asset), 20)], "title", p.Title[:min(len(p.Title), 40)])
+			continue
+		}
 		if redeemed[p.Asset] {
 			slog.Info("already_redeemed", "asset", p.Asset[:20], "title", p.Title[:min(len(p.Title), 40)])
 			continue
@@ -434,7 +439,7 @@ func runRedeemAll(oc *order.OnChain, walletAddr string) {
 
 	fmt.Printf("Found %d positions to redeem:\n", len(toRedeem))
 	for _, p := range toRedeem {
-		val := p.Size * p.CurPrice
+		val := redeemValue(p)
 		fmt.Printf("  %s · %s · %.1f shares · cur=$%.3f · val=$%.2f · neg=%v\n",
 			p.Title[:min(len(p.Title), 50)], p.Outcome, p.Size, p.CurPrice, val, p.NegativeRisk)
 	}
@@ -451,7 +456,7 @@ func runRedeemAll(oc *order.OnChain, walletAddr string) {
 		}
 		redeemed[p.Asset] = true
 		redeemed_count++
-		val := p.Size * p.CurPrice
+		val := redeemValue(p)
 		fmt.Printf("✅ Redeemed: %s · %s · $%.2f\n", p.Title[:min(len(p.Title), 50)], p.Outcome, val)
 	}
 
@@ -464,4 +469,11 @@ func runRedeemAll(oc *order.OnChain, walletAddr string) {
 		f, _ := new(big.Float).Quo(new(big.Float).SetInt(bal), new(big.Float).SetFloat64(1e6)).Float64()
 		fmt.Printf("\nRedeemed %d positions. pUSD balance: $%.2f\n", redeemed_count, f)
 	}
+}
+
+func redeemValue(p dataAPIPosition) float64 {
+	if p.CurrentValue > 0 {
+		return p.CurrentValue
+	}
+	return p.Size * p.CurPrice
 }
