@@ -1,13 +1,11 @@
 package order
 
 import (
-	"bufio"
 	"log/slog"
 	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -60,38 +58,5 @@ func loadProxies() []*url.URL {
 			return []*url.URL{u}
 		}
 	}
-
-	paths := []string{"proxies.txt"}
-	if exe, err := os.Executable(); err == nil {
-		paths = append(paths, filepath.Join(filepath.Dir(exe), "..", "proxies.txt"))
-	}
-	for _, p := range paths {
-		if list := readProxyFile(p); len(list) > 0 {
-			return list
-		}
-	}
 	return nil
-}
-
-func readProxyFile(path string) []*url.URL {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil
-	}
-	defer f.Close()
-
-	var out []*url.URL
-	sc := bufio.NewScanner(f)
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		u, err := url.Parse(line)
-		if err != nil {
-			continue
-		}
-		out = append(out, u)
-	}
-	return out
 }

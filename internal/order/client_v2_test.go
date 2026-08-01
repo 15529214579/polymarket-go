@@ -1,7 +1,11 @@
 package order
 
 import (
+	"context"
 	"math/big"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -53,4 +57,111 @@ func TestParseFixedAmount(t *testing.T) {
 	if got := parseFixedAmount("12.5"); got != 12.5 {
 		t.Fatalf("decimal amount=%v", got)
 	}
+}
+
+func TestGetOpenOrdersUsesV2DataEndpointAndSanitizesOwner(t *testing.T) {
+	client := testV2Client(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.RequestURI() != "/data/orders" {
+			t.Fatalf("request = %s %s", r.Method, r.URL.RequestURI())
+		}
+		if r.Header.Get("POLY_API_KEY") == "" || r.Header.Get("POLY_SIGNATURE") == "" {
+			t.Fatal("missing L2 authentication headers")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"order-1","owner":"secret-api-key","status":"LIVE","asset_id":"asset-1"}],"count":1}`))
+	})
+
+	result, err := client.GetOpenOrders(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Count != 1 || len(result.Data) != 1 || result.Data[0].ID != "order-1" {
+		t.Fatalf("unexpected response: %+v", result)
+	}
+}
+
+func TestGetBalanceAllowanceUsesCollateralEndpoint(t *testing.T) {
+	client := testV2Client(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.RequestURI() != "/balance-allowance?asset_type=COLLATERAL&signature_type=0" {
+			t.Fatalf("request = %s %s", r.Method, r.URL.RequestURI())
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"balance":"1181600","allowance":"999"}`))
+	})
+
+	result, err := client.GetBalanceAllowance(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Balance != "1181600" {
+		t.Fatalf("balance = %q", result.Balance)
+	}
+}
+
+func TestRefreshBalanceAllowanceUsesV2UpdateEndpoint(t *testing.T) {
+	client := testV2Client(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.RequestURI() != "/balance-allowance/update?asset_type=COLLATERAL&signature_type=0" {
+			t.Fatalf("request = %s %s", r.Method, r.URL.RequestURI())
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	if err := client.RefreshBalanceAllowance(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAuthenticatedReadRejectsHTTPError(t *testing.T) {
+	client := testV2Client(t, func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	})
+	if _, err := client.GetOpenOrders(context.Background()); err == nil || !strings.Contains(err.Error(), "401") {
+		t.Fatalf("expected 401 error, got %v", err)
+	}
+}
+
+func TestGetCLOBVersion(t *testing.T) {
+	hc := testHTTPClient(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/version" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"version":2}`))
+	}))
+
+	version, err := getCLOBVersion(context.Background(), "https://clob.test", hc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if version != 2 {
+		t.Fatalf("version = %d", version)
+	}
+}
+
+func testV2Client(t *testing.T, handler http.HandlerFunc) *V2Client {
+	t.Helper()
+	wallet, err := NewWalletFromHexKey(strings.Repeat("1", 64))
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := NewV2Client(wallet, &APICredentials{
+		APIKey:     "api-key",
+		Secret:     "c2VjcmV0",
+		Passphrase: "passphrase",
+	}, false)
+	client.clobBase = "https://clob.test"
+	client.http = testHTTPClient(handler)
+	return client
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func testHTTPClient(handler http.Handler) *http.Client {
+	return &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, req)
+		return recorder.Result(), nil
+	})}
 }

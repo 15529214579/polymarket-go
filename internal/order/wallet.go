@@ -108,6 +108,9 @@ func LoadMnemonicFromBitwarden(itemName, fieldName string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("order: bw get item %q: %w", itemName, err)
 	}
+	if len(strings.TrimSpace(string(out))) == 0 {
+		return "", fmt.Errorf("order: bw returned an empty item for %q (vault may be locked)", itemName)
+	}
 	var item struct {
 		Fields []struct {
 			Name  string `json:"name"`

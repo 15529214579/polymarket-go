@@ -34,6 +34,29 @@ type V2Client struct {
 	feeRates map[string]float64
 }
 
+type OpenOrder struct {
+	ID           string `json:"id"`
+	Status       string `json:"status"`
+	Market       string `json:"market"`
+	AssetID      string `json:"asset_id"`
+	Side         string `json:"side"`
+	OriginalSize string `json:"original_size"`
+	SizeMatched  string `json:"size_matched"`
+	Price        string `json:"price"`
+}
+
+type OpenOrdersResponse struct {
+	Data       []OpenOrder `json:"data"`
+	NextCursor string      `json:"next_cursor"`
+	Limit      int         `json:"limit"`
+	Count      int         `json:"count"`
+}
+
+type BalanceAllowanceResponse struct {
+	Balance   string `json:"balance"`
+	Allowance string `json:"allowance"`
+}
+
 func NewV2Client(wallet *Wallet, creds *APICredentials, negRisk bool) *V2Client {
 	return &V2Client{
 		wallet:   wallet,
@@ -405,8 +428,8 @@ func (c *V2Client) CancelAllOpen(ctx context.Context) error {
 	return nil
 }
 
-func (c *V2Client) GetOpenOrders(ctx context.Context) (json.RawMessage, error) {
-	path := "/open-orders"
+func (c *V2Client) GetOpenOrders(ctx context.Context) (*OpenOrdersResponse, error) {
+	path := "/data/orders"
 	headers := buildL2Headers(c.creds, c.wallet.Address(), "GET", path, "")
 	req, err := http.NewRequestWithContext(ctx, "GET", c.clobBase+path, nil)
 	if err != nil {
@@ -420,8 +443,112 @@ func (c *V2Client) GetOpenOrders(ctx context.Context) (json.RawMessage, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	return body, nil
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if err != nil {
+		return nil, fmt.Errorf("GET %s response: %w", path, err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GET %s %d: %s", path, resp.StatusCode, body)
+	}
+	var result OpenOrdersResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("GET %s decode: %w", path, err)
+	}
+	return &result, nil
+}
+
+func (c *V2Client) GetBalanceAllowance(ctx context.Context) (*BalanceAllowanceResponse, error) {
+	path := "/balance-allowance"
+	requestURL := c.clobBase + path + "?asset_type=COLLATERAL&signature_type=0"
+	headers := buildL2Headers(c.creds, c.wallet.Address(), "GET", path, "")
+	req, err := http.NewRequestWithContext(ctx, "GET", requestURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range headers {
+		req.Header[k] = v
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("GET %s: %w", path, err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, fmt.Errorf("GET %s response: %w", path, err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GET %s %d: %s", path, resp.StatusCode, body)
+	}
+	var result BalanceAllowanceResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("GET %s decode: %w", path, err)
+	}
+	return &result, nil
+}
+
+// RefreshBalanceAllowance asks the CLOB to resync its collateral cache from
+// chain state. It does not submit a Polygon transaction.
+func (c *V2Client) RefreshBalanceAllowance(ctx context.Context) error {
+	path := "/balance-allowance/update"
+	requestURL := c.clobBase + path + "?asset_type=COLLATERAL&signature_type=0"
+	headers := buildL2Headers(c.creds, c.wallet.Address(), "GET", path, "")
+	req, err := http.NewRequestWithContext(ctx, "GET", requestURL, nil)
+	if err != nil {
+		return err
+	}
+	for k, v := range headers {
+		req.Header[k] = v
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("GET %s: %w", path, err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return fmt.Errorf("GET %s response: %w", path, err)
+	}
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("GET %s %d: %s", path, resp.StatusCode, body)
+	}
+	return nil
+}
+
+func GetCLOBVersion(ctx context.Context, clobBase string) (int, error) {
+	if clobBase == "" {
+		clobBase = ClobBaseURL
+	}
+	return getCLOBVersion(ctx, clobBase, &http.Client{Timeout: 15 * time.Second})
+}
+
+func getCLOBVersion(ctx context.Context, clobBase string, hc *http.Client) (int, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", strings.TrimRight(clobBase, "/")+"/version", nil)
+	if err != nil {
+		return 0, err
+	}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("GET /version: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	if err != nil {
+		return 0, fmt.Errorf("GET /version response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("GET /version %d: %s", resp.StatusCode, body)
+	}
+	var result struct {
+		Version int `json:"version"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return 0, fmt.Errorf("GET /version decode: %w", err)
+	}
+	if result.Version == 0 {
+		return 0, fmt.Errorf("GET /version returned empty version")
+	}
+	return result.Version, nil
 }
 
 func amountsForIntent(in Intent) (*big.Int, *big.Int, error) {

@@ -1,11 +1,9 @@
 package order
 
 import (
-	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"fmt"
-	"io"
 	"log/slog"
 	"math/big"
 	"net/http"
@@ -18,7 +16,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
-	"golang.org/x/crypto/sha3"
 )
 
 const (
@@ -35,9 +32,10 @@ const (
 )
 
 var (
-	erc20ABI        abi.ABI
-	onrampABI       abi.ABI
-	ctfRedeemABI    abi.ABI
+	erc20ABI         abi.ABI
+	erc1155ABI       abi.ABI
+	onrampABI        abi.ABI
+	ctfRedeemABI     abi.ABI
 	negRiskRedeemABI abi.ABI
 )
 
@@ -50,6 +48,13 @@ func init() {
 	]`))
 	if err != nil {
 		panic("order: parse erc20 abi: " + err.Error())
+	}
+	erc1155ABI, err = abi.JSON(strings.NewReader(`[
+		{"inputs":[{"name":"account","type":"address"},{"name":"operator","type":"address"}],"name":"isApprovedForAll","outputs":[{"name":"","type":"bool"}],"stateMutability":"view","type":"function"},
+		{"inputs":[{"name":"operator","type":"address"},{"name":"approved","type":"bool"}],"name":"setApprovalForAll","outputs":[],"stateMutability":"nonpayable","type":"function"}
+	]`))
+	if err != nil {
+		panic("order: parse erc1155 abi: " + err.Error())
 	}
 
 	onrampABI, err = abi.JSON(strings.NewReader(`[
@@ -81,7 +86,46 @@ type OnChain struct {
 	chainID *big.Int
 }
 
+type ExchangeReadiness struct {
+	POLBalance                   *big.Int
+	USDCeBalance                 *big.Int
+	PUSDBalance                  *big.Int
+	USDCeOnrampAllowance         *big.Int
+	PUSDCTFExchangeAllowance     *big.Int
+	PUSDNegRiskExchangeAllowance *big.Int
+	PUSDNegRiskAdapterAllowance  *big.Int
+	CTFExchangeApproved          bool
+	NegRiskExchangeApproved      bool
+}
+
 func NewOnChain(rpcURL string, wallet *Wallet) (*OnChain, error) {
+	client, err := dialPolygon(rpcURL)
+	if err != nil {
+		return nil, err
+	}
+	return &OnChain{
+		client:  client,
+		privKey: wallet.privKey,
+		address: wallet.address,
+		chainID: big.NewInt(PolygonChainID),
+	}, nil
+}
+
+// NewReadOnlyOnChain creates a client that can only perform eth_call and
+// balance queries. Transaction submission fails because no private key exists.
+func NewReadOnlyOnChain(rpcURL string, address common.Address) (*OnChain, error) {
+	client, err := dialPolygon(rpcURL)
+	if err != nil {
+		return nil, err
+	}
+	return &OnChain{
+		client:  client,
+		address: address,
+		chainID: big.NewInt(PolygonChainID),
+	}, nil
+}
+
+func dialPolygon(rpcURL string) (*ethclient.Client, error) {
 	if rpcURL == "" {
 		rpcURL = PolygonRPC
 	}
@@ -95,12 +139,58 @@ func NewOnChain(rpcURL string, wallet *Wallet) (*OnChain, error) {
 	if err != nil {
 		return nil, fmt.Errorf("order: dial polygon rpc: %w", err)
 	}
-	client := ethclient.NewClient(rpcClient)
-	return &OnChain{
-		client:  client,
-		privKey: wallet.privKey,
-		address: wallet.address,
-		chainID: big.NewInt(PolygonChainID),
+	return ethclient.NewClient(rpcClient), nil
+}
+
+func (o *OnChain) ExchangeReadiness(ctx context.Context) (*ExchangeReadiness, error) {
+	pol, err := o.client.BalanceAt(ctx, o.address, nil)
+	if err != nil {
+		return nil, fmt.Errorf("POL balance: %w", err)
+	}
+	usdce, err := o.USDCeBalance(ctx)
+	if err != nil {
+		return nil, err
+	}
+	pusd, err := o.PUSDBalance(ctx)
+	if err != nil {
+		return nil, err
+	}
+	usdceOnramp, err := o.getAllowance(ctx, common.HexToAddress(USDCeAddress), common.HexToAddress(CollateralOnrampAddr))
+	if err != nil {
+		return nil, fmt.Errorf("USDC.e onramp allowance: %w", err)
+	}
+	pusdToken := common.HexToAddress(PUSDAddress)
+	pusdCTF, err := o.getAllowance(ctx, pusdToken, common.HexToAddress(V2ExchangeAddress))
+	if err != nil {
+		return nil, fmt.Errorf("pUSD CTF exchange allowance: %w", err)
+	}
+	pusdNegRisk, err := o.getAllowance(ctx, pusdToken, common.HexToAddress(V2NegRiskExchangeAddress))
+	if err != nil {
+		return nil, fmt.Errorf("pUSD NegRisk exchange allowance: %w", err)
+	}
+	pusdAdapter, err := o.getAllowance(ctx, pusdToken, common.HexToAddress(NegRiskAdapterAddr))
+	if err != nil {
+		return nil, fmt.Errorf("pUSD NegRisk adapter allowance: %w", err)
+	}
+	ctf := common.HexToAddress(ConditionalTokensAddr)
+	ctfApproved, err := o.isERC1155Approved(ctx, ctf, common.HexToAddress(V2ExchangeAddress))
+	if err != nil {
+		return nil, err
+	}
+	negRiskApproved, err := o.isERC1155Approved(ctx, ctf, common.HexToAddress(V2NegRiskExchangeAddress))
+	if err != nil {
+		return nil, err
+	}
+	return &ExchangeReadiness{
+		POLBalance:                   pol,
+		USDCeBalance:                 usdce,
+		PUSDBalance:                  pusd,
+		USDCeOnrampAllowance:         usdceOnramp,
+		PUSDCTFExchangeAllowance:     pusdCTF,
+		PUSDNegRiskExchangeAllowance: pusdNegRisk,
+		PUSDNegRiskAdapterAllowance:  pusdAdapter,
+		CTFExchangeApproved:          ctfApproved,
+		NegRiskExchangeApproved:      negRiskApproved,
 	}, nil
 }
 
@@ -259,6 +349,9 @@ func (o *OnChain) wrap(ctx context.Context, amount *big.Int) error {
 }
 
 func (o *OnChain) sendTx(ctx context.Context, to common.Address, data []byte, gasLimit uint64) error {
+	if o.privKey == nil {
+		return fmt.Errorf("transaction signing is unavailable on a read-only client")
+	}
 	nonce, err := o.client.PendingNonceAt(ctx, o.address)
 	if err != nil {
 		return fmt.Errorf("get nonce: %w", err)
@@ -396,88 +489,35 @@ func (o *OnChain) RedeemPosition(ctx context.Context, conditionIDHex string, out
 }
 
 func (o *OnChain) ensureERC1155Approval(ctx context.Context, tokenContract, operator common.Address) error {
-	isApprovedABI, _ := abi.JSON(strings.NewReader(`[
-		{"inputs":[{"name":"account","type":"address"},{"name":"operator","type":"address"}],"name":"isApprovedForAll","outputs":[{"name":"","type":"bool"}],"stateMutability":"view","type":"function"},
-		{"inputs":[{"name":"operator","type":"address"},{"name":"approved","type":"bool"}],"name":"setApprovalForAll","outputs":[],"stateMutability":"nonpayable","type":"function"}
-	]`))
-
-	data, err := isApprovedABI.Pack("isApprovedForAll", o.address, operator)
+	approved, err := o.isERC1155Approved(ctx, tokenContract, operator)
 	if err != nil {
 		return err
 	}
-	result, err := o.client.CallContract(ctx, ethereum.CallMsg{To: &tokenContract, Data: data}, nil)
-	if err != nil {
-		return fmt.Errorf("isApprovedForAll: %w", err)
-	}
-	out, err := isApprovedABI.Unpack("isApprovedForAll", result)
-	if err != nil {
-		return err
-	}
-	if out[0].(bool) {
+	if approved {
 		slog.Info("erc1155_already_approved", "token", tokenContract.Hex(), "operator", operator.Hex())
 		return nil
 	}
 
 	slog.Info("erc1155_approving", "token", tokenContract.Hex(), "operator", operator.Hex())
-	setData, err := isApprovedABI.Pack("setApprovalForAll", operator, true)
+	setData, err := erc1155ABI.Pack("setApprovalForAll", operator, true)
 	if err != nil {
 		return err
 	}
 	return o.sendTx(ctx, tokenContract, setData, ApproveGas)
 }
 
-func (o *OnChain) EnsureCLOBAllowance(ctx context.Context, creds *APICredentials, addr common.Address) error {
-	hc := &http.Client{Timeout: 30 * time.Second}
-
-	path := "/balance-allowance?asset_type=COLLATERAL"
-	headers := buildL2Headers(creds, addr, "GET", path, "")
-
-	req, err := http.NewRequestWithContext(ctx, "GET", ClobBaseURL+path, nil)
+func (o *OnChain) isERC1155Approved(ctx context.Context, tokenContract, operator common.Address) (bool, error) {
+	data, err := erc1155ABI.Pack("isApprovedForAll", o.address, operator)
 	if err != nil {
-		return err
+		return false, err
 	}
-	for k, v := range headers {
-		req.Header[k] = v
-	}
-	resp, err := hc.Do(req)
+	result, err := o.client.CallContract(ctx, ethereum.CallMsg{To: &tokenContract, Data: data}, nil)
 	if err != nil {
-		return fmt.Errorf("GET balance-allowance: %w", err)
+		return false, fmt.Errorf("isApprovedForAll %s: %w", operator.Hex(), err)
 	}
-	respBody, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("balance-allowance %d: %s", resp.StatusCode, respBody)
-	}
-
-	slog.Info("clob_balance_checked", "status", resp.StatusCode, "body", string(respBody))
-
-	updatePath := "/balance-allowance"
-	body := `{"asset_type":"COLLATERAL"}`
-	updateHeaders := buildL2Headers(creds, addr, "POST", updatePath, body)
-
-	req2, err := http.NewRequestWithContext(ctx, "POST", ClobBaseURL+updatePath, bytes.NewReader([]byte(body)))
+	out, err := erc1155ABI.Unpack("isApprovedForAll", result)
 	if err != nil {
-		return err
+		return false, err
 	}
-	for k, v := range updateHeaders {
-		req2.Header[k] = v
-	}
-	req2.Header.Set("Content-Type", "application/json")
-	resp2, err := hc.Do(req2)
-	if err != nil {
-		return fmt.Errorf("POST balance-allowance: %w", err)
-	}
-	resp2Body, _ := io.ReadAll(resp2.Body)
-	resp2.Body.Close()
-
-	slog.Info("clob_allowance_updated", "status", resp2.StatusCode, "body", string(resp2Body))
-	return nil
-}
-
-// funcSelector returns the 4-byte function selector for a Solidity function signature.
-func funcSelector(sig string) []byte {
-	h := sha3.NewLegacyKeccak256()
-	h.Write([]byte(sig))
-	return h.Sum(nil)[:4]
+	return out[0].(bool), nil
 }

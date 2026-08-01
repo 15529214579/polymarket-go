@@ -10,12 +10,14 @@ import (
 	"math/big"
 	nethttp "net/http"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/15529214579/polymarket-go/internal/order"
+	"github.com/ethereum/go-ethereum/common"
 )
+
+const projectWalletAddress = "0x015282e9b720E072A9B87eEeaE738C6Bb039Bd9e"
 
 func main() {
 	assetID := flag.String("asset", "", "ERC1155 token ID (YES side)")
@@ -24,22 +26,52 @@ func main() {
 	limitPx := flag.Float64("price", 0, "limit price (0..1)")
 	side := flag.String("side", "BUY", "BUY or SELL")
 	negRisk := flag.Bool("negrisk", false, "use NegRisk exchange address")
-	dryRun := flag.Bool("dry-run", false, "derive key + print intent, don't submit")
-	autoWrap := flag.Bool("auto-wrap", true, "auto wrap USDC.e → pUSD if needed")
+	dryRun := flag.Bool("dry-run", false, "validate and print intent locally; no network or wallet mutation")
+	autoWrap := flag.Bool("auto-wrap", false, "explicitly wrap USDC.e and approve exchanges before submit")
 	rpcURL := flag.String("rpc", "", "Polygon RPC URL (default: polygon-rpc.com)")
 	hexKey := flag.String("key", "", "hex private key (bypasses Bitwarden mnemonic)")
-	queryOpenOrders := flag.Bool("open-orders", false, "query CLOB open orders and exit")
+	queryOpenOrders := flag.Bool("open-orders", false, "query CLOB open orders without cancelling")
+	cancelOpenOrders := flag.Bool("cancel-open-orders", false, "explicitly cancel every open CLOB order")
+	readiness := flag.Bool("readiness", false, "read-only wallet, L1/L2 auth, balance, allowance, and open-order checks")
+	publicReadiness := flag.Bool("readiness-public", false, "read-only public CLOB and Polygon checks; no private key required")
+	expectedAddress := flag.String("expected-address", projectWalletAddress, "wallet address that must match before authenticated operations")
 	redeemAll := flag.Bool("redeem-all", false, "redeem all redeemable positions and exit")
 	flag.Parse()
 
-	if !*queryOpenOrders && !*redeemAll && (*assetID == "" || *limitPx <= 0) {
+	managementMode := *queryOpenOrders || *cancelOpenOrders || *readiness || *publicReadiness || *redeemAll
+	if !managementMode && (*assetID == "" || *limitPx <= 0) {
 		fmt.Fprintf(os.Stderr, "Usage: trade -asset <tokenID> -price <0..1> [-size <usd>] [-negrisk] [-dry-run]\n")
+		os.Exit(1)
+	}
+	if *expectedAddress != "" && !common.IsHexAddress(*expectedAddress) {
+		fmt.Fprintf(os.Stderr, "ERROR: invalid -expected-address %q\n", *expectedAddress)
 		os.Exit(1)
 	}
 
 	slog.Info("trade_init", "asset", *assetID, "size", *sizeUSD, "price", *limitPx, "side", *side, "negrisk", *negRisk)
 
 	order.InitProxy()
+	if *dryRun {
+		intent, err := buildIntent(*assetID, *market, *side, *sizeUSD, *limitPx, *negRisk)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "ERROR:", err)
+			os.Exit(1)
+		}
+		printIntent(intent)
+		fmt.Println("DRY RUN - local validation only; no wallet access, API authentication, transaction, approval, cancellation, or order submission.")
+		return
+	}
+	if *publicReadiness {
+		if *expectedAddress == "" {
+			fmt.Fprintln(os.Stderr, "ERROR: -expected-address is required for -readiness-public")
+			os.Exit(1)
+		}
+		if err := runPublicReadiness(*rpcURL, common.HexToAddress(*expectedAddress)); err != nil {
+			slog.Error("public_readiness_failed", "err", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	var wallet *order.Wallet
 	if *hexKey != "" {
@@ -50,7 +82,7 @@ func main() {
 			os.Exit(1)
 		}
 	} else {
-		mnemonic, err := loadMnemonic()
+		mnemonic, err := order.LoadMnemonicFromBitwarden("Polymarket-Go Wallet", "mnemonic")
 		if err != nil {
 			slog.Error("wallet_load_failed", "err", err)
 			os.Exit(1)
@@ -62,36 +94,9 @@ func main() {
 		}
 	}
 	slog.Info("wallet_loaded", "address", wallet.Address().Hex())
-
-	creds, err := order.DeriveAPIKey(order.ClobBaseURL, wallet)
-	if err != nil {
-		slog.Error("api_key_derive_failed", "err", err)
+	if *expectedAddress != "" && wallet.Address() != common.HexToAddress(*expectedAddress) {
+		slog.Error("wallet_address_mismatch", "loaded", wallet.Address().Hex(), "expected", common.HexToAddress(*expectedAddress).Hex())
 		os.Exit(1)
-	}
-	slog.Info("api_key_derived")
-
-	if *queryOpenOrders {
-		client := order.NewV2Client(wallet, creds, false)
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-		body, err := client.GetOpenOrders(ctx)
-		if err != nil {
-			slog.Error("open_orders_query_failed", "err", err)
-			os.Exit(1)
-		}
-		var pretty json.RawMessage
-		if json.Unmarshal(body, &pretty) == nil {
-			out, _ := json.MarshalIndent(pretty, "", "  ")
-			fmt.Println(string(out))
-		} else {
-			fmt.Println(string(body))
-		}
-
-		// Also cancel all
-		if err := client.CancelAllOpen(ctx); err != nil {
-			slog.Warn("cancel_all_failed", "err", err)
-		}
-		return
 	}
 
 	if *redeemAll {
@@ -101,6 +106,54 @@ func main() {
 			os.Exit(1)
 		}
 		runRedeemAll(oc, wallet.Address().Hex())
+		return
+	}
+
+	var creds *order.APICredentials
+	var err error
+	if *readiness || *queryOpenOrders || *cancelOpenOrders {
+		creds, err = order.DeriveExistingAPIKey(order.ClobBaseURL, wallet)
+	} else {
+		creds, err = order.DeriveAPIKey(order.ClobBaseURL, wallet)
+	}
+	if err != nil {
+		slog.Error("api_key_derive_failed", "err", err)
+		os.Exit(1)
+	}
+	slog.Info("api_key_derived")
+	client := order.NewV2Client(wallet, creds, *negRisk)
+
+	if *readiness {
+		if err := runAuthenticatedReadiness(*rpcURL, wallet, client); err != nil {
+			slog.Error("authenticated_readiness_failed", "err", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *queryOpenOrders {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		openOrders, err := client.GetOpenOrders(ctx)
+		if err != nil {
+			slog.Error("open_orders_query_failed", "err", err)
+			os.Exit(1)
+		}
+		out, _ := json.MarshalIndent(openOrders, "", "  ")
+		fmt.Println(string(out))
+		if !*cancelOpenOrders {
+			return
+		}
+	}
+
+	if *cancelOpenOrders {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := client.CancelAllOpen(ctx); err != nil {
+			slog.Error("cancel_all_failed", "err", err)
+			os.Exit(1)
+		}
+		fmt.Println("All open orders cancelled.")
 		return
 	}
 
@@ -148,39 +201,22 @@ func main() {
 		os.Exit(1)
 	}
 
-	intent := order.Intent{
-		AssetID: *assetID,
-		Market:  *market,
-		Side:    order.Side(*side),
-		SizeUSD: *sizeUSD,
-		LimitPx: *limitPx,
-		Type:    order.GTC,
-		NegRisk: *negRisk,
+	intent, err := buildIntent(*assetID, *market, *side, *sizeUSD, *limitPx, *negRisk)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "ERROR:", err)
+		os.Exit(1)
 	}
-
-	fmt.Printf("\n=== ORDER INTENT ===\n")
-	fmt.Printf("Asset:    %s\n", intent.AssetID)
-	fmt.Printf("Side:     %s\n", intent.Side)
-	fmt.Printf("Size:     $%.2f\n", intent.SizeUSD)
-	fmt.Printf("Price:    %.4f\n", intent.LimitPx)
-	fmt.Printf("Shares:   ~%.1f\n", intent.SizeUSD/intent.LimitPx)
-	fmt.Printf("NegRisk:  %v\n", *negRisk)
-	fmt.Printf("Exchange: %s\n", func() string {
-		if *negRisk {
-			return order.V2NegRiskExchangeAddress
-		}
-		return order.V2ExchangeAddress
-	}())
-	fmt.Printf("====================\n\n")
-
-	if *dryRun {
-		fmt.Println("DRY RUN — not submitting.")
-		return
-	}
-
-	client := order.NewV2Client(wallet, creds, *negRisk)
+	printIntent(intent)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
+
+	refreshCtx, refreshCancel := context.WithTimeout(ctx, 15*time.Second)
+	if err := client.RefreshBalanceAllowance(refreshCtx); err != nil {
+		refreshCancel()
+		slog.Error("balance_allowance_refresh_failed", "err", err)
+		os.Exit(1)
+	}
+	refreshCancel()
 
 	slog.Info("submitting_order")
 	result, err := client.Submit(ctx, intent)
@@ -205,6 +241,126 @@ func main() {
 	}
 }
 
+func buildIntent(assetID, market, side string, sizeUSD, limitPx float64, negRisk bool) (order.Intent, error) {
+	side = strings.ToUpper(strings.TrimSpace(side))
+	if assetID == "" {
+		return order.Intent{}, fmt.Errorf("asset ID is required")
+	}
+	if side != string(order.Buy) && side != string(order.Sell) {
+		return order.Intent{}, fmt.Errorf("side must be BUY or SELL")
+	}
+	if sizeUSD <= 0 {
+		return order.Intent{}, fmt.Errorf("size must be greater than zero")
+	}
+	if limitPx <= 0 || limitPx >= 1 {
+		return order.Intent{}, fmt.Errorf("price must be between zero and one")
+	}
+	return order.Intent{
+		AssetID: assetID,
+		Market:  market,
+		Side:    order.Side(side),
+		SizeUSD: sizeUSD,
+		LimitPx: limitPx,
+		Type:    order.GTC,
+		NegRisk: negRisk,
+	}, nil
+}
+
+func printIntent(intent order.Intent) {
+	fmt.Printf("\n=== ORDER INTENT ===\n")
+	fmt.Printf("Asset:    %s\n", intent.AssetID)
+	fmt.Printf("Side:     %s\n", intent.Side)
+	fmt.Printf("Size:     $%.2f\n", intent.SizeUSD)
+	fmt.Printf("Price:    %.4f\n", intent.LimitPx)
+	fmt.Printf("Shares:   ~%.1f\n", intent.SizeUSD/intent.LimitPx)
+	fmt.Printf("NegRisk:  %v\n", intent.NegRisk)
+	if intent.NegRisk {
+		fmt.Printf("Exchange: %s\n", order.V2NegRiskExchangeAddress)
+	} else {
+		fmt.Printf("Exchange: %s\n", order.V2ExchangeAddress)
+	}
+	fmt.Printf("====================\n\n")
+}
+
+func runPublicReadiness(rpcURL string, address common.Address) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	version, err := order.GetCLOBVersion(ctx, order.ClobBaseURL)
+	if err != nil {
+		return err
+	}
+	oc, err := order.NewReadOnlyOnChain(rpcURL, address)
+	if err != nil {
+		return err
+	}
+	snapshot, err := oc.ExchangeReadiness(ctx)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("CLOB version: %d (public endpoint OK)\n", version)
+	fmt.Printf("Wallet: %s (public chain checks only)\n", address.Hex())
+	printExchangeReadiness(snapshot)
+	return nil
+}
+
+func runAuthenticatedReadiness(rpcURL string, wallet *order.Wallet, client *order.V2Client) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	version, err := order.GetCLOBVersion(ctx, order.ClobBaseURL)
+	if err != nil {
+		return err
+	}
+	openOrders, err := client.GetOpenOrders(ctx)
+	if err != nil {
+		return fmt.Errorf("L2 open-orders authentication: %w", err)
+	}
+	clobBalance, err := client.GetBalanceAllowance(ctx)
+	if err != nil {
+		return fmt.Errorf("L2 balance authentication: %w", err)
+	}
+	oc, err := order.NewReadOnlyOnChain(rpcURL, wallet.Address())
+	if err != nil {
+		return err
+	}
+	snapshot, err := oc.ExchangeReadiness(ctx)
+	if err != nil {
+		return err
+	}
+	count := openOrders.Count
+	if count == 0 {
+		count = len(openOrders.Data)
+	}
+	fmt.Printf("CLOB version: %d\n", version)
+	fmt.Printf("Wallet: %s (expected address matched)\n", wallet.Address().Hex())
+	fmt.Println("L1 existing API-key derivation: OK")
+	fmt.Printf("L2 signed reads: OK (open orders: %d, cached collateral balance raw: %s)\n", count, clobBalance.Balance)
+	printExchangeReadiness(snapshot)
+	fmt.Println("Mutation check: no order, cancellation, approval, wrap, redeem, or transaction was sent")
+	return nil
+}
+
+func printExchangeReadiness(snapshot *order.ExchangeReadiness) {
+	fmt.Printf("Polygon POL: %s\n", formatUnits(snapshot.POLBalance, 18, 6))
+	fmt.Printf("Polygon USDC.e: %s\n", formatUnits(snapshot.USDCeBalance, 6, 6))
+	fmt.Printf("Polygon pUSD: %s\n", formatUnits(snapshot.PUSDBalance, 6, 6))
+	fmt.Printf("USDC.e -> onramp allowance: %v\n", snapshot.USDCeOnrampAllowance.Sign() > 0)
+	fmt.Printf("pUSD -> CTF exchange allowance: %v\n", snapshot.PUSDCTFExchangeAllowance.Sign() > 0)
+	fmt.Printf("pUSD -> NegRisk exchange allowance: %v\n", snapshot.PUSDNegRiskExchangeAllowance.Sign() > 0)
+	fmt.Printf("pUSD -> NegRisk adapter allowance: %v\n", snapshot.PUSDNegRiskAdapterAllowance.Sign() > 0)
+	fmt.Printf("CTF sell approval: %v\n", snapshot.CTFExchangeApproved)
+	fmt.Printf("NegRisk sell approval: %v\n", snapshot.NegRiskExchangeApproved)
+	fmt.Printf("Standard BUY path funded and approved: %v\n", snapshot.PUSDBalance.Sign() > 0 && snapshot.PUSDCTFExchangeAllowance.Sign() > 0)
+}
+
+func formatUnits(raw *big.Int, decimals, precision int) string {
+	if raw == nil {
+		return "0"
+	}
+	value := new(big.Float).SetInt(raw)
+	value.Quo(value, new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(decimals)), nil)))
+	return value.Text('f', precision)
+}
+
 func saveBuyTime(asset string) {
 	path := "db/buy_times.json"
 	data := map[string]string{}
@@ -216,27 +372,6 @@ func saveBuyTime(asset string) {
 		os.WriteFile(path, out, 0644)
 		slog.Info("buy_time_saved", "asset", asset[:20])
 	}
-}
-
-func loadMnemonic() (string, error) {
-	out, err := exec.Command("bw", "get", "notes", "Polymarket-Go Wallet").Output()
-	if err != nil {
-		return "", fmt.Errorf("bw get notes: %w", err)
-	}
-	notes := string(out)
-	lines := strings.Split(notes, "\n")
-	for i, line := range lines {
-		if strings.Contains(line, "助记词") && i+1 < len(lines) {
-			mnemonic := strings.TrimSpace(lines[i+1])
-			if mnemonic != "" {
-				words := strings.Fields(mnemonic)
-				if len(words) == 12 || len(words) == 24 {
-					return mnemonic, nil
-				}
-			}
-		}
-	}
-	return "", fmt.Errorf("mnemonic not found in Polymarket-Go Wallet notes")
 }
 
 type dataAPIPosition struct {
@@ -328,21 +463,5 @@ func runRedeemAll(oc *order.OnChain, walletAddr string) {
 	if err == nil {
 		f, _ := new(big.Float).Quo(new(big.Float).SetInt(bal), new(big.Float).SetFloat64(1e6)).Float64()
 		fmt.Printf("\nRedeemed %d positions. pUSD balance: $%.2f\n", redeemed_count, f)
-	}
-}
-
-func checkBalance(creds *order.APICredentials, addr string) {
-	out, err := exec.Command("bw", "get", "item", "Polymarket-Go Wallet").Output()
-	if err != nil {
-		return
-	}
-	var item struct {
-		Fields []struct {
-			Name  string `json:"name"`
-			Value string `json:"value"`
-		} `json:"fields"`
-	}
-	if err := json.Unmarshal(out, &item); err != nil {
-		return
 	}
 }

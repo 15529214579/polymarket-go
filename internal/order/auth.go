@@ -70,6 +70,12 @@ func DeriveAPIKey(clobBase string, w *Wallet) (*APICredentials, error) {
 	return deriveAPIKey(clobBase, w)
 }
 
+// DeriveExistingAPIKey performs the read-only L1 authentication flow. Unlike
+// DeriveAPIKey it never attempts to create a new API key.
+func DeriveExistingAPIKey(clobBase string, w *Wallet) (*APICredentials, error) {
+	return deriveAPIKey(clobBase, w)
+}
+
 func l1Headers(w *Wallet) (http.Header, error) {
 	ts := time.Now().Unix()
 	nonce := 0

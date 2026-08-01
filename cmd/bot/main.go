@@ -1022,8 +1022,12 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 		v2Client := order.NewV2Client(wallet, creds, false)
 		orderClient = v2Client
 		slog.Info("v2_live_ready", "client", v2Client.Name(), "exchange", order.V2ExchangeAddress)
-		if err := v2Client.CancelAllOpen(context.Background()); err != nil {
-			slog.Warn("v2_cancel_all_open_failed", "err", err)
+		if os.Getenv("POLYMARKET_CANCEL_OPEN_ON_START") == "1" {
+			if err := v2Client.CancelAllOpen(context.Background()); err != nil {
+				slog.Warn("v2_cancel_all_open_failed", "err", err)
+			}
+		} else {
+			slog.Info("v2_cancel_all_open_skipped", "reason", "POLYMARKET_CANCEL_OPEN_ON_START is not 1")
 		}
 	}
 	tradeMode := "paper"
