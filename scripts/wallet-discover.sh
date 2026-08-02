@@ -6,9 +6,23 @@ cd "$ROOT"
 
 export PATH="/usr/local/go/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 
+GO_BIN="$(command -v go 2>/dev/null || true)"
+if [ -z "$GO_BIN" ]; then
+  for candidate in /usr/local/go/bin/go /opt/homebrew/bin/go; do
+    if [ -x "$candidate" ]; then
+      GO_BIN="$candidate"
+      break
+    fi
+  done
+fi
+if [ -z "$GO_BIN" ]; then
+  echo "go executable not found" >&2
+  exit 1
+fi
+
 mkdir -p "$ROOT/db/strategy_iteration"
 
-go build -o bin/wallet-discover ./cmd/wallet-discover
+"$GO_BIN" build -o bin/wallet-discover ./cmd/wallet-discover
 
 if [ "$#" -gt 0 ]; then
   exec "$ROOT/bin/wallet-discover" "$@"
@@ -92,7 +106,7 @@ set -- \
 
 "$ROOT/bin/wallet-discover" "$@"
 
-go build -o bin/strategy-lab ./cmd/strategy-lab
+"$GO_BIN" build -o bin/strategy-lab ./cmd/strategy-lab
 exec "$ROOT/bin/strategy-lab" \
   -scores "$ROOT/db/strategy_iteration/wallet_scores.json" \
   -report "$ROOT/reports/strategy_lab.md" \
