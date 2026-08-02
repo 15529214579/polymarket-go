@@ -1,12 +1,12 @@
 # Sports Alert Performance
 
-**Generated:** 2026-07-09 12:53 +08
+**Generated:** 2026-08-02 00:10 +08
 
-- Alert log: `db/strategy_iteration/sports_tape_alerts.jsonl`
+- Alert log: `/Users/murphyma/work/polymarket-go/db/strategy_iteration/sports_tape_alerts.jsonl`
 - Fixed paper stake: $10.00 per Telegram alert
 - Mark source: live CLOB midpoint; closed markets fall back to Gamma settlement outcome prices
 
-- Current policy exclude wallets: `wallets.strategy-quarantine.txt,wallets.strategy-review-noise.txt,wallets.strategy-tape-reversal.txt,wallets.strategy-tape-observe.txt`
+- Current policy exclude wallets: `/Users/murphyma/work/polymarket-go/wallets.strategy-quarantine.txt,/Users/murphyma/work/polymarket-go/wallets.strategy-review-noise.txt,/Users/murphyma/work/polymarket-go/wallets.strategy-tape-reversal.txt,/Users/murphyma/work/polymarket-go/wallets.strategy-tape-observe.txt`
 - Historical alerts excluded by wallet lists: 3
 - Historical alerts excluded by current market filter: 1
 
@@ -15,10 +15,10 @@
 - Alerts: 5
 - Marked to current midpoint: 5
 - Unmarked: 0
-- Win rate incl. midpoint marks: 40.0%
-- PnL incl. midpoint marks: $-9.97
-- ROI incl. midpoint marks: -19.9%
-- Avg price delta: -9.80pp
+- Win rate incl. midpoint marks: 20.0%
+- PnL incl. midpoint marks: $-34.10
+- ROI incl. midpoint marks: -68.2%
+- Avg price delta: -16.57pp
 
 ## Current Policy Performance
 
@@ -26,12 +26,12 @@
 - Alerts: 1
 - Marked to current midpoint: 1
 - Unmarked: 0
-- Win rate incl. midpoint marks: 0.0%
-- PnL incl. midpoint marks: $-0.22
-- ROI incl. midpoint marks: -2.2%
-- Avg price delta: -1.41pp
-- Gate action: COLLECT
-- Gate reason: sample below promote gate
+- Win rate incl. midpoint marks: 100.0%
+- PnL incl. midpoint marks: $+5.90
+- ROI incl. midpoint marks: 59.0%
+- Avg price delta: +37.09pp
+- Gate action: COLLECT_POSITIVE
+- Gate reason: positive but sample below promote gate
 
 ## Current Policy Position-Capped Performance
 
@@ -40,12 +40,40 @@
 - Positions: 1
 - Marked to current midpoint: 1
 - Unmarked: 0
-- Win rate incl. midpoint marks: 0.0%
-- PnL incl. midpoint marks: $-0.22
-- ROI incl. midpoint marks: -2.2%
-- Avg price delta: -1.41pp
-- Gate action: COLLECT
-- Gate reason: sample below promote gate
+- Win rate incl. midpoint marks: 100.0%
+- PnL incl. midpoint marks: $+5.90
+- ROI incl. midpoint marks: 59.0%
+- Avg price delta: +37.09pp
+- Gate action: COLLECT_POSITIVE
+- Gate reason: positive but sample below promote gate
+
+## Effective Tradable Policy Performance
+
+- Rule: current policy modes after removing CUT/PROBATION modes
+- Modes: CANDIDATE,CONSENSUS,EDGE-HOT,FLOW-SCOUT,FOLLOW-READY,PROBATION
+- Alerts: 1
+- Marked to current midpoint: 1
+- Unmarked: 0
+- Win rate incl. midpoint marks: 100.0%
+- PnL incl. midpoint marks: $+5.90
+- ROI incl. midpoint marks: 59.0%
+- Avg price delta: +37.09pp
+- Gate action: COLLECT_POSITIVE
+- Gate reason: positive but sample below promote gate
+
+## Effective Tradable Position-Capped Performance
+
+- Rule: first alert per wallet + asset after removing CUT/PROBATION modes
+- Modes: CANDIDATE,CONSENSUS,EDGE-HOT,FLOW-SCOUT,FOLLOW-READY,PROBATION
+- Positions: 1
+- Marked to current midpoint: 1
+- Unmarked: 0
+- Win rate incl. midpoint marks: 100.0%
+- PnL incl. midpoint marks: $+5.90
+- ROI incl. midpoint marks: 59.0%
+- Avg price delta: +37.09pp
+- Gate action: COLLECT_POSITIVE
+- Gate reason: positive but sample below promote gate
 
 ## Experimental OBSERVE Performance
 
@@ -128,6 +156,60 @@
 - Gate action: COLLECT
 - Gate reason: no marked alerts yet
 
+## Experimental SEED-FLOW Performance
+
+- Rule: lower-threshold shadow-only unknown wallets buying multiple target markets; not counted in current policy until repeated positive ROI is proven
+- Modes: SEED-FLOW
+- Alerts: 0
+- Marked to current midpoint: 0
+- Unmarked: 0
+- Win rate incl. midpoint marks: 0.0%
+- PnL incl. midpoint marks: $+0.00
+- ROI incl. midpoint marks: 0.0%
+- Avg price delta: +0.00pp
+- Gate action: COLLECT
+- Gate reason: no marked alerts yet
+
+## Experimental SEED-FLOW Position-Capped Performance
+
+- Rule: first SEED-FLOW alert per wallet + asset
+- Positions: 0
+- Marked to current midpoint: 0
+- Unmarked: 0
+- Win rate incl. midpoint marks: 0.0%
+- PnL incl. midpoint marks: $+0.00
+- ROI incl. midpoint marks: 0.0%
+- Avg price delta: +0.00pp
+- Gate action: COLLECT
+- Gate reason: no marked alerts yet
+
+## Experimental SCORED-FLOW Performance
+
+- Rule: shadow-only scored low-bot leaderboard wallets buying multiple target markets; not counted in current policy until repeated positive ROI is proven
+- Modes: SCORED-FLOW
+- Alerts: 0
+- Marked to current midpoint: 0
+- Unmarked: 0
+- Win rate incl. midpoint marks: 0.0%
+- PnL incl. midpoint marks: $+0.00
+- ROI incl. midpoint marks: 0.0%
+- Avg price delta: +0.00pp
+- Gate action: COLLECT
+- Gate reason: no marked alerts yet
+
+## Experimental SCORED-FLOW Position-Capped Performance
+
+- Rule: first SCORED-FLOW alert per wallet + asset
+- Positions: 0
+- Marked to current midpoint: 0
+- Unmarked: 0
+- Win rate incl. midpoint marks: 0.0%
+- PnL incl. midpoint marks: $+0.00
+- ROI incl. midpoint marks: 0.0%
+- Avg price delta: +0.00pp
+- Gate action: COLLECT
+- Gate reason: no marked alerts yet
+
 ## Experimental INSIDER-SCOUT Performance
 
 - Rule: very large low-bot sports/esports whale BUY alerts; observation only until repeated positive ROI is proven
@@ -162,12 +244,12 @@
 - Alerts: 1
 - Marked to current midpoint: 1
 - Unmarked: 0
-- Win rate incl. midpoint marks: 0.0%
-- PnL incl. midpoint marks: $-0.22
-- ROI incl. midpoint marks: -2.2%
-- Avg price delta: -1.41pp
-- Gate action: COLLECT
-- Gate reason: sample below promote gate
+- Win rate incl. midpoint marks: 100.0%
+- PnL incl. midpoint marks: $+5.90
+- ROI incl. midpoint marks: 59.0%
+- Avg price delta: +37.09pp
+- Gate action: COLLECT_POSITIVE
+- Gate reason: positive but sample below promote gate
 
 ## Experimental CONSENSUS Position-Capped Performance
 
@@ -175,12 +257,12 @@
 - Positions: 1
 - Marked to current midpoint: 1
 - Unmarked: 0
-- Win rate incl. midpoint marks: 0.0%
-- PnL incl. midpoint marks: $-0.22
-- ROI incl. midpoint marks: -2.2%
-- Avg price delta: -1.41pp
-- Gate action: COLLECT
-- Gate reason: sample below promote gate
+- Win rate incl. midpoint marks: 100.0%
+- PnL incl. midpoint marks: $+5.90
+- ROI incl. midpoint marks: 59.0%
+- Avg price delta: +37.09pp
+- Gate action: COLLECT_POSITIVE
+- Gate reason: positive but sample below promote gate
 
 ## Mode Gates
 
@@ -189,7 +271,7 @@
 
 | Key | Alerts | Marked | Win | ROI | PnL | Action | Reason |
 |---|---:|---:|---:|---:|---:|---|---|
-| `CONSENSUS` | 1 | 1 | 0.0% | -2.2% | $-0.22 | COLLECT | sample below promote gate |
+| `CONSENSUS` | 1 | 1 | 100.0% | 59.0% | $+5.90 | COLLECT_POSITIVE | positive but sample below promote gate |
 
 ## Wallet Gates
 
@@ -198,27 +280,27 @@
 
 | Key | Alerts | Marked | Win | ROI | PnL | Action | Reason |
 |---|---:|---:|---:|---:|---:|---|---|
-| `multi:2` | 1 | 1 | 0.0% | -2.2% | $-0.22 | COLLECT | sample below promote gate |
+| `multi:2` | 1 | 1 | 100.0% | 59.0% | $+5.90 | COLLECT_POSITIVE | positive but sample below promote gate |
 
 ## By Mode
 
 | Key | Alerts | Marked | Win | ROI | PnL | AvgDeltaPP |
 |---|---:|---:|---:|---:|---:|---:|
-| `CONSENSUS` | 1 | 1 | 0.0% | -2.2% | $-0.22 | -1.41 |
+| `CONSENSUS` | 1 | 1 | 100.0% | 59.0% | $+5.90 | +37.09 |
 
 ## By Wallet
 
 | Key | Alerts | Marked | Win | ROI | PnL | AvgDeltaPP |
 |---|---:|---:|---:|---:|---:|---:|
-| `multi:2` | 1 | 1 | 0.0% | -2.2% | $-0.22 | -1.41 |
+| `multi:2` | 1 | 1 | 100.0% | 59.0% | $+5.90 | +37.09 |
 
 ## Recent Alerts
 
 | Sent | Mode | Wallet | Notional | Entry | Mid | ROI | Market |
 |---|---|---|---:|---:|---:|---:|---|
-| 07-09 12:51 | CONSENSUS | `multi:2` | $17277 | 0.629 | 0.615 | -2.2% | Will France win on 2026-07-09? |
-| 07-09 05:52 | OBSERVE | `0xd728...9e9b` | $55000 | 0.326 | 0.323 | -1.1% | Will France win the 2026 FIFA World Cup? |
-| 07-09 03:42 | FLOW-SCOUT | `0x620d...c67f` | $6000 | 0.195 | 0.201 | 2.8% | Will Argentina win the 2026 FIFA World Cup? |
-| 07-09 03:42 | FLOW-SCOUT | `0x620d...c67f` | $14000 | 0.199 | 0.201 | 0.8% | Will Argentina win the 2026 FIFA World Cup? |
+| 07-09 12:51 | CONSENSUS | `multi:2` | $17277 | 0.629 | 1.000 | 59.0% | Will France win on 2026-07-09? |
+| 07-09 05:52 | OBSERVE | `0xd728...9e9b` | $55000 | 0.326 | 0.000 | -100.0% | Will France win the 2026 FIFA World Cup? |
+| 07-09 03:42 | FLOW-SCOUT | `0x620d...c67f` | $6000 | 0.195 | 0.000 | -100.0% | Will Argentina win the 2026 FIFA World Cup? |
+| 07-09 03:42 | FLOW-SCOUT | `0x620d...c67f` | $14000 | 0.199 | 0.000 | -100.0% | Will Argentina win the 2026 FIFA World Cup? |
 | 07-09 02:49 | OBSERVE | `0xf3ce...a57a` | $7675 | 0.479 | 0.000 | -100.0% | Dota 2: Virtus.pro vs 1win - Game 1 Winner |
 

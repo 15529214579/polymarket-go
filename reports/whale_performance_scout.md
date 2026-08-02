@@ -1,13 +1,13 @@
 # Whale Performance Report
 
-**Generated:** 2026-07-09 11:44 +08
+**Generated:** 2026-08-02 00:14 +08
 
 - Log: `/Users/murphyma/work/polymarket-go/db/journal/whale_trades.jsonl`
 - Wallet filter: `/Users/murphyma/work/polymarket-go/wallets.strategy-scout.txt`
 - Fixed stake: $10.00 per BUY signal
-- Minimum whale notional: $750
-- List minimum notionals: core=$1000, flow=$1500, leaderboard_push=$5000, leaderboard_watch=$5000, scout=$750, sports=$1500, tape=$1500, target=$750, watch=$750
-- Policy since: 2026-07-09T03:44:03Z
+- Minimum whale notional: $500
+- List minimum notionals: core=$750, flow=$1000, leaderboard_push=$3000, leaderboard_watch=$3000, scout=$500, sports=$1000, tape=$1000, target=$500, watch=$500
+- Policy since: 2026-08-01T16:11:25Z
 - Repeat cooldown: 3m0s per wallet+asset; BUYs >= $5000 bypass cooldown
 
 ## Summary
