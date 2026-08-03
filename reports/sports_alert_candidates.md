@@ -1,13 +1,13 @@
 # Sports Alert Candidates
 
-**Generated:** 2026-08-02 00:10 +08
+**Generated:** 2026-08-03 00:10 +08
 
-- Recent BUY rows inspected: 11
+- Recent BUY rows inspected: 6
 - Diagnostic window: 6h0m0s
 - Alert window: 10m0s
 - Consensus alert window: 15m0s
-- Currently alertable unsent rows: 0
-- Eligible unsent rows in diagnostic window: 0
+- Currently alertable unsent rows: 2
+- Eligible unsent rows in diagnostic window: 2
 - Already sent rows in window: 0
 - Positive-edge required modes: CANDIDATE,PROBATION
 - Observe min notional: $3000
@@ -101,7 +101,7 @@
 
 | Status | Wallets | Trades | Total | VWAP | LastAge | Participants | Reason | Market |
 |---|---:|---:|---:|---:|---:|---|---|---|
-| consensus | 3 | 6 | $8586 | 0.694 | 3m | `0x4aec...4ce9`, `0xdf27...026f`, `0xe16d...5e30` | consensus burst in diagnostic window | Dota 2: GLYPH vs Zero Tenacity - Game 1 Winner |
+| none | 0 | 0 | $0 | 0.000 |  |  |  |  |
 
 ## Unknown Multi-Market Flow
 
@@ -131,14 +131,9 @@
 
 | Status | Mode | Wallet | List | Tier | Bot | Notional | Age | Reason | Market |
 |---|---|---|---|---|---:|---:|---:|---|---|
-| blocked | OBSERVE | `0x4572...83ff` | - | C | 42.5 | $2000 | 8m | 1h edge -34.83pp over 1 samples | Dota 2: GLYPH vs Zero Tenacity - Game 1 Winner |
-| blocked | OBSERVE | `0x4572...83ff` | - | C | 42.5 | $2000 | 8m | 1h edge -34.83pp over 1 samples | Dota 2: GLYPH vs Zero Tenacity - Game 1 Winner |
-| blocked | OBSERVE | `0xdf27...026f` | - | - | 0.0 | $1906 | 5m | observe wallet unscored | Dota 2: GLYPH vs Zero Tenacity - Game 1 Winner |
-| blocked | OBSERVE | `0x4aec...4ce9` | - | D | 58.8 | $1460 | 5m | bot 58.8 > 35.0 | Dota 2: GLYPH vs Zero Tenacity - Game 1 Winner |
-| blocked | OBSERVE | `0x4aec...4ce9` | - | D | 58.8 | $1420 | 3m | bot 58.8 > 35.0 | Dota 2: GLYPH vs Zero Tenacity - Game 1 Winner |
-| blocked | OBSERVE | `0x4aec...4ce9` | - | D | 58.8 | $1420 | 4m | bot 58.8 > 35.0 | Dota 2: GLYPH vs Zero Tenacity - Game 1 Winner |
-| blocked | OBSERVE | `0x4aec...4ce9` | - | D | 58.8 | $1380 | 6m | bot 58.8 > 35.0 | Dota 2: GLYPH vs Zero Tenacity - Game 1 Winner |
-| blocked | OBSERVE | `0x4572...83ff` | - | C | 42.5 | $1000 | 8m | 1h edge -34.83pp over 1 samples | Dota 2: GLYPH vs Zero Tenacity - Game 1 Winner |
-| blocked | OBSERVE | `0xe16d...5e30` | sports_holders_push | D | 45.7 | $1000 | 9m | bot 45.7 > 35.0 | Dota 2: GLYPH vs Zero Tenacity - Game 1 Winner |
-| blocked | OBSERVE | `0xf201...527e` | sports_holders_push | BOT | 62.1 | $863 | 7m | BOT tier | Dota 2: GLYPH vs Zero Tenacity - Game 1 Winner |
-| blocked | OBSERVE | `0xf2bb...3250` | - | - | 0.0 | $600 | 6m | observe wallet unscored | Dota 2: GLYPH vs Zero Tenacity - Game 1 Winner |
+| eligible | EDGE-HOT | `0x2929...1dd0` | tape_edgehot | C | 44.0 | $1000 | 3m | edge-hot 100.0% win avg +16.72pp over 4 samples | Dota 2: REKONIX vs Yakult Brothers - Game 1 Winner |
+| eligible | EDGE-HOT | `0x2929...1dd0` | tape_edgehot | C | 44.0 | $1000 | 4m | edge-hot 100.0% win avg +16.72pp over 4 samples | Dota 2: REKONIX vs Yakult Brothers - Game 1 Winner |
+| blocked | OBSERVE | `0xe59f...0d08` | - | - | 0.0 | $1332 | 7m | observe wallet unscored | Dota 2: REKONIX vs Yakult Brothers - Game 1 Winner |
+| blocked | OBSERVE | `0xc3e5...519d` | - | - | 0.0 | $1134 | 10m | observe wallet unscored | Dota 2: Team Falcons vs 1win - Game 2 Winner |
+| blocked | OBSERVE | `0x2e3c...08ba` | - | - | 0.0 | $710 | 11m | observe wallet unscored | Dota 2: REKONIX vs Yakult Brothers - Game 1 Winner |
+| blocked | OBSERVE | `0xeb69...cfd1` | - | - | 0.0 | $600 | 10m | observe wallet unscored | Dota 2: Team Falcons vs 1win - Game 2 Winner |

@@ -1,6 +1,6 @@
 # Sports Burst Performance
 
-**Generated:** 2026-08-02 00:10 +08
+**Generated:** 2026-08-03 00:10 +08
 
 - Tape: `/Users/murphyma/work/polymarket-go/db/strategy_iteration/sports_tape.jsonl`
 - Fixed paper stake: $10.00 per burst
@@ -59,37 +59,16 @@
 
 - Rule: lower-threshold cross-wallet same-asset BUY bursts for sample discovery only; not Telegram-pushed and not counted as official CONSENSUS
 - Threshold: total>=$5000 wallets>=2
-- Watch bursts: 1
-- Marked to current midpoint/settlement: 1
-- ROI incl. midpoint marks: 7.3%
+- Watch bursts: 0
+- Marked to current midpoint/settlement: 0
+- ROI incl. midpoint marks: 0.0%
 - Durable watch events: 3
 - Durable watch marked: 3
 - Durable watch ROI: 5.4%
 
 | Last | Wallets | Trades | Total | VWAP | Mid | ROI | Participants | Market |
 |---|---:|---:|---:|---:|---:|---:|---|---|
-| 08-02 00:07 | 3 | 6 | $8586 | 0.694 | 0.745 | 7.3% | `0x4aec...4ce9`, `0xdf27...026f`, `0xe16d...5e30` | Dota 2: GLYPH vs Zero Tenacity - Game 1 Winner |
-
-### Durable Watch History
-
-| Last | Wallets | Trades | Total | VWAP | Mid | ROI | Market |
-|---|---:|---:|---:|---:|---:|---:|---|
-| 08-02 00:07 | 3 | 6 | $8586 | 0.694 | 0.745 | 7.3% | Dota 2: GLYPH vs Zero Tenacity - Game 1 Winner |
-| 07-09 11:28 | 3 | 4 | $8705 | 0.781 | 0.843 | 7.9% | Indiana Fever vs. Los Angeles Sparks |
-| 07-09 10:29 | 2 | 3 | $8397 | 0.400 | 0.404 | 1.0% | Will Spain win on 2026-07-10? |
-
-### Durable Watch Participants
-
-| Wallet | Tier | Bot | Signals | Marked | Win | ROI | PnL | TotalNotional | AvgDeltaPP |
-|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| `0x124e...1c58` | C | 40.5 | 1 | 1 | 100.0% | 7.9% | $+0.79 | $8705 | +6.19 |
-| `0xc365...2e53` | - | 0.0 | 1 | 1 | 100.0% | 7.9% | $+0.79 | $8705 | +6.19 |
-| `0xf202...9ea8` | - | 0.0 | 1 | 1 | 100.0% | 7.9% | $+0.79 | $8705 | +6.19 |
-| `0x4aec...4ce9` | D | 58.8 | 1 | 1 | 100.0% | 7.3% | $+0.73 | $8586 | +5.07 |
-| `0xdf27...026f` | - | 0.0 | 1 | 1 | 100.0% | 7.3% | $+0.73 | $8586 | +5.07 |
-| `0xe16d...5e30` | D | 45.7 | 1 | 1 | 100.0% | 7.3% | $+0.73 | $8586 | +5.07 |
-| `0x204f...5e14` | D | 48.9 | 1 | 1 | 100.0% | 1.0% | $+0.10 | $8397 | +0.40 |
-| `0x7ea5...de7b` | - | 0.0 | 1 | 1 | 100.0% | 1.0% | $+0.10 | $8397 | +0.40 |
+| n/a | 0 | 0 | $0 | 0.000 | 0.000 | 0.0% |  |  |
 
 ## Durable Consensus Event History
 
@@ -118,9 +97,8 @@
 | `0x124e...1c58` | D | 58.1 | 2 | 2 | 100.0% | 17.9% | $+3.58 | $21741 | +14.53 |
 | `0xc365...2e53` | C | 38.4 | 2 | 2 | 100.0% | 17.9% | $+3.58 | $21741 | +14.53 |
 | `0xf202...9ea8` | BOT | 62.4 | 2 | 2 | 100.0% | 17.9% | $+3.58 | $21741 | +14.53 |
-| `0x20c6...45ae` | C | 43.2 | 1 | 1 | 100.0% | 59.0% | $+5.90 | $17277 | +37.09 |
+| `0x20c6...45ae` | - | 0.0 | 1 | 1 | 100.0% | 59.0% | $+5.90 | $17277 | +37.09 |
 | `0x7af7...4c89` | B | 30.5 | 1 | 1 | 100.0% | 59.0% | $+5.90 | $17277 | +37.09 |
-| `0x3833...33d1` | D | 48.0 | 1 | 1 | 100.0% | 32.6% | $+3.26 | $10336 | +24.58 |
 | `0x93bd...bbc5` | D | 55.0 | 1 | 1 | 100.0% | 32.6% | $+3.26 | $10336 | +24.58 |
 | `0x9679...9315` | D | 56.3 | 1 | 1 | 100.0% | 32.6% | $+3.26 | $10336 | +24.58 |
 | `0x7120...7c4e` | D | 57.2 | 1 | 1 | 100.0% | 13.8% | $+1.38 | $11047 | +11.68 |

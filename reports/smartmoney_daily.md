@@ -1,13 +1,13 @@
 # Smart Money Daily
 
-**Generated:** 2026-08-02 00:14:50 +08
+**Generated:** 2026-08-03 00:15:59 +08
 
 ## Pipeline
 
-- Status: learning
-- Reason: evaluated signals 2 below 10
-- Action: keep current push running and collect more signals
-- Log: `/Users/murphyma/work/polymarket-go/logs/smartmoney-daily-2026-08-02.log`
+- Status: policy_violation
+- Reason: 1 alerted BUYs are outside current sports/esports/price policy
+- Action: pause wallet expansion; inspect policy violations and tighten runtime filters before restarting
+- Log: `/Users/murphyma/work/polymarket-go/logs/smartmoney-daily-2026-08-03.log`
 - Discovery report: `/Users/murphyma/work/polymarket-go/reports/strategy_iteration.md`
 - Strategy report: `/Users/murphyma/work/polymarket-go/reports/strategy_lab.md`
 - Sports tape report: `/Users/murphyma/work/polymarket-go/reports/sports_tape.md`
@@ -29,11 +29,11 @@
 
 ## Wallet Lists
 
-- Core before count: 15
-- Core after count: 15
+- Core before count: 16
+- Core after count: 16
 - Watch after count: 20
 - Sports after count: 10
-- Scout after count: 0
+- Scout after count: 1
 - Target after count: 10
 - Flow after count: 0
 - Tape after count: 0
@@ -41,23 +41,23 @@
 - Tape probation count: 0
 - Tape candidate count: 0
 - Tape follow-ready count: 0
-- Tape edge-hot count: 3
+- Tape edge-hot count: 4
 - Tape reversal count: 8
-- Consensus research count: 9
-- Push before count: 58
-- Push after count: 40
+- Consensus research count: 8
+- Push before count: 50
+- Push after count: 46
 - Quarantine count: 3
-- Review-noise exclude count: 212
+- Review-noise exclude count: 312
 - Edge snapshots: 1282
 - Sports tape alert sent: 5
 - Sports tape alert logged: 5
 - Sports tape shadow alert logged: 7
 - Sports consensus event history: 4
 - Sports consensus watch event history: 3
-- Sports alert eligible now: 0
+- Sports alert eligible now: 2
 - Sports alert accumulation bursts: 0
-- Sports alert consensus bursts: 1
-- Selected core wallets: 15
+- Sports alert consensus bursts: 0
+- Selected core wallets: 16
 - Core list changed: yes
 - Push list changed: yes
 - Restart needed: no
@@ -65,11 +65,11 @@
 
 ## Backtest Filter
 
-- Closed copy trades: 284
-- Copy ROI: 128.9%
-- Copy PnL: $+4139.00
-- Copy win rate: 84.2%
-- Worst included CopyROI: 105.7%
+- Closed copy trades: 297
+- Copy ROI: 130.5%
+- Copy PnL: $+4437.13
+- Copy win rate: 83.5%
+- Worst included CopyROI: 102.7%
 - Params: tier>=B bot<30 copyT>=8 copyROI>=100 copyPnL>=25 copyWin>=60 closedROI>=0 smart>=70
 
 ## Live Core Performance
@@ -274,26 +274,26 @@
 
 ## Live Push Performance
 
-- Evaluated signals: 2
-- Event-capped entries: 2
-- Policy violations: 0
-- Proven signals: 0
-- Proven event-capped entries: 0
-- Logged asset-cooldown BUYs: 0
-- Logged event-cooldown BUYs: 3
+- Evaluated signals: 6
+- Event-capped entries: 6
+- Policy violations: 1
+- Proven signals: 3
+- Proven event-capped entries: 3
+- Logged asset-cooldown BUYs: 6
+- Logged event-cooldown BUYs: 5
 - Logged duplicate BUYs: 0
-- Realized via whale SELL: 0
+- Realized via whale SELL: 3
 - Settled by market resolution: 0
-- Marked to current midpoint: 2
+- Marked to current midpoint: 3
 - Still open/unmarked: 0
-- PnL incl. midpoint marks: $-0.09
-- ROI incl. midpoint marks: -0.4%
-- Proven PnL: $+0.00
-- Proven ROI: 0.0%
-- Event-capped realized via whale SELL: 0
+- PnL incl. midpoint marks: $+5.83
+- ROI incl. midpoint marks: 9.7%
+- Proven PnL: $+5.53
+- Proven ROI: 18.4%
+- Event-capped realized via whale SELL: 3
 - Event-capped settled by market resolution: 0
-- Event-capped marked to current midpoint: 2
-- Event-capped PnL incl. midpoint marks: $-0.09
-- Event-capped ROI incl. midpoint marks: -0.4%
-- Event-capped proven PnL: $+0.00
-- Event-capped proven ROI: 0.0%
+- Event-capped marked to current midpoint: 3
+- Event-capped PnL incl. midpoint marks: $+5.83
+- Event-capped ROI incl. midpoint marks: 9.7%
+- Event-capped proven PnL: $+5.53
+- Event-capped proven ROI: 18.4%

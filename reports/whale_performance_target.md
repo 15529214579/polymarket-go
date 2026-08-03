@@ -1,21 +1,21 @@
 # Whale Performance Report
 
-**Generated:** 2026-08-02 00:14 +08
+**Generated:** 2026-08-03 00:15 +08
 
 - Log: `/Users/murphyma/work/polymarket-go/db/journal/whale_trades.jsonl`
 - Wallet filter: `/Users/murphyma/work/polymarket-go/wallets.strategy-target.txt`
 - Fixed stake: $10.00 per BUY signal
 - Minimum whale notional: $500
 - List minimum notionals: core=$750, flow=$1000, leaderboard_push=$3000, leaderboard_watch=$3000, scout=$500, sports=$1000, tape=$1000, target=$500, watch=$500
-- Policy since: 2026-08-01T16:11:25Z
+- Policy since: 2026-08-02T15:36:45Z
 - Repeat cooldown: 3m0s per wallet+asset; BUYs >= $5000 bypass cooldown
 
 ## Summary
 
 - Raw matched BUY signals: 0
 - Suppressed repeat BUYs: 0
-- Logged asset-cooldown BUYs: 0
-- Logged event-cooldown BUYs: 0
+- Logged asset-cooldown BUYs: 1
+- Logged event-cooldown BUYs: 1
 - Logged pending-consensus BUYs: 0
 - Logged duplicate BUYs: 0
 - Duplicate BUY alerts ignored: 0
@@ -35,6 +35,22 @@
 ## Policy Violations
 
 - Alerted BUYs outside current sports/esports/price policy: 0
+
+## Suppressed BUY Noise
+
+These rows are detected large BUYs that were logged but not pushed/evaluated because duplicate, cooldown, or consensus gates suppressed them.
+
+### By Wallet
+
+| Wallet | List | Tier | AssetCD | EventCD | Pending | Dup | Total | Notional | Last |
+|---|---|---|---:|---:|---:|---:|---:|---:|---|
+| `0x2929...1dd0` | target | C | 1 | 1 | 0 | 0 | 2 | $2000 | 08-03 00:06 |
+
+### By Wallet-Event
+
+| Event | Wallet | List | AssetCD | EventCD | Pending | Dup | Total | Notional | Last |
+|---|---|---|---:|---:|---:|---:|---:|---:|---|
+| dota 2: rekonix vs yakult brothers | `0x2929...1dd0` | target | 1 | 1 | 0 | 0 | 2 | $2000 | 08-03 00:06 |
 
 ## Event Cluster Summary
 
