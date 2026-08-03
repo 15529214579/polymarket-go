@@ -52,6 +52,10 @@ type Intent struct {
 	Deadline             time.Time // for GTD; zero for GTC
 	NegRisk              bool      // true for NegRisk markets (different exchange address)
 	TakerFeeRateOverride *float64  // paper only; nil uses the client's fallback rate
+	PaperReferencePx     float64   // paper only; signal/mid fallback when no fresh quote exists
+	PaperBestBid         float64   // paper only; latest executable bid
+	PaperBestAsk         float64   // paper only; latest executable ask
+	PaperQuoteAt         time.Time // paper only; zero means no order-book quote was supplied
 }
 
 // Result is what Submit returns — unified for paper + real.
@@ -65,8 +69,11 @@ type Result struct {
 	// FeeUSD is the platform/builder fee paid on this fill, in USDC. Paper
 	// mode computes it from its configured fee model; real V2 populates it
 	// from the CLOB fill receipt. Net PnL accounting subtracts this per-leg.
-	FeeUSD float64
-	Error  string // non-empty only on rejected
+	FeeUSD         float64
+	Error          string // non-empty on rejected/expired paper orders
+	ReferencePrice float64
+	ExecutionModel string
+	QuoteAge       time.Duration
 }
 
 // Client is the submission surface. Paper + V2-real both satisfy it.

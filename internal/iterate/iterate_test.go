@@ -44,6 +44,10 @@ func TestAnalyzeUsesCompletedDaysAndNetPnL(t *testing.T) {
 			ExitTime: yesterday, HeldSec: 60, PnLUSD: 99,
 		},
 		{
+			ID: "collection-excluded", SignalSource: "copytrade_collect_wallet:0x3", EntryTime: yesterday.Add(-time.Minute),
+			ExitTime: yesterday, HeldSec: 60, PnLUSD: 100, EntryFeeUSD: 0.5, ExitFeeUSD: 0.5, NetPnLUSD: 99,
+		},
+		{
 			ID: "today-excluded", SignalSource: "auto", EntryTime: today.Add(-time.Minute),
 			ExitTime: today, HeldSec: 60, PnLUSD: 100,
 		},
@@ -73,18 +77,22 @@ func TestAnalyzeUsesCompletedDaysAndNetPnL(t *testing.T) {
 	assertClose(t, report.FeesUSD, 2)
 	assertClose(t, report.CumulativePnL, 2)
 	assertClose(t, report.AvgPnLPerDay, 1)
+	if report.CollectionTrades != 1 {
+		t.Fatalf("collection trades=%d", report.CollectionTrades)
+	}
+	assertClose(t, report.CollectionPnL, 99)
 	if len(report.DailyBreakdown) != 2 || report.DailyBreakdown[1].Day != report.Day {
 		t.Fatalf("daily breakdown=%+v", report.DailyBreakdown)
 	}
 
 	markdown := FormatMarkdown(report)
-	for _, want := range []string{"已实现净 PnL", "已记录手续费", "不包含未平仓浮动 PnL", "+$2.00"} {
+	for _, want := range []string{"可交易已实现净 PnL", "已记录手续费", "不包含未平仓浮动 PnL", "+$2.00", "宽采集研究 1 笔 / +$99.00"} {
 		if !strings.Contains(markdown, want) {
 			t.Fatalf("markdown missing %q:\n%s", want, markdown)
 		}
 	}
 	telegram := FormatTelegram(report)
-	for _, want := range []string{"已实现净 PnL +$2.00", "手续费 $2.00", "不含未平仓浮动 PnL"} {
+	for _, want := range []string{"可交易净 PnL +$2.00", "手续费 $2.00", "不含未平仓浮动 PnL", "宽采集研究 1笔 +$99.00"} {
 		if !strings.Contains(telegram, want) {
 			t.Fatalf("telegram missing %q:\n%s", want, telegram)
 		}

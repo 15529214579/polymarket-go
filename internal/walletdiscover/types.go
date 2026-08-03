@@ -18,6 +18,10 @@ type Config struct {
 	GammaBase       string
 	DataBase        string
 	LeaderboardBase string
+	HTTPMaxAttempts int
+	HTTPRetryBase   time.Duration
+	HTTPRetryMax    time.Duration
+	HTTPTimeout     time.Duration
 
 	MarketsLimit         int
 	TradesPages          int
@@ -57,6 +61,10 @@ func DefaultConfig() Config {
 		GammaBase:            defaultGammaBase,
 		DataBase:             defaultDataBase,
 		LeaderboardBase:      defaultLBBase,
+		HTTPMaxAttempts:      4,
+		HTTPRetryBase:        250 * time.Millisecond,
+		HTTPRetryMax:         3 * time.Second,
+		HTTPTimeout:          30 * time.Second,
 		MarketsLimit:         200,
 		TradesPages:          4,
 		TradesLimit:          500,
@@ -324,10 +332,27 @@ type WalletScore struct {
 	Strengths       []string       `json:"strengths,omitempty"`
 	Sources         map[string]int `json:"sources,omitempty"`
 	Stats           WalletStats    `json:"stats"`
+	DataStatus      string         `json:"data_status,omitempty"`
+	DataIssues      []string       `json:"data_issues,omitempty"`
+}
+
+type HTTPStats struct {
+	Retries    int64 `json:"retries"`
+	RateLimits int64 `json:"rate_limits"`
+	Failures   int64 `json:"failures"`
+}
+
+type DataQuality struct {
+	Complete          int `json:"complete"`
+	CachedActivity    int `json:"cached_activity"`
+	PreservedPrevious int `json:"preserved_previous"`
+	Incomplete        int `json:"incomplete"`
 }
 
 type Result struct {
-	Markets    []Market      `json:"markets"`
-	Candidates []*Candidate  `json:"candidates"`
-	Scores     []WalletScore `json:"scores"`
+	Markets     []Market      `json:"markets"`
+	Candidates  []*Candidate  `json:"candidates"`
+	Scores      []WalletScore `json:"scores"`
+	HTTP        HTTPStats     `json:"http"`
+	DataQuality DataQuality   `json:"data_quality"`
 }

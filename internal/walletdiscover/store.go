@@ -61,6 +61,29 @@ func LoadCachedActivity(dir, addr string) ([]Trade, error) {
 	return out, sc.Err()
 }
 
+func LoadPreviousScores(dir string) (map[string]WalletScore, error) {
+	path := filepath.Join(dir, "wallet_scores.json")
+	body, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return map[string]WalletScore{}, nil
+		}
+		return nil, err
+	}
+	var rows []WalletScore
+	if err := json.Unmarshal(body, &rows); err != nil {
+		return nil, fmt.Errorf("decode previous wallet scores: %w", err)
+	}
+	out := make(map[string]WalletScore, len(rows))
+	for _, row := range rows {
+		if address := normalizeAddress(row.Address); address != "" {
+			row.Address = address
+			out[address] = row
+		}
+	}
+	return out, nil
+}
+
 func SaveActivity(dir, addr string, trades []Trade) error {
 	if err := os.MkdirAll(filepath.Join(dir, "wallet_activity"), 0o755); err != nil {
 		return err
@@ -159,6 +182,8 @@ func writeTierJSON(path string, scores []WalletScore) error {
 			"risk_flags":        s.RiskFlags,
 			"strengths":         s.Strengths,
 			"stats":             s.Stats,
+			"data_status":       s.DataStatus,
+			"data_issues":       s.DataIssues,
 		}
 	}
 	return writeJSON(path, out)

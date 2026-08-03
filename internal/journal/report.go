@@ -31,7 +31,7 @@ type SourceStats struct {
 type DailySummary struct {
 	Day string
 
-	// Auto-only headline stats (manual excluded from these).
+	// Tradable automatic-strategy headline stats (manual and broad collection excluded).
 	Trades          int
 	Wins            int
 	Losses          int
@@ -51,8 +51,10 @@ type DailySummary struct {
 	ExitReasonCount map[string]int
 
 	// Separate accounting.
-	Auto   SourceStats
-	Manual SourceStats
+	Auto       SourceStats
+	Tradable   SourceStats
+	Collection SourceStats
+	Manual     SourceStats
 }
 
 // Summarize buckets a slice of trades into a DailySummary. Wins are pnl>0,
@@ -106,7 +108,7 @@ func Summarize(day string, trades []TradeRecord) DailySummary {
 	if len(trades) == 0 {
 		return s
 	}
-	var autoHeld, manualHeld int
+	var autoHeld, tradableHeld, collectionHeld, manualHeld int
 	for _, t := range trades {
 		net := tradeNet(t)
 		isManual := t.SignalSource == "manual"
@@ -116,7 +118,14 @@ func Summarize(day string, trades []TradeRecord) DailySummary {
 		} else {
 			accSource(&s.Auto, t, net)
 			autoHeld += t.HeldSec
-			// Headline stats = auto only.
+			if isCollectionTrade(t) {
+				accSource(&s.Collection, t, net)
+				collectionHeld += t.HeldSec
+				continue
+			}
+			accSource(&s.Tradable, t, net)
+			tradableHeld += t.HeldSec
+			// Headline stats = tradable automatic strategies only.
 			s.Trades++
 			s.GrossPnLUSD += t.PnLUSD
 			s.EntryFeesUSD += t.EntryFeeUSD
@@ -145,6 +154,8 @@ func Summarize(day string, trades []TradeRecord) DailySummary {
 	}
 	s.FeesUSD = s.EntryFeesUSD + s.ExitFeesUSD
 	finalizeSource(&s.Auto, autoHeld)
+	finalizeSource(&s.Tradable, tradableHeld)
+	finalizeSource(&s.Collection, collectionHeld)
 	finalizeSource(&s.Manual, manualHeld)
 	if s.Trades > 0 {
 		s.AvgPnLUSD = s.RealizedPnLUSD / float64(s.Trades)
@@ -155,6 +166,10 @@ func Summarize(day string, trades []TradeRecord) DailySummary {
 		}
 	}
 	return s
+}
+
+func isCollectionTrade(t TradeRecord) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(t.SignalSource)), "copytrade_collect")
 }
 
 // FormatTelegram renders a Markdown-light summary suitable for sendMessage's
@@ -168,10 +183,15 @@ func FormatTelegram(s DailySummary) string {
 	}
 	fmt.Fprintf(&b, "📊 polymarket-go 日结 %s SGT\n", s.Day)
 	if s.Trades == 0 {
-		b.WriteString("无成交。\n")
+		if s.Collection.Count == 0 {
+			b.WriteString("无成交。\n")
+			return b.String()
+		}
+		b.WriteString("• 可交易策略无平仓记录。\n")
+		fmt.Fprintf(&b, "• 宽采集研究: %d 笔，净 PnL %+.4f USDC（不计入主口径）\n", s.Collection.Count, s.Collection.PnLUSD)
 		return b.String()
 	}
-	fmt.Fprintf(&b, "• 已实现净 PnL: %s%.4f USDC\n", pnlSign, s.RealizedPnLUSD)
+	fmt.Fprintf(&b, "• 可交易已实现净 PnL: %s%.4f USDC\n", pnlSign, s.RealizedPnLUSD)
 	fmt.Fprintf(&b, "• 毛 PnL: %+.4f · 已记录手续费 %.4f（入场 %.4f / 出场 %.4f）\n", s.GrossPnLUSD, s.FeesUSD, s.EntryFeesUSD, s.ExitFeesUSD)
 	b.WriteString("• 口径: 仅统计已平仓；滑点已计入成交价；不含未平仓浮动 PnL\n")
 	fmt.Fprintf(&b, "• 平仓记录 %d 笔  胜 %d / 负 %d / 平 %d  (胜率 %.0f%%)\n",
@@ -196,6 +216,9 @@ func FormatTelegram(s DailySummary) string {
 			fmt.Fprintf(&b, "%s×%d", k, s.ExitReasonCount[k])
 		}
 		b.WriteString("\n")
+	}
+	if s.Collection.Count > 0 {
+		fmt.Fprintf(&b, "• 宽采集研究: %d 笔，净 PnL %+.4f USDC（不计入主口径）\n", s.Collection.Count, s.Collection.PnLUSD)
 	}
 	if s.Manual.Count > 0 {
 		fmt.Fprintf(&b, "\n👤 手动单独结算: %d笔 %+.4f USDC", s.Manual.Count, s.Manual.PnLUSD)

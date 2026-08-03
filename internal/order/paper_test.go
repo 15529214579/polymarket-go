@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"testing"
+	"time"
 )
 
 func TestPaperSubmitFillsAtMid(t *testing.T) {
@@ -27,6 +28,63 @@ func TestPaperSubmitFillsAtMid(t *testing.T) {
 	}
 	if r.OrderID == "" {
 		t.Fatal("empty order id")
+	}
+}
+
+func TestPaperUsesFreshExecutableTopOfBook(t *testing.T) {
+	p := NewPaperClient(50)
+	now := time.Now().UTC()
+	buy, err := p.Submit(context.Background(), Intent{
+		AssetID: "a", Side: Buy, SizeUSD: 20, LimitPx: 0.60,
+		PaperReferencePx: 0.50, PaperBestBid: 0.51, PaperBestAsk: 0.52, PaperQuoteAt: now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := 0.52 * 1.005; math.Abs(buy.AvgPrice-want) > 1e-9 {
+		t.Fatalf("buy price=%v want=%v", buy.AvgPrice, want)
+	}
+	if buy.ReferencePrice != 0.52 || buy.ExecutionModel != "top_of_book" {
+		t.Fatalf("buy execution=%+v", buy)
+	}
+
+	sell, err := p.Submit(context.Background(), Intent{
+		AssetID: "a", Side: Sell, SizeUSD: 20, LimitPx: 0.40,
+		PaperReferencePx: 0.50, PaperBestBid: 0.48, PaperBestAsk: 0.49, PaperQuoteAt: now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := 0.48 * 0.995; math.Abs(sell.AvgPrice-want) > 1e-9 {
+		t.Fatalf("sell price=%v want=%v", sell.AvgPrice, want)
+	}
+}
+
+func TestPaperFreshQuoteWithoutExecutableSideExpires(t *testing.T) {
+	p := NewPaperClient(0)
+	result, err := p.Submit(context.Background(), Intent{
+		AssetID: "a", Side: Buy, SizeUSD: 20, LimitPx: 0.60,
+		PaperReferencePx: 0.50, PaperBestBid: 0.49, PaperQuoteAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != StatusExpired || result.Error != "no executable top-of-book quote" || result.FilledSize != 0 {
+		t.Fatalf("result=%+v", result)
+	}
+}
+
+func TestPaperStaleQuoteFallsBackToSignalPrice(t *testing.T) {
+	p := NewPaperClient(0)
+	result, err := p.Submit(context.Background(), Intent{
+		AssetID: "a", Side: Buy, SizeUSD: 20, LimitPx: 0.60,
+		PaperReferencePx: 0.50, PaperBestAsk: 0.58, PaperQuoteAt: time.Now().Add(-time.Minute),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != StatusFilled || result.AvgPrice != 0.50 || result.ExecutionModel != "stale_quote_fallback" {
+		t.Fatalf("result=%+v", result)
 	}
 }
 

@@ -23,6 +23,15 @@ type Cohort struct {
 	Flat       int     `json:"flat"`
 }
 
+type PnLScope struct {
+	Closed                  Cohort  `json:"closed"`
+	OpenPositions           int     `json:"open_positions"`
+	OpenExposureUSD         float64 `json:"open_exposure_usd"`
+	OpenEntryFeesUSD        float64 `json:"open_entry_fees_usd"`
+	ConservativeOpenNetPnL  float64 `json:"conservative_open_net_pnl_usd"`
+	ConservativeTotalNetPnL float64 `json:"conservative_total_net_pnl_usd"`
+}
+
 type Report struct {
 	GeneratedAt                time.Time `json:"generated_at"`
 	Records                    int       `json:"records"`
@@ -37,6 +46,8 @@ type Report struct {
 	OpenEntryFeesUSD           float64   `json:"open_entry_fees_usd"`
 	ConservativeOpenNetPnLUSD  float64   `json:"conservative_open_net_pnl_usd"`
 	ConservativeTotalNetPnLUSD float64   `json:"conservative_total_net_pnl_usd"`
+	Tradable                   PnLScope  `json:"tradable"`
+	BroadCollection            PnLScope  `json:"broad_collection"`
 	ByPolicy                   []Cohort  `json:"by_policy"`
 	ByStake                    []Cohort  `json:"by_stake"`
 	ByStrategy                 []Cohort  `json:"by_strategy"`
@@ -45,27 +56,28 @@ type Report struct {
 }
 
 type WalletPolicyConfig struct {
-	MinPositions  int     `json:"min_positions"`
+	MinPositions  int     `json:"min_independent_samples"`
 	PromoteMinNet float64 `json:"promote_min_net_usd"`
 	PromoteMinROI float64 `json:"promote_min_roi_pct"`
 	DemoteMaxNet  float64 `json:"demote_max_net_usd"`
 }
 
 type WalletPerformance struct {
-	Wallet     string  `json:"wallet,omitempty"`
-	Source     string  `json:"source"`
-	Positions  int     `json:"positions"`
-	Records    int     `json:"records"`
-	CapitalUSD float64 `json:"capital_usd"`
-	GrossPnL   float64 `json:"gross_pnl_usd"`
-	FeesUSD    float64 `json:"fees_usd"`
-	NetPnL     float64 `json:"net_pnl_usd"`
-	ROI        float64 `json:"roi_pct"`
-	Wins       int     `json:"wins"`
-	Losses     int     `json:"losses"`
-	Flat       int     `json:"flat"`
-	Decision   string  `json:"decision"`
-	Reason     string  `json:"reason"`
+	Wallet             string  `json:"wallet,omitempty"`
+	Source             string  `json:"source"`
+	IndependentSamples int     `json:"independent_samples"`
+	Positions          int     `json:"positions"`
+	Records            int     `json:"records"`
+	CapitalUSD         float64 `json:"capital_usd"`
+	GrossPnL           float64 `json:"gross_pnl_usd"`
+	FeesUSD            float64 `json:"fees_usd"`
+	NetPnL             float64 `json:"net_pnl_usd"`
+	ROI                float64 `json:"roi_pct"`
+	Wins               int     `json:"wins"`
+	Losses             int     `json:"losses"`
+	Flat               int     `json:"flat"`
+	Decision           string  `json:"decision"`
+	Reason             string  `json:"reason"`
 }
 
 type WalletPolicyReport struct {
@@ -88,11 +100,16 @@ type positionResult struct {
 	policy    string
 	strategy  string
 	source    string
+	market    string
 	costed    bool
 }
 
 func Analyze(trades []journal.TradeRecord, open []strategy.Position) Report {
-	report := Report{GeneratedAt: time.Now()}
+	report := Report{
+		GeneratedAt:     time.Now(),
+		Tradable:        PnLScope{Closed: Cohort{Name: "tradable"}},
+		BroadCollection: PnLScope{Closed: Cohort{Name: "broad_collection"}},
+	}
 	positions := groupTrades(trades, &report)
 	report.ClosedPositions = len(positions)
 	report.FeesUSD = report.EntryFeesUSD + report.ExitFeesUSD
@@ -124,6 +141,11 @@ func Analyze(trades []journal.TradeRecord, open []strategy.Position) Report {
 		acc(strategyGroups, strategyName, pos)
 		acc(cost, costName, pos)
 		acc(sources, sourceName, pos)
+		if isCollectionStrategy(strategyName) {
+			accCohort(&report.BroadCollection.Closed, pos)
+		} else {
+			accCohort(&report.Tradable.Closed, pos)
+		}
 	}
 	report.ByPolicy = cohorts(policy, false)
 	report.ByStake = cohorts(stake, false)
@@ -139,9 +161,18 @@ func Analyze(trades []journal.TradeRecord, open []strategy.Position) Report {
 			remainingFee = 0
 		}
 		report.OpenEntryFeesUSD += remainingFee
+		scope := &report.Tradable
+		if isCollectionPosition(pos) {
+			scope = &report.BroadCollection
+		}
+		scope.OpenPositions++
+		scope.OpenExposureUSD += pos.SizeUSD
+		scope.OpenEntryFeesUSD += remainingFee
 	}
 	report.ConservativeOpenNetPnLUSD = -(report.OpenExposureUSD + report.OpenEntryFeesUSD)
 	report.ConservativeTotalNetPnLUSD = report.RealizedNetPnLUSD + report.ConservativeOpenNetPnLUSD
+	finalizeScope(&report.Tradable)
+	finalizeScope(&report.BroadCollection)
 	return report
 }
 
@@ -172,6 +203,7 @@ func groupTrades(trades []journal.TradeRecord, report *Report) map[string]*posit
 		pos.policy = mergeLabel(pos.policy, strings.TrimSpace(tr.PolicyVersion))
 		pos.source = mergeSource(pos.source, normalizedSource(tr.SignalSource))
 		pos.strategy = mergeStrategy(pos.strategy, strategyLabel(tr))
+		pos.market = mergeLabel(pos.market, strings.TrimSpace(tr.Market))
 	}
 	return positions
 }
@@ -192,6 +224,7 @@ func AnalyzeWalletPolicy(trades []journal.TradeRecord, aliases map[string]string
 
 	result := WalletPolicyReport{GeneratedAt: time.Now(), Config: cfg}
 	byWallet := map[string]*WalletPerformance{}
+	byWalletSample := map[string]map[string]float64{}
 	for _, pos := range groupTrades(trades, nil) {
 		wallet := walletFromSource(pos.source, aliases)
 		if wallet == "" && !strings.HasPrefix(strings.ToLower(pos.source), "copytrade") {
@@ -212,17 +245,28 @@ func AnalyzeWalletPolicy(trades []journal.TradeRecord, aliases map[string]string
 		row.GrossPnL += pos.gross
 		row.FeesUSD += pos.entryFees + pos.exitFees
 		row.NetPnL += pos.net
-		switch {
-		case pos.net > 0:
-			row.Wins++
-		case pos.net < 0:
-			row.Losses++
-		default:
-			row.Flat++
+		sample := strings.TrimSpace(pos.market)
+		if sample == "" || sample == "mixed" {
+			sample = "position:" + pos.id
 		}
+		if byWalletSample[key] == nil {
+			byWalletSample[key] = map[string]float64{}
+		}
+		byWalletSample[key][sample] += pos.net
 	}
 
-	for _, row := range byWallet {
+	for key, row := range byWallet {
+		for _, sampleNet := range byWalletSample[key] {
+			row.IndependentSamples++
+			switch {
+			case sampleNet > 0:
+				row.Wins++
+			case sampleNet < 0:
+				row.Losses++
+			default:
+				row.Flat++
+			}
+		}
 		if row.CapitalUSD > 0 {
 			row.ROI = row.NetPnL / row.CapitalUSD * 100
 		}
@@ -231,9 +275,9 @@ func AnalyzeWalletPolicy(trades []journal.TradeRecord, aliases map[string]string
 			row.Decision = "unresolved"
 			row.Reason = "full wallet address unavailable"
 			result.Unresolved++
-		case row.Positions < cfg.MinPositions:
+		case row.IndependentSamples < cfg.MinPositions:
 			row.Decision = "collect"
-			row.Reason = fmt.Sprintf("%d/%d closed positions", row.Positions, cfg.MinPositions)
+			row.Reason = fmt.Sprintf("%d/%d independent wallet-market samples", row.IndependentSamples, cfg.MinPositions)
 		case row.NetPnL <= cfg.DemoteMaxNet:
 			row.Decision = "demote"
 			row.Reason = fmt.Sprintf("net %+.2fU <= %+.2fU", row.NetPnL, cfg.DemoteMaxNet)
@@ -308,8 +352,12 @@ func normalizedSource(source string) string {
 }
 
 func strategyLabel(tr journal.TradeRecord) string {
-	source := strings.ToLower(tr.SignalSource)
-	question := strings.ToLower(tr.Question)
+	return strategyLabelFrom(tr.SignalSource, tr.Question)
+}
+
+func strategyLabelFrom(signalSource, questionText string) string {
+	source := strings.ToLower(signalSource)
+	question := strings.ToLower(questionText)
 	switch {
 	case strings.HasPrefix(source, "copytrade_collect_football_score"):
 		return "football_score_collect"
@@ -326,6 +374,18 @@ func strategyLabel(tr journal.TradeRecord) string {
 	default:
 		return "other"
 	}
+}
+
+func isCollectionStrategy(name string) bool {
+	return strings.HasSuffix(strings.ToLower(strings.TrimSpace(name)), "_collect")
+}
+
+func isCollectionPosition(pos strategy.Position) bool {
+	source := pos.SignalSource
+	if strings.TrimSpace(source) == "" {
+		source = pos.Source
+	}
+	return isCollectionStrategy(strategyLabelFrom(source, pos.Question))
 }
 
 func mergeLabel(current, next string) string {
@@ -377,6 +437,10 @@ func acc(groups map[string]*Cohort, name string, pos *positionResult) {
 		group = &Cohort{Name: name}
 		groups[name] = group
 	}
+	accCohort(group, pos)
+}
+
+func accCohort(group *Cohort, pos *positionResult) {
 	group.Positions++
 	group.Records += pos.records
 	group.CapitalUSD += pos.capital
@@ -391,6 +455,11 @@ func acc(groups map[string]*Cohort, name string, pos *positionResult) {
 	default:
 		group.Flat++
 	}
+}
+
+func finalizeScope(scope *PnLScope) {
+	scope.ConservativeOpenNetPnL = -(scope.OpenExposureUSD + scope.OpenEntryFeesUSD)
+	scope.ConservativeTotalNetPnL = scope.Closed.NetPnL + scope.ConservativeOpenNetPnL
 }
 
 func cohorts(groups map[string]*Cohort, byNet bool) []Cohort {
@@ -415,13 +484,16 @@ func FormatMarkdown(report Report) string {
 	var b strings.Builder
 	b.WriteString("# Smartmoney Paper PnL\n\n")
 	fmt.Fprintf(&b, "Generated: %s\n\n", report.GeneratedAt.Format(time.RFC3339))
-	fmt.Fprintf(&b, "- Realized net PnL: **%+.2fU**\n", report.RealizedNetPnLUSD)
+	fmt.Fprintf(&b, "- Tradable realized net PnL: **%+.2fU** (%d positions)\n", report.Tradable.Closed.NetPnL, report.Tradable.Closed.Positions)
+	fmt.Fprintf(&b, "- Broad collection realized net PnL: %+.2fU (%d positions; research only)\n", report.BroadCollection.Closed.NetPnL, report.BroadCollection.Closed.Positions)
+	fmt.Fprintf(&b, "- Combined observed realized net PnL: %+.2fU\n", report.RealizedNetPnLUSD)
 	fmt.Fprintf(&b, "- Gross PnL: %+.2fU\n", report.GrossPnLUSD)
 	fmt.Fprintf(&b, "- Fees: %.2fU (entry %.2fU / exit %.2fU)\n", report.FeesUSD, report.EntryFeesUSD, report.ExitFeesUSD)
 	fmt.Fprintf(&b, "- Closed positions: %d (%d journal rows)\n", report.ClosedPositions, report.Records)
 	fmt.Fprintf(&b, "- Open: %d positions / %.2fU exposure / %.2fU remaining entry fees\n", report.OpenPositions, report.OpenExposureUSD, report.OpenEntryFeesUSD)
 	fmt.Fprintf(&b, "- Conservative open PnL: %+.2fU (open value marked to zero)\n", report.ConservativeOpenNetPnLUSD)
 	fmt.Fprintf(&b, "- Conservative total PnL: **%+.2fU**\n", report.ConservativeTotalNetPnLUSD)
+	fmt.Fprintf(&b, "- Tradable conservative total: **%+.2fU**; broad collection conservative total: %+.2fU\n", report.Tradable.ConservativeTotalNetPnL, report.BroadCollection.ConservativeTotalNetPnL)
 
 	writeCohorts(&b, "By Policy", report.ByPolicy)
 	writeCohorts(&b, "By Stake", report.ByStake)

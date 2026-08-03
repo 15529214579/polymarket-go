@@ -1,10 +1,68 @@
 package walletdiscover
 
 import (
+	"context"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
 )
+
+func TestScoreCandidatesPreservesPreviousScoreWhenAPIsRemainIncomplete(t *testing.T) {
+	address := "0x0000000000000000000000000000000000000001"
+	candidate := &Candidate{Address: address, Sources: map[string]int{"leaderboard_profit_7d": 1}}
+	cfg := DefaultConfig()
+	cfg.DataBase = "https://data.test"
+	cfg.OutputDir = t.TempDir()
+	cfg.Concurrency = 1
+	cfg.ActivityPages = 1
+	cfg.HTTPMaxAttempts = 1
+	previous := map[string]WalletScore{
+		address: {
+			Address: address, Tier: "A", FollowAction: "auto-small", Reason: "strong signal",
+			SmartMoneyScore: 88, Stats: WalletStats{ValidTrades: 100, ClosedPositions: 25},
+		},
+	}
+
+	client := NewClient(cfg)
+	client.http.Transport = unavailableTransport()
+	scores := scoreCandidates(context.Background(), client, []*Candidate{candidate}, cfg, previous)
+	if len(scores) != 1 {
+		t.Fatalf("scores=%d", len(scores))
+	}
+	score := scores[0]
+	if score.Tier != "A" || score.FollowAction != "auto-small" || score.SmartMoneyScore != 88 {
+		t.Fatalf("previous score was not preserved: %+v", score)
+	}
+	if score.DataStatus != "preserved_previous" || len(score.DataIssues) != 2 {
+		t.Fatalf("data status=%q issues=%v", score.DataStatus, score.DataIssues)
+	}
+	if score.Sources["leaderboard_profit_7d"] != 1 {
+		t.Fatalf("candidate sources were not refreshed: %v", score.Sources)
+	}
+}
+
+func TestScoreCandidatesRejectsIncompleteWalletWithoutHistory(t *testing.T) {
+	address := "0x0000000000000000000000000000000000000002"
+	cfg := DefaultConfig()
+	cfg.DataBase = "https://data.test"
+	cfg.OutputDir = t.TempDir()
+	cfg.Concurrency = 1
+	cfg.ActivityPages = 1
+	cfg.HTTPMaxAttempts = 1
+	client := NewClient(cfg)
+	client.http.Transport = unavailableTransport()
+	scores := scoreCandidates(context.Background(), client, []*Candidate{{Address: address, Sources: map[string]int{}}}, cfg, nil)
+	if len(scores) != 1 || scores[0].Tier != "D" || scores[0].FollowAction != "reject" || scores[0].DataStatus != "incomplete" {
+		t.Fatalf("score=%+v", scores)
+	}
+}
+
+func unavailableTransport() http.RoundTripper {
+	return roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return testHTTPResponse(req, http.StatusServiceUnavailable, "temporarily unavailable", nil), nil
+	})
+}
 
 func TestCandidatePriorityPrefersRecentProfitLeaderboard(t *testing.T) {
 	profit := &Candidate{

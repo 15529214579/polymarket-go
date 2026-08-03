@@ -41,12 +41,19 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 	}
 
 	rankedCandidates := rankCandidates(candidates, cfg.MaxCandidates)
-	scores := scoreCandidates(ctx, client, rankedCandidates, cfg)
+	previous, err := LoadPreviousScores(cfg.OutputDir)
+	if err != nil {
+		slog.Warn("wallet_discover.previous_scores_fail", "err", err)
+		previous = map[string]WalletScore{}
+	}
+	scores := scoreCandidates(ctx, client, rankedCandidates, cfg, previous)
 	SortScores(scores)
 	result := &Result{
-		Markets:    markets,
-		Candidates: rankedCandidates,
-		Scores:     scores,
+		Markets:     markets,
+		Candidates:  rankedCandidates,
+		Scores:      scores,
+		HTTP:        client.Stats(),
+		DataQuality: summarizeDataQuality(scores),
 	}
 	if err := SaveResult(result, cfg); err != nil {
 		return nil, err
@@ -64,6 +71,18 @@ func normalizeConfig(cfg Config) Config {
 	}
 	if cfg.LeaderboardBase == "" {
 		cfg.LeaderboardBase = def.LeaderboardBase
+	}
+	if cfg.HTTPMaxAttempts <= 0 {
+		cfg.HTTPMaxAttempts = def.HTTPMaxAttempts
+	}
+	if cfg.HTTPRetryBase <= 0 {
+		cfg.HTTPRetryBase = def.HTTPRetryBase
+	}
+	if cfg.HTTPRetryMax <= 0 {
+		cfg.HTTPRetryMax = def.HTTPRetryMax
+	}
+	if cfg.HTTPTimeout <= 0 {
+		cfg.HTTPTimeout = def.HTTPTimeout
 	}
 	if cfg.MarketsLimit <= 0 {
 		cfg.MarketsLimit = def.MarketsLimit
@@ -413,7 +432,7 @@ func addTradeCandidates(ctx context.Context, client *Client, candidates map[stri
 	return nil
 }
 
-func scoreCandidates(ctx context.Context, client *Client, candidates []*Candidate, cfg Config) []WalletScore {
+func scoreCandidates(ctx context.Context, client *Client, candidates []*Candidate, cfg Config, previous map[string]WalletScore) []WalletScore {
 	type item struct {
 		score WalletScore
 	}
@@ -425,16 +444,48 @@ func scoreCandidates(ctx context.Context, client *Client, candidates []*Candidat
 		go func() {
 			defer wg.Done()
 			for cand := range jobs {
+				var issues []string
+				usedCachedActivity := false
 				trades, err := pullActivity(ctx, client, cand.Address, cfg)
 				if err != nil {
 					slog.Warn("wallet_discover.activity_fail", "wallet", short(cand.Address), "err", err)
-					trades, _ = LoadCachedActivity(cfg.OutputDir, cand.Address)
+					issues = append(issues, "activity_api_unavailable")
+					cached, cacheErr := LoadCachedActivity(cfg.OutputDir, cand.Address)
+					if cacheErr != nil {
+						slog.Warn("wallet_discover.activity_cache_read_fail", "wallet", short(cand.Address), "err", cacheErr)
+						issues = append(issues, "activity_cache_unavailable")
+					} else if len(cached) > 0 {
+						trades = cached
+						usedCachedActivity = true
+					}
 				}
-				closed, err := client.ClosedPositions(ctx, cand.Address, cfg.ClosedLimit)
-				if err != nil {
-					slog.Warn("wallet_discover.closed_fail", "wallet", short(cand.Address), "err", err)
+				activityIncomplete := err != nil && !usedCachedActivity
+				closed, closedErr := client.ClosedPositions(ctx, cand.Address, cfg.ClosedLimit)
+				if closedErr != nil {
+					slog.Warn("wallet_discover.closed_fail", "wallet", short(cand.Address), "err", closedErr)
+					issues = append(issues, "closed_positions_api_unavailable")
 				}
-				results <- item{score: ScoreWallet(cand.Address, cand, trades, closed, cfg)}
+				score := ScoreWallet(cand.Address, cand, trades, closed, cfg)
+				switch {
+				case activityIncomplete || closedErr != nil:
+					if old, ok := previous[cand.Address]; ok {
+						score = preservePreviousScore(old, cand, issues)
+					} else {
+						score.DataStatus = "incomplete"
+						score.DataIssues = issues
+						score.Tier = "D"
+						score.FollowAction = "reject"
+						score.Reason = "incomplete API data"
+						score.RiskFlags = appendUnique(score.RiskFlags, "incomplete_data")
+					}
+				case usedCachedActivity:
+					score.DataStatus = "cached_activity"
+					score.DataIssues = issues
+					score.RiskFlags = appendUnique(score.RiskFlags, "cached_activity")
+				default:
+					score.DataStatus = "complete"
+				}
+				results <- item{score: score}
 			}
 		}()
 	}
@@ -451,6 +502,55 @@ func scoreCandidates(ctx context.Context, client *Client, candidates []*Candidat
 		scores = append(scores, r.score)
 	}
 	return scores
+}
+
+func preservePreviousScore(previous WalletScore, cand *Candidate, issues []string) WalletScore {
+	previous.Address = cand.Address
+	previous.Sources = copySources(cand.Sources)
+	previous.DataStatus = "preserved_previous"
+	previous.DataIssues = append([]string(nil), issues...)
+	previous.RiskFlags = appendUnique(append([]string(nil), previous.RiskFlags...), "stale_data_preserved")
+	previous.Reason = strings.TrimSpace(previous.Reason)
+	if previous.Reason == "" {
+		previous.Reason = "previous score preserved"
+	} else if !strings.Contains(previous.Reason, "previous score preserved") {
+		previous.Reason += "; previous score preserved"
+	}
+	return previous
+}
+
+func copySources(sources map[string]int) map[string]int {
+	out := make(map[string]int, len(sources))
+	for key, value := range sources {
+		out[key] = value
+	}
+	return out
+}
+
+func appendUnique(values []string, value string) []string {
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
+}
+
+func summarizeDataQuality(scores []WalletScore) DataQuality {
+	var quality DataQuality
+	for _, score := range scores {
+		switch score.DataStatus {
+		case "cached_activity":
+			quality.CachedActivity++
+		case "preserved_previous":
+			quality.PreservedPrevious++
+		case "incomplete":
+			quality.Incomplete++
+		default:
+			quality.Complete++
+		}
+	}
+	return quality
 }
 
 func pullActivity(ctx context.Context, client *Client, addr string, cfg Config) ([]Trade, error) {
@@ -571,6 +671,9 @@ func RenderReport(result *Result, cfg Config) string {
 	fmt.Fprintf(&b, "- Markets scanned: %d\n", len(result.Markets))
 	fmt.Fprintf(&b, "- Candidates scored: %d\n", len(result.Scores))
 	fmt.Fprintf(&b, "- Tiers: A=%d B=%d C=%d D=%d BOT=%d\n", counts["A"], counts["B"], counts["C"], counts["D"], counts["BOT"])
+	fmt.Fprintf(&b, "- Data quality: complete=%d cached_activity=%d preserved_previous=%d incomplete=%d\n",
+		result.DataQuality.Complete, result.DataQuality.CachedActivity, result.DataQuality.PreservedPrevious, result.DataQuality.Incomplete)
+	fmt.Fprintf(&b, "- HTTP resilience: retries=%d rate_limits=%d terminal_failures=%d\n", result.HTTP.Retries, result.HTTP.RateLimits, result.HTTP.Failures)
 	if cfg.TargetCategories != "" {
 		fmt.Fprintf(&b, "- Target categories: %s\n", cfg.TargetCategories)
 	}
@@ -580,8 +683,8 @@ func RenderReport(result *Result, cfg Config) string {
 		fmt.Fprintf(&b, "- Leaderboard: kinds=%s windows=%s limit=%d\n\n", cfg.LeaderboardKinds, cfg.LeaderboardWindows, cfg.LeaderboardLimit)
 	}
 	fmt.Fprintf(&b, "## Top Wallets\n\n")
-	fmt.Fprintf(&b, "| Rank | Wallet | Tier | Action | Smart | Bot | Edge | Valid | Large | TargetT | TargetLarge | Target%% | TargetCopyROI | TargetCopyT | ROI | CopyROI | CopyPnL | CopyT | Focus | Reason |\n")
-	fmt.Fprintf(&b, "|---:|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|\n")
+	fmt.Fprintf(&b, "| Rank | Wallet | Tier | Action | Data | Smart | Bot | Edge | Valid | Large | TargetT | TargetLarge | Target%% | TargetCopyROI | TargetCopyT | ROI | CopyROI | CopyPnL | CopyT | Focus | Reason |\n")
+	fmt.Fprintf(&b, "|---:|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|\n")
 	for i, s := range result.Scores {
 		if i >= 50 {
 			break
@@ -592,8 +695,8 @@ func RenderReport(result *Result, cfg Config) string {
 		} else {
 			focus = fmt.Sprintf("%s %.0f%%", focus, s.Stats.TopCategoryRatio*100)
 		}
-		fmt.Fprintf(&b, "| %d | `%s` | %s | %s | %.2f | %.2f | %.2f | %d | %d | %d | %d | %.0f%% | %.1f%% | %d | %.1f%% | %.1f%% | $%+.2f | %d | %s | %s |\n",
-			i+1, short(s.Address), s.Tier, s.FollowAction, s.SmartMoneyScore, s.BotScore, s.Edge,
+		fmt.Fprintf(&b, "| %d | `%s` | %s | %s | %s | %.2f | %.2f | %.2f | %d | %d | %d | %d | %.0f%% | %.1f%% | %d | %.1f%% | %.1f%% | $%+.2f | %d | %s | %s |\n",
+			i+1, short(s.Address), s.Tier, s.FollowAction, s.DataStatus, s.SmartMoneyScore, s.BotScore, s.Edge,
 			s.Stats.ValidTrades, s.Stats.LargeTrades, s.Stats.TargetTrades, s.Stats.TargetLargeTrades, s.Stats.TargetTradeRatio*100,
 			s.Stats.TargetCopyROI, s.Stats.TargetCopyClosed, s.Stats.ClosedROI, s.Stats.CopyROI, s.Stats.CopyPnL, s.Stats.CopyClosedTrades, focus, s.Reason)
 	}

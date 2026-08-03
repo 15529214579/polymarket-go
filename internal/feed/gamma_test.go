@@ -3,6 +3,7 @@ package feed
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -153,6 +154,24 @@ func TestIsFootballScoreMarketText(t *testing.T) {
 	} {
 		if IsFootballScoreMarketText(text) {
 			t.Fatalf("non-football score market recognized: %q", text)
+		}
+	}
+}
+
+func TestIsEsportsMarketTextIsBroaderThanEntryFilter(t *testing.T) {
+	for _, text := range []string{
+		"Will AG.AL win the EWC League of Legends Tournament?",
+		"CS2: Spirit vs NAVI",
+		"valorant-sentinels-fnatic-2026-08-03",
+		"Dota 2: Liquid vs Falcons",
+	} {
+		if !IsEsportsMarketText(text) {
+			t.Fatalf("expected esports classification for %q", text)
+		}
+	}
+	for _, text := range []string{"Spain vs Belgium", "Will inflation be above 3%?", "NBA: Knicks vs Nets"} {
+		if IsEsportsMarketText(text) {
+			t.Fatalf("unexpected esports classification for %q", text)
 		}
 	}
 }
@@ -449,6 +468,39 @@ func TestGetByConditionIDs_EmptyInput(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Errorf("empty should return nil slice, got len=%d", len(got))
+	}
+}
+
+func TestGetByConditionIDsBatchesAboveGammaArrayLimit(t *testing.T) {
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		ids := r.URL.Query()["condition_ids"]
+		if len(ids) == 0 || len(ids) > 95 {
+			t.Errorf("condition_ids batch size=%d", len(ids))
+		}
+		if got, want := r.URL.Query().Get("limit"), fmt.Sprintf("%d", len(ids)+5); got != want {
+			t.Errorf("limit=%s want=%s", got, want)
+		}
+		rows := make([]Market, 0, len(ids))
+		for _, id := range ids {
+			rows = append(rows, Market{ConditionID: id})
+		}
+		_ = json.NewEncoder(w).Encode(rows)
+	}))
+	defer srv.Close()
+
+	ids := make([]string, 102)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("0x%040x", i+1)
+	}
+	c := &GammaClient{http: &http.Client{Timeout: 3 * time.Second}, base: srv.URL}
+	got, err := c.GetByConditionIDs(context.Background(), ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requests != 2 || len(got) != len(ids) {
+		t.Fatalf("requests=%d markets=%d want=%d", requests, len(got), len(ids))
 	}
 }
 

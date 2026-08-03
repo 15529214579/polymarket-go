@@ -599,6 +599,23 @@ type onChainReader interface {
 	ConditionalTokenBalance(context.Context, string) (*big.Int, error)
 }
 
+type copytradeHoldPolicy struct {
+	Name      string
+	MaxHold   time.Duration
+	EventHold time.Duration
+}
+
+func selectCopytradeHoldPolicy(text string, footballScore, paper bool, defaultMaxHold, defaultEventHold, esportsHold, footballScoreHold time.Duration) copytradeHoldPolicy {
+	switch {
+	case footballScore:
+		return copytradeHoldPolicy{Name: "football_score", MaxHold: footballScoreHold, EventHold: footballScoreHold}
+	case paper && feed.IsEsportsMarketText(text):
+		return copytradeHoldPolicy{Name: "esports", MaxHold: esportsHold, EventHold: esportsHold}
+	default:
+		return copytradeHoldPolicy{Name: "default", MaxHold: defaultMaxHold, EventHold: defaultEventHold}
+	}
+}
+
 func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, takerFeeRate, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, exitPollInterval, eventPostStartHold, timeoutReentryCooldown time.Duration, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, injCfg injury.Config, whaleCfg whale.Config, confirmDelay time.Duration, btcCfg btc.StrategyConfig, updownCfg btc.UpDownConfig, p10 phase10Config, liveTrading bool, liveGuardCfg order.LiveGuardConfig, fadeMode bool, walletsFile string, copytradeSize float64, walletTiersFile string, initialCapital float64, minTierFilter string, paperCollectBroad bool, positionsStatePath, riskStatePath, buyTimesStatePath string, posMaxTotalOpenUSD float64, posMaxOpenPositions int, posMaxPerMarketUSD, posMaxPerEventUSD, footballScoreMaxEventUSD float64) error {
 	ctx, cancelRun := context.WithCancel(ctx)
 	defer cancelRun()
@@ -636,6 +653,14 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 			slog.Warn("copytrade_football_invalid_hold", "value", raw, "err", err)
 		}
 	}
+	esportsHold := 45 * time.Minute
+	if raw := strings.TrimSpace(os.Getenv("COPYTRADE_ESPORTS_HOLD")); raw != "" {
+		if parsed, err := time.ParseDuration(raw); err == nil && parsed > 0 {
+			esportsHold = parsed
+		} else {
+			slog.Warn("copytrade_esports_invalid_hold", "value", raw, "err", err)
+		}
+	}
 	if signalMode == "copytrade" {
 		slog.Info("copytrade_collection_config",
 			"broad", paperCollectBroad,
@@ -648,6 +673,12 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 			"score_max_signal_age", footballScoreMaxSignalAge.String(),
 			"score_hold", footballScoreHold.String(),
 			"score_max_event_usd", footballScoreMaxEventUSD,
+			"live", liveTrading,
+		)
+		slog.Info("copytrade_hold_config",
+			"default_max_hold", ladderCfg.MaxHold.String(),
+			"default_event_hold", eventPostStartHold.String(),
+			"paper_esports_hold", esportsHold.String(),
 			"live", liveTrading,
 		)
 	}
@@ -801,6 +832,21 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 
 	ws := feed.NewWSSClient(assetIDs)
 	sampler := feed.NewSampler(windowSec)
+	paperExecutionIntent := func(intent order.Intent, referencePrice float64) order.Intent {
+		if liveTrading {
+			return intent
+		}
+		intent.PaperReferencePx = referencePrice
+		tail, ok := sampler.TickTail(intent.AssetID, 1)
+		if !ok || len(tail) == 0 {
+			return intent
+		}
+		quote := tail[0]
+		intent.PaperBestBid = quote.BestBid
+		intent.PaperBestAsk = quote.BestAsk
+		intent.PaperQuoteAt = quote.Time
+		return intent
+	}
 
 	cfg := strategy.DefaultConfig()
 	cfg.WindowSec = windowSec
@@ -962,7 +1008,6 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 	configureHold := func(posID string, eventStart time.Time) strategy.Position {
 		return configureHoldWithPolicy(posID, eventStart, ladderCfg.MaxHold, eventPostStartHold)
 	}
-
 	var timeoutCooldownMu sync.Mutex
 	timeoutCooldownUntil := make(map[string]time.Time)
 	markTimeoutCooldown := func(market string, exitedAt time.Time) {
@@ -2446,18 +2491,15 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 		if marketInfo, ok := lookupMarketMeta(openPos.Market); ok {
 			eventStart = marketInfo.GameStart
 		}
-		maxHold := ladderCfg.MaxHold
-		eventHold := eventPostStartHold
-		if feed.IsFootballScoreMarketText(openPos.Question) {
-			maxHold = footballScoreHold
-			eventHold = footballScoreHold
-		}
-		_, candidateDeadline := strategy.PlannedHold(openPos.EntryTime, eventStart, maxHold, eventHold)
+		policy := selectCopytradeHoldPolicy(openPos.Question, feed.IsFootballScoreMarketText(openPos.Question), !liveTrading,
+			ladderCfg.MaxHold, eventPostStartHold, esportsHold, footballScoreHold)
+		_, candidateDeadline := strategy.PlannedHold(openPos.EntryTime, eventStart, policy.MaxHold, policy.EventHold)
 		if candidateDeadline.IsZero() || !candidateDeadline.After(openPos.ExitDeadline) {
 			continue
 		}
-		planned := configureHoldWithPolicy(openPos.ID, eventStart, maxHold, eventHold)
+		planned := configureHoldWithPolicy(openPos.ID, eventStart, policy.MaxHold, policy.EventHold)
 		shadowExits.Open(planned)
+		slog.Info("position_hold_policy_reconfigured", "pos", openPos.ID, "policy", policy.Name, "exit_deadline", planned.ExitDeadline)
 		reconfiguredHolds++
 	}
 	if reconfiguredHolds > 0 {
@@ -2850,10 +2892,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 					if crossPx > 0.99 {
 						crossPx = 0.99
 					}
-					orderPx := ev.Price
-					if liveTrading {
-						orderPx = crossPx
-					}
+					orderPx := crossPx
 					// Clear any stale orders before placing new one
 					if v2, ok := orderClient.(*order.V2Client); ok {
 						if err := v2.CancelAllOpen(ctx); err != nil {
@@ -2870,6 +2909,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 						NegRisk:              isNegRisk,
 						TakerFeeRateOverride: marketFeeRateOverride(ev.ConditionID),
 					}
+					intent = paperExecutionIntent(intent, ev.Price)
 					result, err := orderClient.Submit(ctx, intent)
 					// Retry with reduced size on balance error
 					if err != nil && strings.Contains(err.Error(), "not enough balance") {
@@ -2931,6 +2971,9 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 							"fee_usd", result.FeeUSD,
 							"taker_fee_rate", effectiveFeeRate,
 							"collection_only", collectionOnly,
+							"execution_model", result.ExecutionModel,
+							"execution_reference", result.ReferencePrice,
+							"quote_age_ms", result.QuoteAge.Milliseconds(),
 						)
 						fillMsg := fmt.Sprintf("✅ 跟单成功\n%s · %s\n💰 $%.0f @ %.4f · fee %.3fU · Tier %s\n🐋 %s 买入 $%.0f\n🆔 %s",
 							ev.Question, ev.Outcome,
@@ -2951,12 +2994,9 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 							}
 						}
 						markPositionSource(pm, src, pos.ID, signalSource, result.OrderID)
-						var planned strategy.Position
-						if footballScore {
-							planned = configureHoldWithPolicy(pos.ID, followedMeta.GameStart, footballScoreHold, footballScoreHold)
-						} else {
-							planned = configureHold(pos.ID, followedMeta.GameStart)
-						}
+						holdPolicy := selectCopytradeHoldPolicy(ev.Question+" "+ev.Slug+" "+followedMeta.Category, footballScore, !liveTrading,
+							ladderCfg.MaxHold, eventPostStartHold, esportsHold, footballScoreHold)
+						planned := configureHoldWithPolicy(pos.ID, followedMeta.GameStart, holdPolicy.MaxHold, holdPolicy.EventHold)
 						shadowExits.OpenWithFeeRate(planned, effectiveFeeRate)
 						if added, subErr := ws.SubscribeAssets(ev.AssetID); subErr != nil {
 							slog.Warn("copytrade_wss_subscribe_fail", "pos", pos.ID, "asset", short(ev.AssetID), "err", subErr.Error())
@@ -2988,6 +3028,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 						}
 						slog.Info("copytrade_hold_plan",
 							"pos", pos.ID,
+							"policy", holdPolicy.Name,
 							"profile", planned.HoldProfile,
 							"event_start", planned.EventStart,
 							"exit_deadline", planned.ExitDeadline,
@@ -3029,7 +3070,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 						if sellPct < 0.95 {
 							closeOrderID = fmt.Sprintf("copytrade_partial_%.0f%%", ev.PctSold)
 						}
-						res, serr := orderClient.Submit(ctx, order.Intent{
+						sellIntent := paperExecutionIntent(order.Intent{
 							AssetID:              pos.AssetID,
 							Market:               pos.Market,
 							Side:                 order.Sell,
@@ -3038,9 +3079,10 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 							LimitPx:              ev.Price,
 							Type:                 order.GTC,
 							TakerFeeRateOverride: marketFeeRateOverride(pos.Market),
-						})
+						}, ev.Price)
+						res, serr := orderClient.Submit(ctx, sellIntent)
 						if serr != nil || res.Status != order.StatusFilled {
-							slog.Warn("copytrade_sell_submit_fail", "pos", pos.ID, "err", serr, "status", res.Status)
+							slog.Warn("copytrade_sell_submit_fail", "pos", pos.ID, "err", serr, "status", res.Status, "detail", res.Error, "execution_model", res.ExecutionModel)
 							continue
 						}
 						exitPrice = res.AvgPrice

@@ -20,7 +20,7 @@ func main() {
 	reportOut := flag.String("report", "reports/smartmoney-paper-wallets.md", "wallet policy Markdown output")
 	promotedOut := flag.String("promoted", "db/smartmoney-paper/wallets.paper-promoted.txt", "promoted wallet overlay")
 	demotedOut := flag.String("demoted", "db/smartmoney-paper/wallets.paper-demoted.txt", "demoted wallet block list")
-	minPositions := flag.Int("min_positions", 10, "minimum closed positions before a decision")
+	minPositions := flag.Int("min_positions", 10, "minimum independent wallet-market samples before a decision")
 	promoteMinNet := flag.Float64("promote_min_net", 5, "minimum net PnL in U for promotion")
 	promoteMinROI := flag.Float64("promote_min_roi", 2, "minimum net ROI percentage for promotion")
 	demoteMaxNet := flag.Float64("demote_max_net", -5, "maximum net PnL in U before demotion")
@@ -98,17 +98,17 @@ func readAliases(path string) (map[string]string, error) {
 func formatMarkdown(report paperreport.WalletPolicyReport) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Smartmoney Paper Wallet Policy\n\nGenerated: %s\n\n", report.GeneratedAt.Format("2006-01-02T15:04:05Z07:00"))
-	fmt.Fprintf(&b, "- Rule: at least %d closed positions; promote at net >= %+.2fU and ROI >= %+.2f%%; demote at net <= %+.2fU\n", report.Config.MinPositions, report.Config.PromoteMinNet, report.Config.PromoteMinROI, report.Config.DemoteMaxNet)
+	fmt.Fprintf(&b, "- Rule: at least %d independent wallet-market samples; promote at net >= %+.2fU and ROI >= %+.2f%%; demote at net <= %+.2fU\n", report.Config.MinPositions, report.Config.PromoteMinNet, report.Config.PromoteMinROI, report.Config.DemoteMaxNet)
 	fmt.Fprintf(&b, "- Decisions: %d promoted / %d demoted / %d unresolved\n\n", report.Promoted, report.Demoted, report.Unresolved)
-	b.WriteString("| Decision | Wallet | Positions | Capital | Fees | Net | ROI | W/L/F | Reason |\n")
-	b.WriteString("|---|---|---:|---:|---:|---:|---:|---:|---|\n")
+	b.WriteString("| Decision | Wallet | Samples | Positions | Capital | Fees | Net | ROI | W/L/F | Reason |\n")
+	b.WriteString("|---|---|---:|---:|---:|---:|---:|---:|---:|---|\n")
 	for _, row := range report.Wallets {
 		wallet := row.Wallet
 		if wallet == "" {
 			wallet = row.Source
 		}
-		fmt.Fprintf(&b, "| %s | %s | %d | %.2f | %.2f | %+.2f | %+.2f%% | %d/%d/%d | %s |\n",
-			row.Decision, wallet, row.Positions, row.CapitalUSD, row.FeesUSD, row.NetPnL, row.ROI, row.Wins, row.Losses, row.Flat, row.Reason)
+		fmt.Fprintf(&b, "| %s | %s | %d | %d | %.2f | %.2f | %+.2f | %+.2f%% | %d/%d/%d | %s |\n",
+			row.Decision, wallet, row.IndependentSamples, row.Positions, row.CapitalUSD, row.FeesUSD, row.NetPnL, row.ROI, row.Wins, row.Losses, row.Flat, row.Reason)
 	}
 	return b.String()
 }
@@ -125,8 +125,8 @@ func formatWalletList(report paperreport.WalletPolicyReport, decision string) st
 		if decision == "promote" {
 			tier = " tier=B"
 		}
-		fmt.Fprintf(&b, "%s # list=%s%s localPaperPositions=%d localPaperROI=%.2f%% localPaperPnL=%+.2fU\n",
-			row.Wallet, list, tier, row.Positions, row.ROI, row.NetPnL)
+		fmt.Fprintf(&b, "%s # list=%s%s localPaperSamples=%d localPaperPositions=%d localPaperROI=%.2f%% localPaperPnL=%+.2fU\n",
+			row.Wallet, list, tier, row.IndependentSamples, row.Positions, row.ROI, row.NetPnL)
 	}
 	return b.String()
 }

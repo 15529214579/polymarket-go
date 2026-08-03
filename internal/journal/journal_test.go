@@ -163,6 +163,23 @@ func TestSummarize_EmptyDay(t *testing.T) {
 	}
 }
 
+func TestSummarizeSeparatesBroadCollectionFromHeadline(t *testing.T) {
+	s := Summarize("2026-08-03", []TradeRecord{
+		{ID: "tradable", SignalSource: "copytrade_wallet:0x1", PnLUSD: 2, NetPnLUSD: 1.5, EntryFeeUSD: 0.25, ExitFeeUSD: 0.25},
+		{ID: "collection", SignalSource: "copytrade_collect_wallet:0x2", PnLUSD: 100, NetPnLUSD: 99, EntryFeeUSD: 0.5, ExitFeeUSD: 0.5},
+	})
+	if s.Trades != 1 || s.RealizedPnLUSD != 1.5 || s.Auto.Count != 2 || s.Auto.PnLUSD != 100.5 {
+		t.Fatalf("summary=%+v", s)
+	}
+	if s.Tradable.Count != 1 || s.Collection.Count != 1 || s.Collection.PnLUSD != 99 {
+		t.Fatalf("scopes tradable=%+v collection=%+v", s.Tradable, s.Collection)
+	}
+	out := FormatTelegram(s)
+	if !strings.Contains(out, "可交易已实现净 PnL: +1.5000") || !strings.Contains(out, "宽采集研究: 1 笔，净 PnL +99.0000") {
+		t.Fatalf("output=%q", out)
+	}
+}
+
 func TestFormatTelegram_RendersWinSignAndReasons(t *testing.T) {
 	s := Summarize("2026-04-20", []TradeRecord{
 		{PnLUSD: 1.5, EntryFeeUSD: 0.10, ExitFeeUSD: 0.20, NetPnLUSD: 1.20, HeldSec: 90, ExitReason: "stop_loss"},

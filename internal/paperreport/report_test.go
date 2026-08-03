@@ -32,6 +32,9 @@ func TestAnalyzeGroupsTranchesAndOpenExposure(t *testing.T) {
 	if got := findCohort(report.ByStrategy, "football_score"); got.Positions != 1 || got.NetPnL != 3.4 {
 		t.Fatalf("score=%+v", got)
 	}
+	if report.Tradable.Closed.Positions != 3 || report.Tradable.Closed.NetPnL != 1.7 {
+		t.Fatalf("tradable=%+v", report.Tradable)
+	}
 	if report.GeneratedAt.Before(time.Now().Add(-time.Minute)) {
 		t.Fatal("generated timestamp is stale")
 	}
@@ -93,6 +96,38 @@ func TestAnalyzeWalletPolicyResolvesLegacyAndFullSources(t *testing.T) {
 	}
 }
 
+func TestAnalyzeWalletPolicyCountsIndependentWalletMarketSamples(t *testing.T) {
+	entry := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)
+	repeatedWallet := "0x1111111111111111111111111111111111111111"
+	independentWallet := "0x2222222222222222222222222222222222222222"
+	var trades []journal.TradeRecord
+	for i := 0; i < 10; i++ {
+		trades = append(trades,
+			journal.TradeRecord{
+				ID: "repeat-" + string(rune('a'+i)), Market: "same-market", EntryTime: entry.Add(time.Duration(i) * time.Minute),
+				SizeUSD: 20, NetPnLUSD: 1, SignalSource: "copytrade_wallet:" + repeatedWallet,
+			},
+			journal.TradeRecord{
+				ID: "independent-" + string(rune('a'+i)), Market: "market-" + string(rune('a'+i)), EntryTime: entry.Add(time.Duration(i) * time.Minute),
+				SizeUSD: 20, NetPnLUSD: 1, SignalSource: "copytrade_wallet:" + independentWallet,
+			},
+		)
+	}
+
+	report := AnalyzeWalletPolicy(trades, nil, WalletPolicyConfig{})
+	repeated := findWallet(report.Wallets, repeatedWallet)
+	if repeated.Positions != 10 || repeated.IndependentSamples != 1 || repeated.Decision != "collect" || repeated.Wins != 1 {
+		t.Fatalf("repeated=%+v", repeated)
+	}
+	independent := findWallet(report.Wallets, independentWallet)
+	if independent.Positions != 10 || independent.IndependentSamples != 10 || independent.Decision != "promote" || independent.Wins != 10 {
+		t.Fatalf("independent=%+v", independent)
+	}
+	if report.Promoted != 1 {
+		t.Fatalf("promoted=%d", report.Promoted)
+	}
+}
+
 func TestWalletFromSourceSupportsBroadCollection(t *testing.T) {
 	wallet := "0x3333333333333333333333333333333333333333"
 	for _, source := range []string{
@@ -122,6 +157,12 @@ func TestAnalyzeSeparatesBroadCollectionCohorts(t *testing.T) {
 	if got := findCohort(report.ByStrategy, "football_score_collect"); got.Positions != 1 || got.NetPnL != 2 {
 		t.Fatalf("score collection=%+v", got)
 	}
+	if report.Tradable.Closed.Positions != 1 || report.Tradable.Closed.NetPnL != 1 {
+		t.Fatalf("tradable=%+v", report.Tradable)
+	}
+	if report.BroadCollection.Closed.Positions != 2 || report.BroadCollection.Closed.NetPnL != 1 {
+		t.Fatalf("collection=%+v", report.BroadCollection)
+	}
 }
 
 func findCohort(rows []Cohort, name string) Cohort {
@@ -131,4 +172,13 @@ func findCohort(rows []Cohort, name string) Cohort {
 		}
 	}
 	return Cohort{}
+}
+
+func findWallet(rows []WalletPerformance, wallet string) WalletPerformance {
+	for _, row := range rows {
+		if row.Wallet == wallet {
+			return row
+		}
+	}
+	return WalletPerformance{}
 }

@@ -39,26 +39,30 @@ type PriceBand struct {
 }
 
 type DayStats struct {
-	Day    string
-	Trades int
-	WR     float64
-	PnL    float64
+	Day              string
+	Trades           int
+	WR               float64
+	PnL              float64
+	CollectionTrades int
+	CollectionPnL    float64
 }
 
 type IterationReport struct {
-	Day           string
-	WindowDays    int
-	TotalTrades   int
-	TotalWins     int
-	TotalLosses   int
-	WinRate       float64
-	GrossPnLUSD   float64
-	EntryFeesUSD  float64
-	ExitFeesUSD   float64
-	FeesUSD       float64
-	CumulativePnL float64
-	AvgPnLPerDay  float64
-	AvgHeldSec    int
+	Day              string
+	WindowDays       int
+	TotalTrades      int
+	TotalWins        int
+	TotalLosses      int
+	WinRate          float64
+	GrossPnLUSD      float64
+	EntryFeesUSD     float64
+	ExitFeesUSD      float64
+	FeesUSD          float64
+	CumulativePnL    float64
+	AvgPnLPerDay     float64
+	AvgHeldSec       int
+	CollectionTrades int
+	CollectionPnL    float64
 
 	DailyBreakdown []DayStats
 	SportBreakdown []SportBreakdown
@@ -113,6 +117,8 @@ func analyzeAt(journalDir string, windowDays int, now time.Time) (*IterationRepo
 
 	var allTrades []journal.TradeRecord
 	var dailyStats []DayStats
+	var collectionTrades int
+	var collectionPnL float64
 
 	for i := 0; i < windowDays; i++ {
 		day := reportDay.AddDate(0, 0, -i).Format("2006-01-02")
@@ -121,21 +127,27 @@ func analyzeAt(journalDir string, windowDays int, now time.Time) (*IterationRepo
 			return nil, fmt.Errorf("read closed journal day %s: %w", day, err)
 		}
 		var autoTrades []journal.TradeRecord
+		ds := DayStats{Day: day}
 		for _, t := range trades {
 			if t.SignalSource == "manual" {
+				continue
+			}
+			if isCollectionTrade(t) {
+				net := tradeNet(t)
+				ds.CollectionTrades++
+				ds.CollectionPnL += net
+				collectionTrades++
+				collectionPnL += net
 				continue
 			}
 			autoTrades = append(autoTrades, t)
 		}
 		allTrades = append(allTrades, autoTrades...)
 
-		ds := DayStats{Day: day, Trades: len(autoTrades)}
+		ds.Trades = len(autoTrades)
 		var w, l int
 		for _, t := range autoTrades {
-			net := t.NetPnLUSD
-			if net == 0 && t.EntryFeeUSD == 0 && t.ExitFeeUSD == 0 {
-				net = t.PnLUSD
-			}
+			net := tradeNet(t)
 			ds.PnL += net
 			if net > 0 {
 				w++
@@ -152,14 +164,20 @@ func analyzeAt(journalDir string, windowDays int, now time.Time) (*IterationRepo
 	sort.Slice(dailyStats, func(i, j int) bool { return dailyStats[i].Day < dailyStats[j].Day })
 
 	r := &IterationReport{
-		Day:            reportDay.Format("2006-01-02"),
-		WindowDays:     windowDays,
-		TotalTrades:    len(allTrades),
-		DailyBreakdown: dailyStats,
+		Day:              reportDay.Format("2006-01-02"),
+		WindowDays:       windowDays,
+		TotalTrades:      len(allTrades),
+		CollectionTrades: collectionTrades,
+		CollectionPnL:    collectionPnL,
+		DailyBreakdown:   dailyStats,
 	}
 
 	if len(allTrades) == 0 {
-		r.Suggestions = append(r.Suggestions, "无成交数据，检查 daemon 是否正常运行")
+		if collectionTrades > 0 {
+			r.Suggestions = append(r.Suggestions, "可交易策略暂无平仓；宽采集数据继续积累，不据此调整生产参数")
+		} else {
+			r.Suggestions = append(r.Suggestions, "无成交数据，检查 daemon 是否正常运行")
+		}
 		return r, nil
 	}
 
@@ -178,10 +196,7 @@ func analyzeAt(journalDir string, windowDays int, now time.Time) (*IterationRepo
 	var slCount, tpCount, timeoutCount, settleCount int
 
 	for _, t := range allTrades {
-		net := t.NetPnLUSD
-		if net == 0 && t.EntryFeeUSD == 0 && t.ExitFeeUSD == 0 {
-			net = t.PnLUSD
-		}
+		net := tradeNet(t)
 
 		r.GrossPnLUSD += t.PnLUSD
 		r.EntryFeesUSD += t.EntryFeeUSD
@@ -296,6 +311,17 @@ func analyzeAt(journalDir string, windowDays int, now time.Time) (*IterationRepo
 	return r, nil
 }
 
+func tradeNet(t journal.TradeRecord) float64 {
+	if t.NetPnLUSD == 0 && t.EntryFeeUSD == 0 && t.ExitFeeUSD == 0 {
+		return t.PnLUSD
+	}
+	return t.NetPnLUSD
+}
+
+func isCollectionTrade(t journal.TradeRecord) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(t.SignalSource)), "copytrade_collect")
+}
+
 func generateSuggestions(r *IterationReport) []string {
 	var s []string
 
@@ -382,14 +408,15 @@ func FormatMarkdown(r *IterationReport) string {
 	var b strings.Builder
 
 	fmt.Fprintf(&b, "# 每日迭代报告 %s SGT\n\n", r.Day)
-	fmt.Fprintf(&b, "**窗口**: 截至 %s 的 %d 个完整日 · **已平仓记录**: %d 笔 · **已实现净 PnL**: %s\n\n", r.Day, r.WindowDays, r.TotalTrades, formatUSD(r.CumulativePnL))
-	b.WriteString("> 口径：仅统计自动策略已平仓记录；净 PnL 已扣日志中记录的入场费和出场费，模拟滑点已体现在成交价中；不包含未平仓浮动 PnL。\n\n")
+	fmt.Fprintf(&b, "**窗口**: 截至 %s 的 %d 个完整日 · **可交易已平仓记录**: %d 笔 · **可交易已实现净 PnL**: %s\n\n", r.Day, r.WindowDays, r.TotalTrades, formatUSD(r.CumulativePnL))
+	fmt.Fprintf(&b, "> 口径：主指标仅统计可交易自动策略；宽采集研究 %d 笔 / %s 单列，不参与生产参数建议。净 PnL 已扣日志中记录的入场费和出场费，模拟滑点已体现在成交价中；不包含未平仓浮动 PnL。\n\n", r.CollectionTrades, formatUSD(r.CollectionPnL))
 
 	b.WriteString("## 总览\n\n")
 	fmt.Fprintf(&b, "| 指标 | 值 |\n|------|----|\n")
 	fmt.Fprintf(&b, "| 毛 PnL | %s |\n", formatUSD(r.GrossPnLUSD))
 	fmt.Fprintf(&b, "| 已记录手续费 | $%.2f（入场 $%.2f / 出场 $%.2f） |\n", r.FeesUSD, r.EntryFeesUSD, r.ExitFeesUSD)
 	fmt.Fprintf(&b, "| 已实现净 PnL | %s |\n", formatUSD(r.CumulativePnL))
+	fmt.Fprintf(&b, "| 宽采集研究净 PnL | %s（%d 笔，不计入主口径） |\n", formatUSD(r.CollectionPnL), r.CollectionTrades)
 	fmt.Fprintf(&b, "| 胜/负/平 | %d / %d / %d |\n", r.TotalWins, r.TotalLosses, r.TotalTrades-r.TotalWins-r.TotalLosses)
 	fmt.Fprintf(&b, "| 胜率 | %.1f%% |\n", r.WinRate*100)
 	fmt.Fprintf(&b, "| 日均已实现净 PnL | %s |\n", formatUSD(r.AvgPnLPerDay))
@@ -400,13 +427,13 @@ func FormatMarkdown(r *IterationReport) string {
 	fmt.Fprintf(&b, "| Settlement 率 | %.0f%% |\n\n", r.SettleRate*100)
 
 	b.WriteString("## 每日明细\n\n")
-	b.WriteString("| 日期 | 平仓记录 | 胜率 | 已实现净 PnL |\n|------|------|------|-----|\n")
+	b.WriteString("| 日期 | 可交易平仓 | 胜率 | 可交易净 PnL | 宽采集平仓 | 宽采集净 PnL |\n|------|------:|------:|-----:|------:|-----:|\n")
 	for _, ds := range r.DailyBreakdown {
 		wr := "-"
 		if ds.Trades > 0 {
 			wr = fmt.Sprintf("%.0f%%", ds.WR*100)
 		}
-		fmt.Fprintf(&b, "| %s | %d | %s | %s |\n", ds.Day, ds.Trades, wr, formatUSD(ds.PnL))
+		fmt.Fprintf(&b, "| %s | %d | %s | %s | %d | %s |\n", ds.Day, ds.Trades, wr, formatUSD(ds.PnL), ds.CollectionTrades, formatUSD(ds.CollectionPnL))
 	}
 	b.WriteString("\n")
 
@@ -453,8 +480,9 @@ func FormatTelegram(r *IterationReport) string {
 	var b strings.Builder
 
 	fmt.Fprintf(&b, "🔄 每日迭代 %s SGT\n", r.Day)
-	fmt.Fprintf(&b, "窗口 %d个完整日 · 已平仓记录 %d笔\n", r.WindowDays, r.TotalTrades)
-	fmt.Fprintf(&b, "已实现净 PnL %s · 毛 PnL %s · 手续费 $%.2f\n", formatUSD(r.CumulativePnL), formatUSD(r.GrossPnLUSD), r.FeesUSD)
+	fmt.Fprintf(&b, "窗口 %d个完整日 · 可交易已平仓 %d笔\n", r.WindowDays, r.TotalTrades)
+	fmt.Fprintf(&b, "可交易净 PnL %s · 毛 PnL %s · 手续费 $%.2f\n", formatUSD(r.CumulativePnL), formatUSD(r.GrossPnLUSD), r.FeesUSD)
+	fmt.Fprintf(&b, "宽采集研究 %d笔 %s（不计入主口径）\n", r.CollectionTrades, formatUSD(r.CollectionPnL))
 	b.WriteString("仅统计已平仓；滑点已计入成交价；不含未平仓浮动 PnL。\n")
 	fmt.Fprintf(&b, "胜率 %.0f%% · SL %.0f%% / TP %.0f%% / TO %.0f%%\n\n", r.WinRate*100, r.SLHitRate*100, r.TPHitRate*100, r.TimeoutRate*100)
 

@@ -329,6 +329,25 @@ func IsFootballScoreMarketText(text string) bool {
 	return footballScoreLabelRE.MatchString(text)
 }
 
+// IsEsportsMarketText classifies already-selected markets for reporting and
+// paper hold policies. It is intentionally broader than the entry filters.
+func IsEsportsMarketText(text string) bool {
+	text = strings.ToLower(strings.TrimSpace(text))
+	if text == "" {
+		return false
+	}
+	padded := " " + strings.NewReplacer("-", " ", "_", " ", "/", " ").Replace(text) + " "
+	for _, marker := range []string{
+		"league of legends", "lol:", "dota", "counter-strike", "counter strike",
+		"cs2", "cs:go", "csgo", "valorant", "esports", "esport",
+	} {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+	return strings.Contains(padded, " lol ")
+}
+
 // IsOutrightFollowMarketText rejects long-horizon championship/futures markets.
 // They can attract large orders but do not fit the short-window whale-follow
 // signals used by the sports/ esports copy-trading system.
@@ -626,18 +645,7 @@ func marketHasTradableOutcomePrice(m Market, minPrice, maxPrice float64) bool {
 // returns only matching rows (ignoring active/closed state), which is exactly
 // what we want for settlement polling: we need to see closed=true markets too.
 func (c *GammaClient) GetByConditionIDs(ctx context.Context, ids []string) ([]Market, error) {
-	if len(ids) == 0 {
-		return nil, nil
-	}
-	q := url.Values{}
-	for _, id := range ids {
-		if id == "" {
-			continue
-		}
-		q.Add("condition_ids", id)
-	}
-	q.Set("limit", fmt.Sprintf("%d", len(ids)+5))
-	return c.getMarkets(ctx, q)
+	return c.getMarketsByIDs(ctx, "condition_ids", ids)
 }
 
 // GetByClobTokenIDs fetches markets containing the given CLOB token ids. Gamma
@@ -645,18 +653,46 @@ func (c *GammaClient) GetByConditionIDs(ctx context.Context, ids []string) ([]Ma
 // backfill conditionId/outcomePrices for older trade logs that only stored the
 // token id.
 func (c *GammaClient) GetByClobTokenIDs(ctx context.Context, ids []string) ([]Market, error) {
-	if len(ids) == 0 {
-		return nil, nil
-	}
-	q := url.Values{}
+	return c.getMarketsByIDs(ctx, "clob_token_ids", ids)
+}
+
+func (c *GammaClient) getMarketsByIDs(ctx context.Context, queryKey string, ids []string) ([]Market, error) {
+	clean := make([]string, 0, len(ids))
+	seen := make(map[string]struct{}, len(ids))
 	for _, id := range ids {
+		id = strings.TrimSpace(id)
 		if id == "" {
 			continue
 		}
-		q.Add("clob_token_ids", id)
+		if _, duplicate := seen[id]; duplicate {
+			continue
+		}
+		seen[id] = struct{}{}
+		clean = append(clean, id)
 	}
-	q.Set("limit", fmt.Sprintf("%d", len(ids)+5))
-	return c.getMarkets(ctx, q)
+	if len(clean) == 0 {
+		return nil, nil
+	}
+
+	const batchSize = 95
+	out := make([]Market, 0, len(clean))
+	for start := 0; start < len(clean); start += batchSize {
+		end := start + batchSize
+		if end > len(clean) {
+			end = len(clean)
+		}
+		q := url.Values{}
+		for _, id := range clean[start:end] {
+			q.Add(queryKey, id)
+		}
+		q.Set("limit", fmt.Sprintf("%d", len(clean[start:end])+5))
+		page, err := c.getMarkets(ctx, q)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, page...)
+	}
+	return out, nil
 }
 
 func (c *GammaClient) getMarkets(ctx context.Context, q url.Values) ([]Market, error) {

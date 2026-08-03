@@ -19,6 +19,7 @@ type PaperClient struct {
 	slippageBp   float64
 	feeBp        float64
 	takerFeeRate float64
+	maxQuoteAge  time.Duration
 
 	mu     sync.Mutex
 	orders []Result
@@ -27,14 +28,14 @@ type PaperClient struct {
 // NewPaperClient — slippageBp ≥ 0 pulls fill price against you (BUY fills
 // higher, SELL fills lower). Pass 0 for clean paper. Default feeBp is 0.
 func NewPaperClient(slippageBp float64) *PaperClient {
-	return &PaperClient{slippageBp: slippageBp}
+	return &PaperClient{slippageBp: slippageBp, maxQuoteAge: 5 * time.Second}
 }
 
 // NewPaperClientWithFee is the ladder-era constructor that takes both
 // slippage and a per-side fee in basis points of notional. The strategy
 // layer charges this on each buy + each sell so tranche PnL is net of fees.
 func NewPaperClientWithFee(slippageBp, feeBp float64) *PaperClient {
-	return &PaperClient{slippageBp: slippageBp, feeBp: feeBp}
+	return &PaperClient{slippageBp: slippageBp, feeBp: feeBp, maxQuoteAge: 5 * time.Second}
 }
 
 // NewPaperClientWithFeeModel adds Polymarket's dynamic taker fee curve:
@@ -45,6 +46,7 @@ func NewPaperClientWithFeeModel(slippageBp, feeBp, takerFeeRate float64) *PaperC
 		slippageBp:   slippageBp,
 		feeBp:        feeBp,
 		takerFeeRate: takerFeeRate,
+		maxQuoteAge:  5 * time.Second,
 	}
 }
 
@@ -56,7 +58,17 @@ func (p *PaperClient) Submit(ctx context.Context, in Intent) (Result, error) {
 	}
 
 	now := time.Now().UTC()
-	px := applySlippage(in.LimitPx, in.Side, p.slippageBp)
+	referencePx, model, quoteAge, fillable, reason := p.executionReference(in, now)
+	if !fillable {
+		r := Result{
+			OrderID: "paper-" + randHex(6), Status: StatusExpired,
+			SubmitAt: now, Error: reason, ReferencePrice: referencePx,
+			ExecutionModel: model, QuoteAge: quoteAge,
+		}
+		p.record(r)
+		return r, nil
+	}
+	px := applySlippage(referencePx, in.Side, p.slippageBp)
 	if px <= 0 || px >= 1 {
 		return Result{Status: StatusRejected, Error: "slipped out of (0,1)"},
 			fmt.Errorf("paper: slipped price %.4f out of (0,1)", px)
@@ -78,19 +90,60 @@ func (p *PaperClient) Submit(ctx context.Context, in Intent) (Result, error) {
 	fee := flatFee + platformFee
 
 	r := Result{
-		OrderID:    "paper-" + randHex(6),
-		Status:     StatusFilled,
-		FilledSize: units,
-		AvgPrice:   px,
-		SubmitAt:   now,
-		FilledAt:   now,
-		FeeUSD:     fee,
+		OrderID:        "paper-" + randHex(6),
+		Status:         StatusFilled,
+		FilledSize:     units,
+		AvgPrice:       px,
+		SubmitAt:       now,
+		FilledAt:       now,
+		FeeUSD:         fee,
+		ReferencePrice: referencePx,
+		ExecutionModel: model,
+		QuoteAge:       quoteAge,
 	}
-
-	p.mu.Lock()
-	p.orders = append(p.orders, r)
-	p.mu.Unlock()
+	p.record(r)
 	return r, nil
+}
+
+func (p *PaperClient) executionReference(in Intent, now time.Time) (float64, string, time.Duration, bool, string) {
+	fallback := in.PaperReferencePx
+	if fallback <= 0 || fallback >= 1 {
+		fallback = in.LimitPx
+	}
+	if in.PaperQuoteAt.IsZero() {
+		model := "limit_fallback"
+		if in.PaperReferencePx > 0 && in.PaperReferencePx < 1 {
+			model = "signal_fallback"
+		}
+		return fallback, model, 0, true, ""
+	}
+	age := now.Sub(in.PaperQuoteAt)
+	if age < 0 {
+		age = 0
+	}
+	if age > p.maxQuoteAge {
+		return fallback, "stale_quote_fallback", age, true, ""
+	}
+	quote := in.PaperBestAsk
+	if in.Side == Sell {
+		quote = in.PaperBestBid
+	}
+	if quote <= 0 || quote >= 1 {
+		return quote, "top_of_book", age, false, "no executable top-of-book quote"
+	}
+	if in.Side == Buy && quote > in.LimitPx+1e-9 {
+		return quote, "top_of_book", age, false, "best ask above buy limit"
+	}
+	if in.Side == Sell && quote < in.LimitPx-1e-9 {
+		return quote, "top_of_book", age, false, "best bid below sell limit"
+	}
+	return quote, "top_of_book", age, true, ""
+}
+
+func (p *PaperClient) record(result Result) {
+	p.mu.Lock()
+	p.orders = append(p.orders, result)
+	p.mu.Unlock()
 }
 
 // History returns a copy of all paper fills so far (safe to call from any
@@ -118,6 +171,14 @@ func validate(in Intent) error {
 	}
 	if in.TakerFeeRateOverride != nil && (*in.TakerFeeRateOverride < 0 || *in.TakerFeeRateOverride > 1 || math.IsNaN(*in.TakerFeeRateOverride) || math.IsInf(*in.TakerFeeRateOverride, 0)) {
 		return fmt.Errorf("TakerFeeRateOverride %v out of [0,1]", *in.TakerFeeRateOverride)
+	}
+	if in.PaperReferencePx < 0 || in.PaperReferencePx >= 1 || math.IsNaN(in.PaperReferencePx) || math.IsInf(in.PaperReferencePx, 0) {
+		return fmt.Errorf("PaperReferencePx %v out of [0,1)", in.PaperReferencePx)
+	}
+	for name, quote := range map[string]float64{"PaperBestBid": in.PaperBestBid, "PaperBestAsk": in.PaperBestAsk} {
+		if quote < 0 || quote >= 1 || math.IsNaN(quote) || math.IsInf(quote, 0) {
+			return fmt.Errorf("%s %v out of [0,1)", name, quote)
+		}
 	}
 	return nil
 }
