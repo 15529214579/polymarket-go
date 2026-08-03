@@ -15,17 +15,17 @@ import (
 // gross PnL (net == gross in that case).
 // SourceStats holds stats for one source (auto or manual).
 type SourceStats struct {
-	Count        int
-	Wins         int
-	Losses       int
-	Breakevens   int
-	WinRate      float64
-	PnLUSD       float64
-	AvgPnLUSD    float64
-	BiggestWin   float64
-	BiggestLoss  float64
-	AvgHeldSec   int
-	ExitReasons  map[string]int
+	Count       int
+	Wins        int
+	Losses      int
+	Breakevens  int
+	WinRate     float64
+	PnLUSD      float64
+	AvgPnLUSD   float64
+	BiggestWin  float64
+	BiggestLoss float64
+	AvgHeldSec  int
+	ExitReasons map[string]int
 }
 
 type DailySummary struct {
@@ -39,6 +39,8 @@ type DailySummary struct {
 	WinRate         float64
 	RealizedPnLUSD  float64
 	GrossPnLUSD     float64
+	EntryFeesUSD    float64
+	ExitFeesUSD     float64
 	FeesUSD         float64
 	GrossWinUSD     float64
 	GrossLossUSD    float64
@@ -117,7 +119,8 @@ func Summarize(day string, trades []TradeRecord) DailySummary {
 			// Headline stats = auto only.
 			s.Trades++
 			s.GrossPnLUSD += t.PnLUSD
-			s.FeesUSD += t.EntryFeeUSD + t.ExitFeeUSD
+			s.EntryFeesUSD += t.EntryFeeUSD
+			s.ExitFeesUSD += t.ExitFeeUSD
 			s.RealizedPnLUSD += net
 			switch {
 			case net > 0:
@@ -140,6 +143,7 @@ func Summarize(day string, trades []TradeRecord) DailySummary {
 			}
 		}
 	}
+	s.FeesUSD = s.EntryFeesUSD + s.ExitFeesUSD
 	finalizeSource(&s.Auto, autoHeld)
 	finalizeSource(&s.Manual, manualHeld)
 	if s.Trades > 0 {
@@ -167,11 +171,10 @@ func FormatTelegram(s DailySummary) string {
 		b.WriteString("无成交。\n")
 		return b.String()
 	}
-	fmt.Fprintf(&b, "• 实现 PnL(净): %s%.4f USDC\n", pnlSign, s.RealizedPnLUSD)
-	if s.FeesUSD > 0 {
-		fmt.Fprintf(&b, "• 毛 PnL: %+.4f · 手续费 %.4f\n", s.GrossPnLUSD, s.FeesUSD)
-	}
-	fmt.Fprintf(&b, "• 成交 %d 笔  胜 %d / 负 %d / 平 %d  (胜率 %.0f%%)\n",
+	fmt.Fprintf(&b, "• 已实现净 PnL: %s%.4f USDC\n", pnlSign, s.RealizedPnLUSD)
+	fmt.Fprintf(&b, "• 毛 PnL: %+.4f · 已记录手续费 %.4f（入场 %.4f / 出场 %.4f）\n", s.GrossPnLUSD, s.FeesUSD, s.EntryFeesUSD, s.ExitFeesUSD)
+	b.WriteString("• 口径: 仅统计已平仓；滑点已计入成交价；不含未平仓浮动 PnL\n")
+	fmt.Fprintf(&b, "• 平仓记录 %d 笔  胜 %d / 负 %d / 平 %d  (胜率 %.0f%%)\n",
 		s.Trades, s.Wins, s.Losses, s.Breakevens, s.WinRate*100)
 	fmt.Fprintf(&b, "• 平均 PnL/笔 %.4f USDC\n", s.AvgPnLUSD)
 	if s.Wins > 0 || s.Losses > 0 {

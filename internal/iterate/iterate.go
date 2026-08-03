@@ -52,6 +52,10 @@ type IterationReport struct {
 	TotalWins     int
 	TotalLosses   int
 	WinRate       float64
+	GrossPnLUSD   float64
+	EntryFeesUSD  float64
+	ExitFeesUSD   float64
+	FeesUSD       float64
 	CumulativePnL float64
 	AvgPnLPerDay  float64
 	AvgHeldSec    int
@@ -97,16 +101,24 @@ func classifySport(question string) string {
 }
 
 func Analyze(journalDir string, windowDays int) (*IterationReport, error) {
-	now := time.Now().In(journal.SGT)
+	return analyzeAt(journalDir, windowDays, time.Now().In(journal.SGT))
+}
+
+func analyzeAt(journalDir string, windowDays int, now time.Time) (*IterationReport, error) {
+	if windowDays <= 0 {
+		return nil, fmt.Errorf("window days must be positive: %d", windowDays)
+	}
+	now = now.In(journal.SGT)
+	reportDay := now.AddDate(0, 0, -1)
 
 	var allTrades []journal.TradeRecord
 	var dailyStats []DayStats
 
 	for i := 0; i < windowDays; i++ {
-		day := now.AddDate(0, 0, -i).Format("2006-01-02")
+		day := reportDay.AddDate(0, 0, -i).Format("2006-01-02")
 		trades, err := journal.ReadClosedDay(journalDir, day)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("read closed journal day %s: %w", day, err)
 		}
 		var autoTrades []journal.TradeRecord
 		for _, t := range trades {
@@ -140,7 +152,7 @@ func Analyze(journalDir string, windowDays int) (*IterationReport, error) {
 	sort.Slice(dailyStats, func(i, j int) bool { return dailyStats[i].Day < dailyStats[j].Day })
 
 	r := &IterationReport{
-		Day:            now.AddDate(0, 0, -1).Format("2006-01-02"),
+		Day:            reportDay.Format("2006-01-02"),
 		WindowDays:     windowDays,
 		TotalTrades:    len(allTrades),
 		DailyBreakdown: dailyStats,
@@ -171,6 +183,9 @@ func Analyze(journalDir string, windowDays int) (*IterationReport, error) {
 			net = t.PnLUSD
 		}
 
+		r.GrossPnLUSD += t.PnLUSD
+		r.EntryFeesUSD += t.EntryFeeUSD
+		r.ExitFeesUSD += t.ExitFeeUSD
 		r.CumulativePnL += net
 		totalHeld += t.HeldSec
 
@@ -230,6 +245,7 @@ func Analyze(journalDir string, windowDays int) (*IterationReport, error) {
 			}
 		}
 	}
+	r.FeesUSD = r.EntryFeesUSD + r.ExitFeesUSD
 
 	decided := r.TotalWins + r.TotalLosses
 	if decided > 0 {
@@ -366,13 +382,17 @@ func FormatMarkdown(r *IterationReport) string {
 	var b strings.Builder
 
 	fmt.Fprintf(&b, "# 每日迭代报告 %s SGT\n\n", r.Day)
-	fmt.Fprintf(&b, "**窗口**: %d 天 · **总成交**: %d 笔 · **累计 PnL**: $%.2f\n\n", r.WindowDays, r.TotalTrades, r.CumulativePnL)
+	fmt.Fprintf(&b, "**窗口**: 截至 %s 的 %d 个完整日 · **已平仓记录**: %d 笔 · **已实现净 PnL**: %s\n\n", r.Day, r.WindowDays, r.TotalTrades, formatUSD(r.CumulativePnL))
+	b.WriteString("> 口径：仅统计自动策略已平仓记录；净 PnL 已扣日志中记录的入场费和出场费，模拟滑点已体现在成交价中；不包含未平仓浮动 PnL。\n\n")
 
 	b.WriteString("## 总览\n\n")
 	fmt.Fprintf(&b, "| 指标 | 值 |\n|------|----|\n")
+	fmt.Fprintf(&b, "| 毛 PnL | %s |\n", formatUSD(r.GrossPnLUSD))
+	fmt.Fprintf(&b, "| 已记录手续费 | $%.2f（入场 $%.2f / 出场 $%.2f） |\n", r.FeesUSD, r.EntryFeesUSD, r.ExitFeesUSD)
+	fmt.Fprintf(&b, "| 已实现净 PnL | %s |\n", formatUSD(r.CumulativePnL))
 	fmt.Fprintf(&b, "| 胜/负/平 | %d / %d / %d |\n", r.TotalWins, r.TotalLosses, r.TotalTrades-r.TotalWins-r.TotalLosses)
 	fmt.Fprintf(&b, "| 胜率 | %.1f%% |\n", r.WinRate*100)
-	fmt.Fprintf(&b, "| 日均 PnL | $%.2f |\n", r.AvgPnLPerDay)
+	fmt.Fprintf(&b, "| 日均已实现净 PnL | %s |\n", formatUSD(r.AvgPnLPerDay))
 	fmt.Fprintf(&b, "| 平均持仓 | %s |\n", humanizeSec(r.AvgHeldSec))
 	fmt.Fprintf(&b, "| SL 触发率 | %.0f%% |\n", r.SLHitRate*100)
 	fmt.Fprintf(&b, "| TP 触发率 | %.0f%% |\n", r.TPHitRate*100)
@@ -380,23 +400,19 @@ func FormatMarkdown(r *IterationReport) string {
 	fmt.Fprintf(&b, "| Settlement 率 | %.0f%% |\n\n", r.SettleRate*100)
 
 	b.WriteString("## 每日明细\n\n")
-	b.WriteString("| 日期 | 笔数 | 胜率 | PnL |\n|------|------|------|-----|\n")
+	b.WriteString("| 日期 | 平仓记录 | 胜率 | 已实现净 PnL |\n|------|------|------|-----|\n")
 	for _, ds := range r.DailyBreakdown {
-		pnl := fmt.Sprintf("$%.2f", ds.PnL)
-		if ds.PnL > 0 {
-			pnl = "+$" + fmt.Sprintf("%.2f", ds.PnL)
-		}
 		wr := "-"
 		if ds.Trades > 0 {
 			wr = fmt.Sprintf("%.0f%%", ds.WR*100)
 		}
-		fmt.Fprintf(&b, "| %s | %d | %s | %s |\n", ds.Day, ds.Trades, wr, pnl)
+		fmt.Fprintf(&b, "| %s | %d | %s | %s |\n", ds.Day, ds.Trades, wr, formatUSD(ds.PnL))
 	}
 	b.WriteString("\n")
 
 	if len(r.SportBreakdown) > 0 {
 		b.WriteString("## 品类分析\n\n")
-		b.WriteString("| 品类 | 笔数 | 胜率 | PnL | 均价 | 均持仓 |\n|------|------|------|-----|------|--------|\n")
+		b.WriteString("| 品类 | 笔数 | 胜率 | 净 PnL | 均价 | 均持仓 |\n|------|------|------|-----|------|--------|\n")
 		for _, sb := range r.SportBreakdown {
 			fmt.Fprintf(&b, "| %s | %d | %.0f%% | $%.2f | %.3f | %s |\n",
 				sb.Sport, sb.Trades, sb.WinRate*100, sb.PnLUSD, sb.AvgEntry, humanizeSec(sb.AvgHeld))
@@ -406,7 +422,7 @@ func FormatMarkdown(r *IterationReport) string {
 
 	if len(r.ExitBreakdown) > 0 {
 		b.WriteString("## 出场分析\n\n")
-		b.WriteString("| 出场原因 | 次数 | PnL | 均 PnL |\n|----------|------|-----|--------|\n")
+		b.WriteString("| 出场原因 | 次数 | 净 PnL | 均净 PnL |\n|----------|------|-----|--------|\n")
 		for _, eb := range r.ExitBreakdown {
 			fmt.Fprintf(&b, "| %s | %d | $%.2f | $%.4f |\n", eb.Reason, eb.Count, eb.PnLUSD, eb.AvgPnL)
 		}
@@ -414,7 +430,7 @@ func FormatMarkdown(r *IterationReport) string {
 	}
 
 	b.WriteString("## 入场价带分析\n\n")
-	b.WriteString("| 价带 | 笔数 | 胜率 | PnL |\n|------|------|------|-----|\n")
+	b.WriteString("| 价带 | 笔数 | 胜率 | 净 PnL |\n|------|------|------|-----|\n")
 	for _, pb := range r.PriceBands {
 		if pb.Trades == 0 {
 			continue
@@ -436,12 +452,10 @@ func FormatMarkdown(r *IterationReport) string {
 func FormatTelegram(r *IterationReport) string {
 	var b strings.Builder
 
-	sign := ""
-	if r.CumulativePnL > 0 {
-		sign = "+"
-	}
 	fmt.Fprintf(&b, "🔄 每日迭代 %s SGT\n", r.Day)
-	fmt.Fprintf(&b, "窗口 %d天 · %d笔 · PnL %s$%.2f\n", r.WindowDays, r.TotalTrades, sign, r.CumulativePnL)
+	fmt.Fprintf(&b, "窗口 %d个完整日 · 已平仓记录 %d笔\n", r.WindowDays, r.TotalTrades)
+	fmt.Fprintf(&b, "已实现净 PnL %s · 毛 PnL %s · 手续费 $%.2f\n", formatUSD(r.CumulativePnL), formatUSD(r.GrossPnLUSD), r.FeesUSD)
+	b.WriteString("仅统计已平仓；滑点已计入成交价；不含未平仓浮动 PnL。\n")
 	fmt.Fprintf(&b, "胜率 %.0f%% · SL %.0f%% / TP %.0f%% / TO %.0f%%\n\n", r.WinRate*100, r.SLHitRate*100, r.TPHitRate*100, r.TimeoutRate*100)
 
 	if len(r.SportBreakdown) > 0 {
@@ -462,6 +476,17 @@ func FormatTelegram(r *IterationReport) string {
 		}
 	}
 	return b.String()
+}
+
+func formatUSD(value float64) string {
+	switch {
+	case value > 0:
+		return fmt.Sprintf("+$%.2f", value)
+	case value < 0:
+		return fmt.Sprintf("-$%.2f", -value)
+	default:
+		return "$0.00"
+	}
 }
 
 func humanizeSec(sec int) string {

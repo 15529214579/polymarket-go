@@ -165,11 +165,17 @@ func TestSummarize_EmptyDay(t *testing.T) {
 
 func TestFormatTelegram_RendersWinSignAndReasons(t *testing.T) {
 	s := Summarize("2026-04-20", []TradeRecord{
-		{PnLUSD: 1.5, HeldSec: 90, ExitReason: "stop_loss"},
+		{PnLUSD: 1.5, EntryFeeUSD: 0.10, ExitFeeUSD: 0.20, NetPnLUSD: 1.20, HeldSec: 90, ExitReason: "stop_loss"},
 	})
 	out := FormatTelegram(s)
-	if !strings.Contains(out, "+1.5000 USDC") {
+	if !strings.Contains(out, "+1.2000 USDC") {
 		t.Fatalf("missing positive PnL formatting: %q", out)
+	}
+	if s.EntryFeesUSD != 0.10 || s.ExitFeesUSD != 0.20 || !strings.Contains(out, "入场 0.1000 / 出场 0.2000") {
+		t.Fatalf("missing fee breakdown: summary=%+v output=%q", s, out)
+	}
+	if !strings.Contains(out, "不含未平仓浮动 PnL") {
+		t.Fatalf("missing PnL basis: %q", out)
 	}
 	if !strings.Contains(out, "stop_loss×1") {
 		t.Fatalf("missing reason: %q", out)
