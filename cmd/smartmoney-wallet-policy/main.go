@@ -23,6 +23,10 @@ func main() {
 	minPositions := flag.Int("min_positions", 10, "minimum independent wallet-market samples before a decision")
 	promoteMinNet := flag.Float64("promote_min_net", 5, "minimum net PnL in U for promotion")
 	promoteMinROI := flag.Float64("promote_min_roi", 2, "minimum net ROI percentage for promotion")
+	promoteMinWinRate := flag.Float64("promote_min_win_rate", 45, "minimum independent-sample win rate percentage for promotion")
+	promoteMinTrimmedNet := flag.Float64("promote_min_trimmed_net", 1, "minimum net PnL after removing the best sample")
+	maxBestSampleShare := flag.Float64("max_best_sample_share", 60, "maximum percentage of total net PnL contributed by the best sample")
+	maxTwoSidedMarkets := flag.Int("max_two_sided_markets", 0, "maximum markets where a wallet traded multiple outcomes")
 	demoteMaxNet := flag.Float64("demote_max_net", -5, "maximum net PnL in U before demotion")
 	flag.Parse()
 
@@ -35,10 +39,14 @@ func main() {
 		fatalf("read whale aliases: %v", err)
 	}
 	report := paperreport.AnalyzeWalletPolicy(trades, aliases, paperreport.WalletPolicyConfig{
-		MinPositions:  *minPositions,
-		PromoteMinNet: *promoteMinNet,
-		PromoteMinROI: *promoteMinROI,
-		DemoteMaxNet:  *demoteMaxNet,
+		MinPositions:         *minPositions,
+		PromoteMinNet:        *promoteMinNet,
+		PromoteMinROI:        *promoteMinROI,
+		PromoteMinWinRate:    *promoteMinWinRate,
+		PromoteMinTrimmedNet: *promoteMinTrimmedNet,
+		MaxBestSampleShare:   *maxBestSampleShare,
+		MaxTwoSidedMarkets:   *maxTwoSidedMarkets,
+		DemoteMaxNet:         *demoteMaxNet,
 	})
 
 	body, err := json.MarshalIndent(report, "", "  ")
@@ -91,6 +99,8 @@ func readAliases(path string) (map[string]string, error) {
 		aliases[label] = wallet
 		aliases["copytrade_"+label] = wallet
 		aliases["copytrade_football_score_"+label] = wallet
+		aliases["copytrade_collect_"+label] = wallet
+		aliases["copytrade_collect_football_score_"+label] = wallet
 	}
 	return aliases, sc.Err()
 }
@@ -98,17 +108,18 @@ func readAliases(path string) (map[string]string, error) {
 func formatMarkdown(report paperreport.WalletPolicyReport) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Smartmoney Paper Wallet Policy\n\nGenerated: %s\n\n", report.GeneratedAt.Format("2006-01-02T15:04:05Z07:00"))
-	fmt.Fprintf(&b, "- Rule: at least %d independent wallet-market samples; promote at net >= %+.2fU and ROI >= %+.2f%%; demote at net <= %+.2fU\n", report.Config.MinPositions, report.Config.PromoteMinNet, report.Config.PromoteMinROI, report.Config.DemoteMaxNet)
+	fmt.Fprintf(&b, "- Rule: at least %d independent wallet-market samples; promote at net >= %+.2fU, ROI >= %+.2f%%, win rate >= %.1f%%, and trimmed net >= %+.2fU\n", report.Config.MinPositions, report.Config.PromoteMinNet, report.Config.PromoteMinROI, report.Config.PromoteMinWinRate, report.Config.PromoteMinTrimmedNet)
+	fmt.Fprintf(&b, "- Robustness: best sample <= %.1f%% of net; two-sided markets <= %d; demote at net <= %+.2fU\n", report.Config.MaxBestSampleShare, report.Config.MaxTwoSidedMarkets, report.Config.DemoteMaxNet)
 	fmt.Fprintf(&b, "- Decisions: %d promoted / %d demoted / %d unresolved\n\n", report.Promoted, report.Demoted, report.Unresolved)
-	b.WriteString("| Decision | Wallet | Samples | Positions | Capital | Fees | Net | ROI | W/L/F | Reason |\n")
-	b.WriteString("|---|---|---:|---:|---:|---:|---:|---:|---:|---|\n")
+	b.WriteString("| Decision | Wallet | Samples | Positions | Capital | Fees | Net | Trimmed | ROI | Win | Two-sided | Max/sample | Reason |\n")
+	b.WriteString("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|\n")
 	for _, row := range report.Wallets {
 		wallet := row.Wallet
 		if wallet == "" {
 			wallet = row.Source
 		}
-		fmt.Fprintf(&b, "| %s | %s | %d | %d | %.2f | %.2f | %+.2f | %+.2f%% | %d/%d/%d | %s |\n",
-			row.Decision, wallet, row.IndependentSamples, row.Positions, row.CapitalUSD, row.FeesUSD, row.NetPnL, row.ROI, row.Wins, row.Losses, row.Flat, row.Reason)
+		fmt.Fprintf(&b, "| %s | %s | %d | %d | %.2f | %.2f | %+.2f | %+.2f | %+.2f%% | %.1f%% | %d | %d | %s |\n",
+			row.Decision, wallet, row.IndependentSamples, row.Positions, row.CapitalUSD, row.FeesUSD, row.NetPnL, row.TrimmedNetPnL, row.ROI, row.WinRate, row.TwoSidedMarkets, row.MaxPositionsPerSample, row.Reason)
 	}
 	return b.String()
 }

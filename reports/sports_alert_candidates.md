@@ -1,13 +1,13 @@
 # Sports Alert Candidates
 
-**Generated:** 2026-08-03 00:10 +08
+**Generated:** 2026-08-04 13:10 +08
 
-- Recent BUY rows inspected: 6
+- Recent BUY rows inspected: 0
 - Diagnostic window: 6h0m0s
 - Alert window: 10m0s
 - Consensus alert window: 15m0s
-- Currently alertable unsent rows: 2
-- Eligible unsent rows in diagnostic window: 2
+- Currently alertable unsent rows: 0
+- Eligible unsent rows in diagnostic window: 0
 - Already sent rows in window: 0
 - Positive-edge required modes: CANDIDATE,PROBATION
 - Observe min notional: $3000
@@ -131,9 +131,4 @@
 
 | Status | Mode | Wallet | List | Tier | Bot | Notional | Age | Reason | Market |
 |---|---|---|---|---|---:|---:|---:|---|---|
-| eligible | EDGE-HOT | `0x2929...1dd0` | tape_edgehot | C | 44.0 | $1000 | 3m | edge-hot 100.0% win avg +16.72pp over 4 samples | Dota 2: REKONIX vs Yakult Brothers - Game 1 Winner |
-| eligible | EDGE-HOT | `0x2929...1dd0` | tape_edgehot | C | 44.0 | $1000 | 4m | edge-hot 100.0% win avg +16.72pp over 4 samples | Dota 2: REKONIX vs Yakult Brothers - Game 1 Winner |
-| blocked | OBSERVE | `0xe59f...0d08` | - | - | 0.0 | $1332 | 7m | observe wallet unscored | Dota 2: REKONIX vs Yakult Brothers - Game 1 Winner |
-| blocked | OBSERVE | `0xc3e5...519d` | - | - | 0.0 | $1134 | 10m | observe wallet unscored | Dota 2: Team Falcons vs 1win - Game 2 Winner |
-| blocked | OBSERVE | `0x2e3c...08ba` | - | - | 0.0 | $710 | 11m | observe wallet unscored | Dota 2: REKONIX vs Yakult Brothers - Game 1 Winner |
-| blocked | OBSERVE | `0xeb69...cfd1` | - | - | 0.0 | $600 | 10m | observe wallet unscored | Dota 2: Team Falcons vs 1win - Game 2 Winner |
+| none |  |  |  |  | 0.0 | $0 |  |  |  |

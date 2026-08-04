@@ -1,6 +1,6 @@
 # Sports Whale Tape
 
-**Generated:** 2026-08-03 00:10 +08
+**Generated:** 2026-08-04 00:10 +08
 
 - Target categories: basketball,soccer,esports
 - Min notional: $500
@@ -13,19 +13,19 @@
 
 | Wallet | List | Tier | Buys | BuyNotional | MaxBuy | Mkts | Cat | Smart | Bot | TargetCopyROI | TargetCopyT |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `0x2929...1dd0` | tape_edgehot | C | 2 | $2000 | $1000 | 1 | 1 | 100.0 | 44.0 | 109.2% | 24 |
-| `0xe59f...0d08` | - | - | 1 | $1332 | $1332 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
-| `0xc3e5...519d` | - | - | 1 | $1134 | $1134 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
-| `0x2e3c...08ba` | - | - | 1 | $710 | $710 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
-| `0xeb69...cfd1` | - | - | 1 | $600 | $600 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
+| `0x7993...cf5a` | - | - | 2 | $5000 | $3000 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
+| `0x1b1f...d6d5` | - | - | 1 | $4946 | $4946 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
+| `0xad42...6031` | - | - | 1 | $1000 | $1000 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
+| `0xfbd8...d03f` | - | - | 1 | $631 | $631 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
+| `0x96a8...6107` | - | - | 1 | $600 | $600 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
 
 ## Largest Trades
 
 | Time | Wallet | List | Side | Notional | Price | Outcome | Category | Market |
 |---|---|---|---|---:|---:|---|---|---|
-| 08-03 00:02 | `0xe59f...0d08` | - | BUY | $1332 | 0.860 | REKONIX | esports | Dota 2: REKONIX vs Yakult Brothers - Game 1 Winner |
-| 08-03 00:00 | `0xc3e5...519d` | - | BUY | $1134 | 0.859 | Team Falcons | esports | Dota 2: Team Falcons vs 1win - Game 2 Winner |
-| 08-03 00:06 | `0x2929...1dd0` | tape_edgehot | BUY | $1000 | 0.900 | REKONIX | esports | Dota 2: REKONIX vs Yakult Brothers - Game 1 Winner |
-| 08-03 00:05 | `0x2929...1dd0` | tape_edgehot | BUY | $1000 | 0.890 | REKONIX | esports | Dota 2: REKONIX vs Yakult Brothers - Game 1 Winner |
-| 08-02 23:59 | `0x2e3c...08ba` | - | BUY | $710 | 0.920 | REKONIX | esports | Dota 2: REKONIX vs Yakult Brothers - Game 1 Winner |
-| 08-03 00:00 | `0xeb69...cfd1` | - | BUY | $600 | 0.865 | Team Falcons | esports | Dota 2: Team Falcons vs 1win - Game 2 Winner |
+| 08-04 00:03 | `0x1b1f...d6d5` | - | BUY | $4946 | 0.479 | Team Falcons | esports | Dota 2: Team Falcons vs BetBoom Team - Game 2 Winner |
+| 08-04 00:07 | `0x7993...cf5a` | - | BUY | $3000 | 0.729 | Vici Gaming | esports | Dota 2: Vici Gaming vs Yakult Brothers (BO3) - Games of the Future ... |
+| 08-04 00:07 | `0x7993...cf5a` | - | BUY | $2000 | 0.703 | Vici Gaming | esports | Dota 2: Vici Gaming vs Yakult Brothers (BO3) - Games of the Future ... |
+| 08-04 00:05 | `0xad42...6031` | - | BUY | $1000 | 0.280 | Yakult Brothers | esports | Dota 2: Vici Gaming vs Yakult Brothers (BO3) - Games of the Future ... |
+| 08-04 00:05 | `0xfbd8...d03f` | - | BUY | $631 | 0.690 | Vici Gaming | esports | Dota 2: Vici Gaming vs Yakult Brothers (BO3) - Games of the Future ... |
+| 08-04 00:06 | `0x96a8...6107` | - | BUY | $600 | 0.309 | Yakult Brothers | esports | Dota 2: Vici Gaming vs Yakult Brothers (BO3) - Games of the Future ... |

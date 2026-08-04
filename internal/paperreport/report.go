@@ -57,28 +57,38 @@ type Report struct {
 }
 
 type WalletPolicyConfig struct {
-	MinPositions  int     `json:"min_independent_samples"`
-	PromoteMinNet float64 `json:"promote_min_net_usd"`
-	PromoteMinROI float64 `json:"promote_min_roi_pct"`
-	DemoteMaxNet  float64 `json:"demote_max_net_usd"`
+	MinPositions         int     `json:"min_independent_samples"`
+	PromoteMinNet        float64 `json:"promote_min_net_usd"`
+	PromoteMinROI        float64 `json:"promote_min_roi_pct"`
+	PromoteMinWinRate    float64 `json:"promote_min_win_rate_pct"`
+	PromoteMinTrimmedNet float64 `json:"promote_min_trimmed_net_usd"`
+	MaxBestSampleShare   float64 `json:"max_best_sample_share_pct"`
+	MaxTwoSidedMarkets   int     `json:"max_two_sided_markets"`
+	DemoteMaxNet         float64 `json:"demote_max_net_usd"`
 }
 
 type WalletPerformance struct {
-	Wallet             string  `json:"wallet,omitempty"`
-	Source             string  `json:"source"`
-	IndependentSamples int     `json:"independent_samples"`
-	Positions          int     `json:"positions"`
-	Records            int     `json:"records"`
-	CapitalUSD         float64 `json:"capital_usd"`
-	GrossPnL           float64 `json:"gross_pnl_usd"`
-	FeesUSD            float64 `json:"fees_usd"`
-	NetPnL             float64 `json:"net_pnl_usd"`
-	ROI                float64 `json:"roi_pct"`
-	Wins               int     `json:"wins"`
-	Losses             int     `json:"losses"`
-	Flat               int     `json:"flat"`
-	Decision           string  `json:"decision"`
-	Reason             string  `json:"reason"`
+	Wallet                string  `json:"wallet,omitempty"`
+	Source                string  `json:"source"`
+	IndependentSamples    int     `json:"independent_samples"`
+	Positions             int     `json:"positions"`
+	Records               int     `json:"records"`
+	CapitalUSD            float64 `json:"capital_usd"`
+	GrossPnL              float64 `json:"gross_pnl_usd"`
+	FeesUSD               float64 `json:"fees_usd"`
+	NetPnL                float64 `json:"net_pnl_usd"`
+	ROI                   float64 `json:"roi_pct"`
+	WinRate               float64 `json:"win_rate_pct"`
+	Wins                  int     `json:"wins"`
+	Losses                int     `json:"losses"`
+	Flat                  int     `json:"flat"`
+	BestSampleNet         float64 `json:"best_sample_net_usd"`
+	TrimmedNetPnL         float64 `json:"trimmed_net_pnl_usd"`
+	BestSampleShare       float64 `json:"best_sample_share_pct"`
+	TwoSidedMarkets       int     `json:"two_sided_markets"`
+	MaxPositionsPerSample int     `json:"max_positions_per_sample"`
+	Decision              string  `json:"decision"`
+	Reason                string  `json:"reason"`
 }
 
 type WalletPolicyReport struct {
@@ -102,6 +112,8 @@ type positionResult struct {
 	strategy  string
 	source    string
 	market    string
+	asset     string
+	outcome   string
 	costed    bool
 }
 
@@ -205,6 +217,8 @@ func groupTrades(trades []journal.TradeRecord, report *Report) map[string]*posit
 		pos.source = mergeSource(pos.source, normalizedSource(tr.SignalSource))
 		pos.strategy = mergeStrategy(pos.strategy, strategyLabel(tr))
 		pos.market = mergeLabel(pos.market, strings.TrimSpace(tr.Market))
+		pos.asset = mergeLabel(pos.asset, strings.TrimSpace(tr.AssetID))
+		pos.outcome = mergeLabel(pos.outcome, strings.TrimSpace(tr.Outcome))
 	}
 	return positions
 }
@@ -219,6 +233,15 @@ func AnalyzeWalletPolicy(trades []journal.TradeRecord, aliases map[string]string
 	if cfg.PromoteMinROI == 0 {
 		cfg.PromoteMinROI = 2
 	}
+	if cfg.PromoteMinWinRate == 0 {
+		cfg.PromoteMinWinRate = 45
+	}
+	if cfg.PromoteMinTrimmedNet == 0 {
+		cfg.PromoteMinTrimmedNet = 1
+	}
+	if cfg.MaxBestSampleShare == 0 {
+		cfg.MaxBestSampleShare = 60
+	}
 	if cfg.DemoteMaxNet == 0 {
 		cfg.DemoteMaxNet = -5
 	}
@@ -226,6 +249,8 @@ func AnalyzeWalletPolicy(trades []journal.TradeRecord, aliases map[string]string
 	result := WalletPolicyReport{GeneratedAt: time.Now(), Config: cfg}
 	byWallet := map[string]*WalletPerformance{}
 	byWalletSample := map[string]map[string]float64{}
+	byWalletSamplePositions := map[string]map[string]int{}
+	byWalletMarketSides := map[string]map[string]map[string]struct{}{}
 	for _, pos := range groupTrades(trades, nil) {
 		wallet := walletFromSource(pos.source, aliases)
 		if wallet == "" && !strings.HasPrefix(strings.ToLower(pos.source), "copytrade") {
@@ -254,11 +279,36 @@ func AnalyzeWalletPolicy(trades []journal.TradeRecord, aliases map[string]string
 			byWalletSample[key] = map[string]float64{}
 		}
 		byWalletSample[key][sample] += pos.net
+		if byWalletSamplePositions[key] == nil {
+			byWalletSamplePositions[key] = map[string]int{}
+		}
+		byWalletSamplePositions[key][sample]++
+		market := strings.TrimSpace(pos.market)
+		if market != "" && market != "mixed" {
+			side := strings.TrimSpace(pos.asset)
+			if side == "" || side == "mixed" {
+				side = strings.ToLower(strings.TrimSpace(pos.outcome))
+			}
+			if side != "" && side != "mixed" {
+				if byWalletMarketSides[key] == nil {
+					byWalletMarketSides[key] = map[string]map[string]struct{}{}
+				}
+				if byWalletMarketSides[key][market] == nil {
+					byWalletMarketSides[key][market] = map[string]struct{}{}
+				}
+				byWalletMarketSides[key][market][side] = struct{}{}
+			}
+		}
 	}
 
 	for key, row := range byWallet {
+		bestSet := false
 		for _, sampleNet := range byWalletSample[key] {
 			row.IndependentSamples++
+			if !bestSet || sampleNet > row.BestSampleNet {
+				row.BestSampleNet = sampleNet
+				bestSet = true
+			}
 			switch {
 			case sampleNet > 0:
 				row.Wins++
@@ -268,8 +318,26 @@ func AnalyzeWalletPolicy(trades []journal.TradeRecord, aliases map[string]string
 				row.Flat++
 			}
 		}
+		for _, positions := range byWalletSamplePositions[key] {
+			if positions > row.MaxPositionsPerSample {
+				row.MaxPositionsPerSample = positions
+			}
+		}
+		for _, sides := range byWalletMarketSides[key] {
+			if len(sides) > 1 {
+				row.TwoSidedMarkets++
+			}
+		}
+		row.TrimmedNetPnL = row.NetPnL - row.BestSampleNet
 		if row.CapitalUSD > 0 {
 			row.ROI = row.NetPnL / row.CapitalUSD * 100
+		}
+		decidedSamples := row.Wins + row.Losses
+		if decidedSamples > 0 {
+			row.WinRate = float64(row.Wins) / float64(decidedSamples) * 100
+		}
+		if row.NetPnL > 0 && row.BestSampleNet > 0 {
+			row.BestSampleShare = row.BestSampleNet / row.NetPnL * 100
 		}
 		switch {
 		case row.Wallet == "":
@@ -283,10 +351,25 @@ func AnalyzeWalletPolicy(trades []journal.TradeRecord, aliases map[string]string
 			row.Decision = "demote"
 			row.Reason = fmt.Sprintf("net %+.2fU <= %+.2fU", row.NetPnL, cfg.DemoteMaxNet)
 			result.Demoted++
+		case row.TwoSidedMarkets > cfg.MaxTwoSidedMarkets:
+			row.Decision = "keep"
+			row.Reason = fmt.Sprintf("two-sided in %d markets > %d", row.TwoSidedMarkets, cfg.MaxTwoSidedMarkets)
+		case row.BestSampleShare > cfg.MaxBestSampleShare:
+			row.Decision = "keep"
+			row.Reason = fmt.Sprintf("best sample is %.1f%% of net > %.1f%%", row.BestSampleShare, cfg.MaxBestSampleShare)
 		case row.NetPnL >= cfg.PromoteMinNet && row.ROI >= cfg.PromoteMinROI:
-			row.Decision = "promote"
-			row.Reason = fmt.Sprintf("net %+.2fU, ROI %+.2f%%", row.NetPnL, row.ROI)
-			result.Promoted++
+			switch {
+			case row.WinRate < cfg.PromoteMinWinRate:
+				row.Decision = "keep"
+				row.Reason = fmt.Sprintf("win rate %.1f%% < %.1f%%", row.WinRate, cfg.PromoteMinWinRate)
+			case row.TrimmedNetPnL < cfg.PromoteMinTrimmedNet:
+				row.Decision = "keep"
+				row.Reason = fmt.Sprintf("net excluding best sample %+.2fU < %+.2fU", row.TrimmedNetPnL, cfg.PromoteMinTrimmedNet)
+			default:
+				row.Decision = "promote"
+				row.Reason = fmt.Sprintf("net %+.2fU, trimmed %+.2fU, win %.1f%%", row.NetPnL, row.TrimmedNetPnL, row.WinRate)
+				result.Promoted++
+			}
 		default:
 			row.Decision = "keep"
 			row.Reason = fmt.Sprintf("net %+.2fU, ROI %+.2f%%", row.NetPnL, row.ROI)
@@ -312,7 +395,13 @@ func walletFromSource(source string, aliases map[string]string) string {
 			}
 		}
 	}
-	for _, key := range []string{source, strings.TrimPrefix(source, "copytrade_football_score_"), strings.TrimPrefix(source, "copytrade_")} {
+	for _, key := range []string{
+		source,
+		strings.TrimPrefix(source, "copytrade_collect_football_score_"),
+		strings.TrimPrefix(source, "copytrade_collect_"),
+		strings.TrimPrefix(source, "copytrade_football_score_"),
+		strings.TrimPrefix(source, "copytrade_"),
+	} {
 		if wallet := strings.ToLower(strings.TrimSpace(aliases[key])); wallet != "" {
 			return wallet
 		}
@@ -382,6 +471,9 @@ func isCollectionStrategy(name string) bool {
 }
 
 func isCollectionPosition(pos strategy.Position) bool {
+	if strings.EqualFold(strings.TrimSpace(pos.ExposureScope), strategy.ExposureScopeCollection) {
+		return true
+	}
 	source := pos.SignalSource
 	if strings.TrimSpace(source) == "" {
 		source = pos.Source

@@ -22,6 +22,10 @@ func lt(mid float64, at time.Time) feed.Tick {
 	return feed.Tick{AssetID: "A", Market: "M", Time: at, Mid: mid}
 }
 
+func executableTick(mid, bid float64, at time.Time) feed.Tick {
+	return feed.Tick{AssetID: "A", Market: "M", Time: at, QuoteTime: at, Mid: mid, BestBid: bid, BestBidSize: 1_000}
+}
+
 func TestLadder_UnknownPos_NoEmit(t *testing.T) {
 	l := NewLadderTracker(lcfg())
 	if _, fired := l.OnTick("ghost", lt(0.55, time.Now())); fired {
@@ -197,6 +201,118 @@ func TestLadder_Forget_DropsState(t *testing.T) {
 	}
 	if _, fired := l.OnTick("p1", lt(0.60, t0)); fired {
 		t.Fatalf("forgotten pos should not emit")
+	}
+}
+
+func TestLadder_FeeAwareTPUsesExecutableBidAndCosts(t *testing.T) {
+	cfg := lcfg()
+	cfg.TP1Pct = 0.30
+	cfg.TP2Pct = 9.99
+	cfg.SLPct = 0.35
+	cfg.MaxHold = time.Hour
+	cfg.FeeAware = true
+	cfg.RequireExecutableBid = true
+	cfg.SlippageBp = 50
+	cfg.TakerFeeRate = 0.05
+	l := NewLadderTracker(cfg)
+	t0 := time.Now()
+	l.OpenPosition(Position{
+		ID: "p1", AssetID: "A", Market: "M", EntryTime: t0,
+		EntryMid: 0.50, Units: 40, InitUnits: 40, SizeUSD: 20, OpenFeeUSD: 0.50,
+	}, 0.05)
+
+	if _, fired := l.OnTick("p1", feed.Tick{Time: t0.Add(time.Second), Mid: 0.90}); fired {
+		t.Fatal("fee-aware ladder must not trigger without an executable bid")
+	}
+	if _, fired := l.OnTick("p1", executableTick(0.68, 0.67, t0.Add(2*time.Second))); fired {
+		t.Fatal("gross move reaches 30%, but net return after costs should not")
+	}
+	ex, fired := l.OnTick("p1", executableTick(0.69, 0.68, t0.Add(3*time.Second)))
+	if !fired || ex.Reason != ExitLadderTP1 || ex.CloseUnits != 20 {
+		t.Fatalf("fee-aware TP1=%+v fired=%v", ex, fired)
+	}
+	if absDiff(ex.ExitMid, 0.68*0.995) > 1e-9 || ex.TakerFeeRate != 0.05 {
+		t.Fatalf("executable fill estimate=%+v", ex)
+	}
+}
+
+func TestLadder_StopLossRequiresMinimumHoldAndConfirmation(t *testing.T) {
+	cfg := lcfg()
+	cfg.TP1Pct = 9.99
+	cfg.TP2Pct = 9.99
+	cfg.SLPct = 0.35
+	cfg.MaxHold = time.Hour
+	cfg.RequireExecutableBid = true
+	cfg.MinHoldBeforeSL = 2 * time.Minute
+	cfg.SLConfirmTime = 30 * time.Second
+	l := NewLadderTracker(cfg)
+	t0 := time.Now()
+	l.Open("p1", "M", "A", feed.Tick{Time: t0, Mid: 0.50}, 40)
+
+	if _, fired := l.OnTick("p1", executableTick(0.21, 0.20, t0.Add(time.Minute))); fired {
+		t.Fatal("SL fired during minimum hold")
+	}
+	if _, fired := l.OnTick("p1", executableTick(0.31, 0.30, t0.Add(2*time.Minute))); fired {
+		t.Fatal("SL fired before confirmation")
+	}
+	if _, fired := l.OnTick("p1", executableTick(0.41, 0.40, t0.Add(2*time.Minute+20*time.Second))); fired {
+		t.Fatal("recovery should reset SL confirmation")
+	}
+	if _, fired := l.OnTick("p1", executableTick(0.31, 0.30, t0.Add(3*time.Minute))); fired {
+		t.Fatal("reset SL fired immediately")
+	}
+	ex, fired := l.OnTick("p1", executableTick(0.31, 0.30, t0.Add(3*time.Minute+31*time.Second)))
+	if !fired || ex.Reason != ExitLadderSL {
+		t.Fatalf("confirmed SL=%+v fired=%v", ex, fired)
+	}
+}
+
+func TestLadder_FeeAwareTrailingClosesRemainderAfterTP1(t *testing.T) {
+	cfg := lcfg()
+	cfg.TP1Pct = 0.30
+	cfg.TP2Pct = 9.99
+	cfg.SLPct = 0.35
+	cfg.TrailingPct = 0.20
+	cfg.MaxHold = time.Hour
+	cfg.FeeAware = true
+	cfg.RequireExecutableBid = true
+	cfg.SlippageBp = 50
+	cfg.TakerFeeRate = 0.05
+	l := NewLadderTracker(cfg)
+	t0 := time.Now()
+	l.OpenPosition(Position{
+		ID: "p1", AssetID: "A", Market: "M", EntryTime: t0,
+		EntryMid: 0.50, Units: 40, InitUnits: 40, SizeUSD: 20, OpenFeeUSD: 0.50,
+	}, 0.05)
+
+	tp1, fired := l.OnTick("p1", executableTick(0.69, 0.68, t0.Add(time.Second)))
+	if !fired || tp1.Reason != ExitLadderTP1 {
+		t.Fatalf("TP1=%+v fired=%v", tp1, fired)
+	}
+	l.Confirm("p1")
+	if _, fired := l.OnTick("p1", executableTick(0.81, 0.80, t0.Add(2*time.Second))); fired {
+		t.Fatal("new high should move the trailing peak, not exit")
+	}
+	trail, fired := l.OnTick("p1", executableTick(0.71, 0.70, t0.Add(3*time.Second)))
+	if !fired || trail.Reason != ExitLadderTrailing || trail.Tranche != "trail" || !trail.Final || trail.CloseUnits != 20 {
+		t.Fatalf("trailing exit=%+v fired=%v", trail, fired)
+	}
+}
+
+func TestLadder_SyncPositionClearsPendingAndRestoresPartialProgress(t *testing.T) {
+	l := NewLadderTracker(lcfg())
+	t0 := time.Now()
+	l.Open("p1", "M", "A", feed.Tick{Time: t0, Mid: 0.40}, 100)
+	if _, fired := l.OnTick("p1", lt(0.46, t0.Add(time.Second))); !fired {
+		t.Fatal("expected pending TP1")
+	}
+	l.SyncPosition(Position{
+		ID: "p1", AssetID: "A", Market: "M", EntryTime: t0,
+		EntryMid: 0.40, InitUnits: 100, Units: 80,
+	})
+	ex, fired := l.OnTick("p1", lt(0.46, t0.Add(2*time.Second)))
+	if !fired || ex.Reason != ExitLadderTP1 || ex.CloseUnits != 30 {
+		t.Fatalf("synced TP1=%+v fired=%v", ex, fired)
 	}
 }
 

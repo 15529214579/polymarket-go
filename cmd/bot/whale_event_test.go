@@ -331,6 +331,17 @@ func TestCopytradeExposureEventKey_GroupsFootballScoreBasket(t *testing.T) {
 	}
 }
 
+func TestCopytradeCoreDedupeKeyUsesWalletConditionAndAsset(t *testing.T) {
+	ev := whale.AlertEvent{Wallet: "0xABCDEF", ConditionID: "COND", AssetID: "TOKEN"}
+	if got, want := copytradeCoreDedupeKey(ev), "0xabcdef|cond|token"; got != want {
+		t.Fatalf("dedupe key=%q want=%q", got, want)
+	}
+	ev.AssetID = ""
+	if got := copytradeCoreDedupeKey(ev); got != "" {
+		t.Fatalf("incomplete event dedupe key=%q", got)
+	}
+}
+
 func TestCopytradeAutoAllowedForAction_PaperPromptOptIn(t *testing.T) {
 	if ok, action := copytradeAutoAllowedForAction("prompt", false, false); ok || action != "prompt" {
 		t.Fatalf("default prompt allowed=%v action=%q, want blocked prompt", ok, action)

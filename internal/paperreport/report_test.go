@@ -1,6 +1,7 @@
 package paperreport
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -32,7 +33,7 @@ func TestAnalyzeGroupsTranchesAndOpenExposure(t *testing.T) {
 	if got := findCohort(report.ByStrategy, "football_score"); got.Positions != 1 || got.NetPnL != 3.4 {
 		t.Fatalf("score=%+v", got)
 	}
-	if report.Tradable.Closed.Positions != 3 || report.Tradable.Closed.NetPnL != 1.7 {
+	if report.Tradable.Closed.Positions != 3 || math.Abs(report.Tradable.Closed.NetPnL-1.7) > 1e-9 {
 		t.Fatalf("tradable=%+v", report.Tradable)
 	}
 	if report.GeneratedAt.Before(time.Now().Add(-time.Minute)) {
@@ -128,6 +129,56 @@ func TestAnalyzeWalletPolicyCountsIndependentWalletMarketSamples(t *testing.T) {
 	}
 }
 
+func TestAnalyzeWalletPolicyKeepsOutlierDependentWalletOutOfCore(t *testing.T) {
+	wallet := "0x4444444444444444444444444444444444444444"
+	entry := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)
+	var trades []journal.TradeRecord
+	for i := 0; i < 10; i++ {
+		net := -1.0
+		if i == 0 {
+			net = 20
+		}
+		trades = append(trades, journal.TradeRecord{
+			ID: "outlier-" + string(rune('a'+i)), Market: "market-" + string(rune('a'+i)),
+			EntryTime: entry.Add(time.Duration(i) * time.Minute), SizeUSD: 20, NetPnLUSD: net,
+			SignalSource: "copytrade_wallet:" + wallet,
+		})
+	}
+
+	report := AnalyzeWalletPolicy(trades, nil, WalletPolicyConfig{})
+	row := findWallet(report.Wallets, wallet)
+	if row.Decision != "keep" || row.TrimmedNetPnL != -9 || row.BestSampleShare <= 100 {
+		t.Fatalf("outlier wallet=%+v", row)
+	}
+}
+
+func TestAnalyzeWalletPolicyKeepsTwoSidedWalletOutOfCore(t *testing.T) {
+	wallet := "0x5555555555555555555555555555555555555555"
+	entry := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)
+	var trades []journal.TradeRecord
+	for i := 0; i < 10; i++ {
+		market := "market-" + string(rune('a'+i))
+		trades = append(trades, journal.TradeRecord{
+			ID: "side-a-" + string(rune('a'+i)), Market: market, AssetID: "yes-" + market,
+			EntryTime: entry.Add(time.Duration(i) * time.Minute), SizeUSD: 20, NetPnLUSD: 1,
+			SignalSource: "copytrade_wallet:" + wallet,
+		})
+		if i == 0 {
+			trades = append(trades, journal.TradeRecord{
+				ID: "side-b", Market: market, AssetID: "no-" + market,
+				EntryTime: entry.Add(30 * time.Second), SizeUSD: 20, NetPnLUSD: 1,
+				SignalSource: "copytrade_wallet:" + wallet,
+			})
+		}
+	}
+
+	report := AnalyzeWalletPolicy(trades, nil, WalletPolicyConfig{})
+	row := findWallet(report.Wallets, wallet)
+	if row.Decision != "keep" || row.TwoSidedMarkets != 1 || row.IndependentSamples != 10 {
+		t.Fatalf("two-sided wallet=%+v", row)
+	}
+}
+
 func TestWalletFromSourceSupportsBroadCollection(t *testing.T) {
 	wallet := "0x3333333333333333333333333333333333333333"
 	for _, source := range []string{
@@ -135,6 +186,19 @@ func TestWalletFromSourceSupportsBroadCollection(t *testing.T) {
 		"copytrade_collect_football_score_wallet:" + wallet,
 	} {
 		if got := walletFromSource(source, nil); got != wallet {
+			t.Fatalf("walletFromSource(%q)=%q, want %q", source, got, wallet)
+		}
+	}
+}
+
+func TestWalletFromSourceResolvesLegacyBroadCollectionAlias(t *testing.T) {
+	wallet := "0x6666666666666666666666666666666666666666"
+	aliases := map[string]string{"legacy-label": wallet}
+	for _, source := range []string{
+		"copytrade_collect_legacy-label",
+		"copytrade_collect_football_score_legacy-label",
+	} {
+		if got := walletFromSource(source, aliases); got != wallet {
 			t.Fatalf("walletFromSource(%q)=%q, want %q", source, got, wallet)
 		}
 	}

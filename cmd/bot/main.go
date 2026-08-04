@@ -66,6 +66,11 @@ func main() {
 	ladderTP2Pct := flag.Float64("ladder_tp2_pct", 9.99, "ladder TP2 trigger: 9.99 = effectively disabled")
 	ladderTP2Frac := flag.Float64("ladder_tp2_frac", 1.00, "fraction of initial units to close on TP2 (1.0 = all remaining)")
 	ladderSLPct := flag.Float64("ladder_sl_pct", 0.15, "ladder stop-loss: exit ≤ entry × (1 - this) closes 100%")
+	ladderTrailingPct := flag.Float64("ladder_trailing_pct", 0, "post-TP1 trailing drawdown in return terms; 0 disables")
+	ladderSLConfirm := flag.Duration("ladder_sl_confirm", 0, "loss must persist for this duration before ladder SL")
+	ladderMinHoldBeforeSL := flag.Duration("ladder_min_hold_before_sl", 0, "minimum hold before ladder SL can trigger")
+	ladderFeeAware := flag.Bool("ladder_fee_aware", false, "evaluate TP/SL/trailing thresholds after entry fee, exit fee, and slippage")
+	ladderRequireBid := flag.Bool("ladder_require_bid", false, "require an executable best bid before evaluating ladder exits")
 	ladderMaxHold := flag.Duration("ladder_max_hold", 6*time.Hour, "ladder hard timeout — closes remainder")
 	exitPollInterval := flag.Duration("exit_poll_interval", 5*time.Second, "deadline check interval for timed exits")
 	eventPostStartHold := flag.Duration("event_post_start_hold", 30*time.Minute, "event positions: minimum observation hold after scheduled start or in-play entry")
@@ -206,12 +211,20 @@ func main() {
 		}
 	case "detect":
 		ladderCfg := strategy.LadderConfig{
-			TP1Pct:  *ladderTP1Pct,
-			TP1Frac: *ladderTP1Frac,
-			TP2Pct:  *ladderTP2Pct,
-			TP2Frac: *ladderTP2Frac,
-			SLPct:   *ladderSLPct,
-			MaxHold: *ladderMaxHold,
+			TP1Pct:               *ladderTP1Pct,
+			TP1Frac:              *ladderTP1Frac,
+			TP2Pct:               *ladderTP2Pct,
+			TP2Frac:              *ladderTP2Frac,
+			SLPct:                *ladderSLPct,
+			TrailingPct:          *ladderTrailingPct,
+			SLConfirmTime:        *ladderSLConfirm,
+			MinHoldBeforeSL:      *ladderMinHoldBeforeSL,
+			MaxHold:              *ladderMaxHold,
+			FeeAware:             *ladderFeeAware,
+			RequireExecutableBid: *ladderRequireBid,
+			SlippageBp:           *slippageBp,
+			FlatFeeBp:            *feeBp,
+			TakerFeeRate:         *takerFeeRate,
 		}
 		lottCfg := strategy.LotteryConfig{
 			MinPrice:     *lotteryMin,
@@ -739,6 +752,13 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 	if eventPostStartHold < 0 || timeoutReentryCooldown < 0 || posMaxPerEventUSD < 0 || footballScoreMaxEventUSD < 0 {
 		return fmt.Errorf("event hold and timeout cooldown must not be negative")
 	}
+	if ladderCfg.TP1Pct < 0 || ladderCfg.TP2Pct < 0 || ladderCfg.SLPct < 0 || ladderCfg.TrailingPct < 0 ||
+		ladderCfg.TP1Frac <= 0 || ladderCfg.TP1Frac > 1 || ladderCfg.TP2Frac <= 0 || ladderCfg.TP2Frac > 1 ||
+		ladderCfg.SLConfirmTime < 0 || ladderCfg.MinHoldBeforeSL < 0 || ladderCfg.MaxHold <= 0 ||
+		ladderCfg.SlippageBp < 0 || ladderCfg.SlippageBp >= 10_000 || ladderCfg.FlatFeeBp < 0 ||
+		ladderCfg.TakerFeeRate < 0 || ladderCfg.TakerFeeRate > 1 {
+		return fmt.Errorf("invalid ladder thresholds, durations, or cost model")
+	}
 	paperCollectBroad = paperCollectionEnabled(paperCollectBroad, signalMode, liveTrading)
 	paperFollowFootballScore := signalMode == "copytrade" && !liveTrading && os.Getenv("COPYTRADE_PAPER_FOLLOW_FOOTBALL_SCORE") == "1"
 	paperFootballScoreSize := parseWhaleEnvFloat("COPYTRADE_PAPER_FOOTBALL_SCORE_SIZE", 5)
@@ -1004,6 +1024,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 		posCfg.MaxPerMarketUSD = posMaxPerMarketUSD
 	}
 	posCfg.MaxPerEventUSD = posMaxPerEventUSD
+	posCfg.PolicyVersion = strings.TrimSpace(os.Getenv("PAPER_POLICY_VERSION"))
 	pm := strategy.NewPositionManager(posCfg)
 	if positionsStatePath == "" {
 		positionsStatePath = "db/positions.json"
@@ -1092,7 +1113,16 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 		if liveTrading && stats.Closed > 0 && len(persistedTrades) == 0 {
 			return fmt.Errorf("live position state contains closed trades but the trade journal is empty")
 		}
-		slog.Info("positions_loaded", "path", positionsStatePath, "open", stats.Open, "closed", stats.Closed, "exposure_usd", stats.TotalExposure)
+		slog.Info("positions_loaded",
+			"path", positionsStatePath,
+			"open", stats.Open,
+			"closed", stats.Closed,
+			"exposure_usd", stats.TotalExposure,
+			"tradable_open", pm.OpenCountForScope(strategy.ExposureScopeTradable),
+			"tradable_exposure_usd", pm.ExposureForScope(strategy.ExposureScopeTradable),
+			"collection_open", pm.OpenCountForScope(strategy.ExposureScopeCollection),
+			"collection_exposure_usd", pm.ExposureForScope(strategy.ExposureScopeCollection),
+		)
 	}
 	rehydratedAttribution := 0
 	for _, p := range pm.Snapshot() {
@@ -1109,6 +1139,9 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 		src.Mark(p.ID, source, openOrderID)
 		if strings.HasPrefix(source, "copytrade") {
 			shadowExits.Open(p)
+			if exitMode == "ladder" {
+				ladder.OpenPosition(p, takerFeeRate)
+			}
 			if added, err := ws.SubscribeAssets(p.AssetID); err != nil {
 				slog.Warn("copytrade_wss_subscribe_fail", "pos", p.ID, "asset", short(p.AssetID), "err", err.Error())
 			} else if added > 0 {
@@ -1547,6 +1580,9 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 			entryTick := feed.Tick{AssetID: planned.AssetID, Market: planned.Market, Time: planned.EntryTime, Mid: planned.EntryMid}
 			if strings.HasPrefix(source, "copytrade") {
 				shadowExits.Open(planned)
+				if exitMode == "ladder" {
+					ladder.OpenPosition(planned, takerFeeRate)
+				}
 				if _, err := ws.SubscribeAssets(planned.AssetID); err != nil {
 					slog.Warn("ledger_recover_wss_subscribe_fail", "pos", posID, "err", err)
 				}
@@ -1641,7 +1677,8 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 				ExitReason: string(closed.ExitReason), HeldSec: int(held.Seconds()), PnLUSD: closed.PnLUSD,
 				EntryFeeUSD: closed.EntryFeeUSD, ExitFeeUSD: closed.ExitFeeUSD, NetPnLUSD: closed.NetPnLUSD,
 				OpenOrderID: closed.OpenOrderID, CloseOrderID: result.OrderID, Mode: tradeMode,
-				SignalSource: recoveredEntrySource("", closed),
+				SignalSource:  recoveredEntrySource("", closed),
+				PolicyVersion: closed.PolicyVersion,
 			}); err != nil {
 				return fmt.Errorf("journal recovered SELL %s: %w", record.ID, err)
 			}
@@ -1650,10 +1687,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 			if stillOpen {
 				if ladder.Has(closed.ID) {
 					ladder.Forget(closed.ID)
-					ladder.OpenWithDeadline(remaining.ID, remaining.Market, remaining.AssetID, feed.Tick{
-						AssetID: remaining.AssetID, Market: remaining.Market,
-						Time: remaining.EntryTime, Mid: remaining.EntryMid,
-					}, remaining.Units, remaining.ExitDeadline)
+					ladder.SyncPosition(remaining)
 				}
 			} else {
 				src.Take(closed.ID)
@@ -1745,6 +1779,11 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 		"ladder_tp2_pct", ladderCfg.TP2Pct,
 		"ladder_tp2_frac", ladderCfg.TP2Frac,
 		"ladder_sl_pct", ladderCfg.SLPct,
+		"ladder_trailing_pct", ladderCfg.TrailingPct,
+		"ladder_sl_confirm", ladderCfg.SLConfirmTime.String(),
+		"ladder_min_hold_before_sl", ladderCfg.MinHoldBeforeSL.String(),
+		"ladder_fee_aware", ladderCfg.FeeAware,
+		"ladder_require_bid", ladderCfg.RequireExecutableBid,
 		"ladder_max_hold", ladderCfg.MaxHold.String(),
 		"exit_poll_interval", exitPollInterval.String(),
 		"event_post_start_hold", eventPostStartHold.String(),
@@ -2082,25 +2121,26 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 						if err := jrn.Append(journal.TradeRecord{
 							ExecutionID: res.ExecutionID,
 							ID:          closed.ID, AssetID: closed.AssetID, Market: closed.Market,
-							Question:     metaQ(meta, closed.AssetID),
-							Outcome:      metaOutcome(meta, closed.AssetID),
-							Side:         "buy",
-							SizeUSD:      closed.SizeUSD,
-							Units:        closed.Units,
-							EntryMid:     closed.EntryMid,
-							EntryTime:    closed.EntryTime,
-							ExitMid:      closed.ExitMid,
-							ExitTime:     closed.ExitTime,
-							ExitReason:   string(closed.ExitReason),
-							HeldSec:      int(sig.HeldFor.Seconds()),
-							PnLUSD:       closed.PnLUSD,
-							EntryFeeUSD:  entryFee,
-							ExitFeeUSD:   exitFee,
-							NetPnLUSD:    netPnL,
-							OpenOrderID:  openOID,
-							CloseOrderID: res.OrderID,
-							Mode:         tradeMode,
-							SignalSource: source,
+							Question:      metaQ(meta, closed.AssetID),
+							Outcome:       metaOutcome(meta, closed.AssetID),
+							Side:          "buy",
+							SizeUSD:       closed.SizeUSD,
+							Units:         closed.Units,
+							EntryMid:      closed.EntryMid,
+							EntryTime:     closed.EntryTime,
+							ExitMid:       closed.ExitMid,
+							ExitTime:      closed.ExitTime,
+							ExitReason:    string(closed.ExitReason),
+							HeldSec:       int(sig.HeldFor.Seconds()),
+							PnLUSD:        closed.PnLUSD,
+							EntryFeeUSD:   entryFee,
+							ExitFeeUSD:    exitFee,
+							NetPnLUSD:     netPnL,
+							OpenOrderID:   openOID,
+							CloseOrderID:  res.OrderID,
+							Mode:          tradeMode,
+							SignalSource:  source,
+							PolicyVersion: closed.PolicyVersion,
 						}); err != nil {
 							slog.Warn("journal_append_fail", "asset", short(sig.AssetID), "err", err.Error())
 						} else {
@@ -2162,16 +2202,18 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 							continue
 						}
 						notional := ex.CloseUnits * ex.ExitMid
+						feeRate := ex.TakerFeeRate
 						sellIntent := paperExecutionIntent(order.Intent{
-							ClientID:   p.ID,
-							Reason:     string(ex.Reason),
-							AssetID:    ex.AssetID,
-							Market:     ex.Market,
-							Side:       order.Sell,
-							SizeUSD:    notional,
-							SizeShares: ex.CloseUnits,
-							LimitPx:    ex.ExitMid,
-							Type:       order.FAK,
+							ClientID:             p.ID,
+							Reason:               string(ex.Reason),
+							AssetID:              ex.AssetID,
+							Market:               ex.Market,
+							Side:                 order.Sell,
+							SizeUSD:              notional,
+							SizeShares:           ex.CloseUnits,
+							LimitPx:              ex.ExitMid,
+							Type:                 order.FAK,
+							TakerFeeRateOverride: &feeRate,
 						}, ex.ExitMid)
 						res, err := orderClient.Submit(ctx, sellIntent)
 						if err != nil {
@@ -2241,6 +2283,9 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 								slog.Warn("tickrec_stop_fail", "pos", p.ID, "err", rerr.Error())
 							}
 						}
+						if !stillOpen {
+							shadowExits.ActualClose(closedTranche)
+						}
 						entryFeeShare := closedTranche.EntryFeeUSD
 						exitFee := closedTranche.ExitFeeUSD
 						netPnL := closedTranche.NetPnLUSD
@@ -2290,30 +2335,31 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 						}
 						trancheID := closedTranche.ID + "." + ex.Tranche
 						if err := jrn.Append(journal.TradeRecord{
-							ExecutionID:  res.ExecutionID,
-							ID:           trancheID,
-							AssetID:      closedTranche.AssetID,
-							Market:       closedTranche.Market,
-							Question:     metaQ(meta, closedTranche.AssetID),
-							Outcome:      metaOutcome(meta, closedTranche.AssetID),
-							Side:         "buy",
-							SizeUSD:      closedTranche.SizeUSD,
-							Units:        closedTranche.Units,
-							EntryMid:     closedTranche.EntryMid,
-							EntryTime:    closedTranche.EntryTime,
-							ExitMid:      closedTranche.ExitMid,
-							ExitTime:     closedTranche.ExitTime,
-							ExitReason:   string(closedTranche.ExitReason),
-							HeldSec:      int(ex.HeldFor.Seconds()),
-							PnLUSD:       closedTranche.PnLUSD,
-							EntryFeeUSD:  entryFeeShare,
-							ExitFeeUSD:   exitFee,
-							NetPnLUSD:    netPnL,
-							Tranche:      ex.Tranche,
-							OpenOrderID:  openOID,
-							CloseOrderID: res.OrderID,
-							Mode:         tradeMode,
-							SignalSource: source,
+							ExecutionID:   res.ExecutionID,
+							ID:            trancheID,
+							AssetID:       closedTranche.AssetID,
+							Market:        closedTranche.Market,
+							Question:      metaQ(meta, closedTranche.AssetID),
+							Outcome:       metaOutcome(meta, closedTranche.AssetID),
+							Side:          "buy",
+							SizeUSD:       closedTranche.SizeUSD,
+							Units:         closedTranche.Units,
+							EntryMid:      closedTranche.EntryMid,
+							EntryTime:     closedTranche.EntryTime,
+							ExitMid:       closedTranche.ExitMid,
+							ExitTime:      closedTranche.ExitTime,
+							ExitReason:    string(closedTranche.ExitReason),
+							HeldSec:       int(ex.HeldFor.Seconds()),
+							PnLUSD:        closedTranche.PnLUSD,
+							EntryFeeUSD:   entryFeeShare,
+							ExitFeeUSD:    exitFee,
+							NetPnLUSD:     netPnL,
+							Tranche:       ex.Tranche,
+							OpenOrderID:   openOID,
+							CloseOrderID:  res.OrderID,
+							Mode:          tradeMode,
+							SignalSource:  source,
+							PolicyVersion: closedTranche.PolicyVersion,
 						}); err != nil {
 							slog.Warn("journal_append_fail",
 								"pos", p.ID,
@@ -3127,6 +3173,13 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 		}
 		planned := configureHoldWithPolicy(openPos.ID, eventStart, policy.MaxHold, policy.EventHold)
 		shadowExits.Open(planned)
+		if exitMode == "ladder" {
+			feeRate := takerFeeRate
+			if override := marketFeeRateOverride(openPos.Market); override != nil {
+				feeRate = *override
+			}
+			ladder.OpenPosition(planned, feeRate)
+		}
 		slog.Info("position_hold_policy_reconfigured", "pos", openPos.ID, "policy", policy.Name, "exit_deadline", planned.ExitDeadline)
 		reconfiguredHolds++
 	}
@@ -3510,7 +3563,13 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 					if footballScore {
 						eventCap = footballScoreMaxEventUSD
 					}
-					pos, err := pm.OpenSizedForEvent(ev.AssetID, ev.ConditionID, eventKey, tick, sizeUSD, eventCap)
+					exposureScope := strategy.ExposureScopeTradable
+					dedupeKey := copytradeCoreDedupeKey(ev)
+					if collectionOnly {
+						exposureScope = strategy.ExposureScopeCollection
+						dedupeKey = ""
+					}
+					pos, err := pm.OpenSizedForEventScoped(ev.AssetID, ev.ConditionID, eventKey, tick, sizeUSD, eventCap, exposureScope, dedupeKey)
 					if err != nil {
 						appendWhaleTrade(ev, "skip", "open_rejected:"+err.Error())
 						slog.Warn("copytrade_open_rejected", "wallet", ev.Label, "asset", short(ev.AssetID), "err", err.Error())
@@ -3645,6 +3704,9 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 							ladderCfg.MaxHold, eventPostStartHold, esportsHold, footballScoreHold)
 						planned := configureHoldWithPolicy(pos.ID, followedMeta.GameStart, holdPolicy.MaxHold, holdPolicy.EventHold)
 						shadowExits.OpenWithFeeRate(planned, effectiveFeeRate)
+						if exitMode == "ladder" {
+							ladder.OpenPosition(planned, effectiveFeeRate)
+						}
 						if added, subErr := ws.SubscribeAssets(ev.AssetID); subErr != nil {
 							slog.Warn("copytrade_wss_subscribe_fail", "pos", pos.ID, "asset", short(ev.AssetID), "err", subErr.Error())
 						} else if added > 0 {
@@ -3770,6 +3832,12 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 							continue
 						}
 						_, stillOpen := pm.OpenByID(pos.ID)
+						if stillOpen {
+							remaining, _ := pm.OpenByID(pos.ID)
+							ladder.SyncPosition(remaining)
+						} else {
+							ladder.Forget(pos.ID)
+						}
 						entryFeeShare := closedPos.EntryFeeUSD
 						exitFee = closedPos.ExitFeeUSD
 						netPnL := closedPos.NetPnLUSD
@@ -3799,29 +3867,30 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 							}
 						}
 						if jerr := jrn.Append(journal.TradeRecord{
-							ExecutionID:  res.ExecutionID,
-							ID:           closedPos.ID,
-							AssetID:      closedPos.AssetID,
-							Market:       closedPos.Market,
-							Question:     ev.Question,
-							Outcome:      ev.Outcome,
-							Side:         "buy",
-							SizeUSD:      closedPos.SizeUSD,
-							Units:        closedPos.Units,
-							EntryMid:     closedPos.EntryMid,
-							EntryTime:    closedPos.EntryTime,
-							ExitMid:      closedPos.ExitMid,
-							ExitTime:     closedPos.ExitTime,
-							ExitReason:   string(closedPos.ExitReason),
-							HeldSec:      int(closedPos.ExitTime.Sub(closedPos.EntryTime).Seconds()),
-							PnLUSD:       closedPos.PnLUSD,
-							EntryFeeUSD:  entryFeeShare,
-							ExitFeeUSD:   exitFee,
-							NetPnLUSD:    netPnL,
-							OpenOrderID:  openOID,
-							CloseOrderID: closeOrderID,
-							Mode:         tradeMode,
-							SignalSource: source,
+							ExecutionID:   res.ExecutionID,
+							ID:            closedPos.ID,
+							AssetID:       closedPos.AssetID,
+							Market:        closedPos.Market,
+							Question:      ev.Question,
+							Outcome:       ev.Outcome,
+							Side:          "buy",
+							SizeUSD:       closedPos.SizeUSD,
+							Units:         closedPos.Units,
+							EntryMid:      closedPos.EntryMid,
+							EntryTime:     closedPos.EntryTime,
+							ExitMid:       closedPos.ExitMid,
+							ExitTime:      closedPos.ExitTime,
+							ExitReason:    string(closedPos.ExitReason),
+							HeldSec:       int(closedPos.ExitTime.Sub(closedPos.EntryTime).Seconds()),
+							PnLUSD:        closedPos.PnLUSD,
+							EntryFeeUSD:   entryFeeShare,
+							ExitFeeUSD:    exitFee,
+							NetPnLUSD:     netPnL,
+							OpenOrderID:   openOID,
+							CloseOrderID:  closeOrderID,
+							Mode:          tradeMode,
+							SignalSource:  source,
+							PolicyVersion: closedPos.PolicyVersion,
 						}); jerr != nil {
 							slog.Warn("journal_append_fail", "asset", short(ev.AssetID), "err", jerr.Error())
 						} else {
@@ -4444,6 +4513,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 			lastHeldLog := time.Time{}
 			lastMarketPoll := time.Time{}
 			eventDeferredLogged := make(map[string]bool)
+			marketRetryAfter := make(map[string]time.Time)
 			for {
 				select {
 				case <-ctx.Done():
@@ -4472,10 +4542,10 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 						timeoutDue = true
 					}
 				}
-				if !timeoutDue && !lastMarketPoll.IsZero() && now.Sub(lastMarketPoll) < time.Minute {
+				marketPollDue := lastMarketPoll.IsZero() || now.Sub(lastMarketPoll) >= time.Minute
+				if !timeoutDue && !marketPollDue {
 					continue
 				}
-				lastMarketPoll = now
 				// Collect unique conditionIDs from the open positions. Copytrade
 				// can follow markets that were not part of the startup market
 				// scan, so position.Market is the durable source of truth here.
@@ -4495,40 +4565,79 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 					if _, ok := seen[key]; ok {
 						continue
 					}
+					if retryAt := marketRetryAfter[key]; retryAt.After(now) {
+						continue
+					}
 					seen[key] = struct{}{}
 					ids = append(ids, conditionID)
 				}
-				if len(ids) == 0 {
-					continue
-				}
-				qctx, qcancel := context.WithTimeout(ctx, 5*time.Second)
-				mkts2, err := gc.GetByConditionIDs(qctx, ids)
-				qcancel()
-				if err != nil {
-					slog.Warn("settlement_poll_fail", "err", err.Error(), "ids", len(ids))
-					mkts2 = nil
-				}
-				byCond := make(map[string]feed.Market, len(mkts2))
-				for _, m := range mkts2 {
-					byCond[strings.ToLower(m.ConditionID)] = m
-				}
-				missingIDs := make([]string, 0, len(ids)-len(byCond))
-				for _, conditionID := range ids {
-					if _, ok := byCond[strings.ToLower(conditionID)]; !ok {
-						missingIDs = append(missingIDs, conditionID)
-					}
-				}
+				byCond := make(map[string]feed.Market)
+				var mkts2 []feed.Market
 				clobFallback := 0
-				if len(missingIDs) > 0 {
-					fallbackCtx, fallbackCancel := context.WithTimeout(ctx, 20*time.Second)
-					fallbackMarkets, fallbackErr := gc.GetCLOBMarkets(fallbackCtx, missingIDs)
-					fallbackCancel()
-					for _, market := range fallbackMarkets {
-						byCond[strings.ToLower(market.ConditionID)] = market
+				tokenFallback := 0
+				if marketPollDue {
+					lastMarketPoll = now
+					if len(ids) > 0 {
+						qctx, qcancel := context.WithTimeout(ctx, 5*time.Second)
+						var err error
+						mkts2, err = gc.GetByConditionIDs(qctx, ids)
+						qcancel()
+						if err != nil {
+							slog.Warn("settlement_poll_fail", "err", err.Error(), "ids", len(ids))
+							mkts2 = nil
+						}
+						for _, m := range mkts2 {
+							key := strings.ToLower(m.ConditionID)
+							byCond[key] = m
+							delete(marketRetryAfter, key)
+						}
 					}
-					clobFallback = len(fallbackMarkets)
-					if fallbackErr != nil {
-						slog.Warn("settlement_clob_fallback_partial", "requested", len(missingIDs), "returned", clobFallback, "err", fallbackErr)
+					missingIDs := make([]string, 0, len(ids)-len(byCond))
+					for _, conditionID := range ids {
+						if _, ok := byCond[strings.ToLower(conditionID)]; !ok {
+							missingIDs = append(missingIDs, conditionID)
+						}
+					}
+					if len(missingIDs) > 0 {
+						tokenIDs := settlementFallbackTokenIDs(open, missingIDs)
+						if len(tokenIDs) > 0 {
+							tokenCtx, tokenCancel := context.WithTimeout(ctx, 5*time.Second)
+							tokenMarkets, tokenErr := gc.GetByClobTokenIDs(tokenCtx, tokenIDs)
+							tokenCancel()
+							if tokenErr != nil {
+								slog.Warn("settlement_token_fallback_fail", "tokens", len(tokenIDs), "err", tokenErr)
+							} else {
+								tokenFallback = indexSettlementMarketsByToken(open, missingIDs, tokenMarkets, byCond)
+							}
+							missingIDs = missingSettlementConditionIDs(ids, byCond)
+						}
+					}
+					if len(missingIDs) > 0 {
+						fallbackCtx, fallbackCancel := context.WithTimeout(ctx, 20*time.Second)
+						fallbackMarkets, fallbackErr := gc.GetCLOBMarkets(fallbackCtx, missingIDs)
+						fallbackCancel()
+						for _, market := range fallbackMarkets {
+							key := strings.ToLower(market.ConditionID)
+							byCond[key] = market
+							delete(marketRetryAfter, key)
+						}
+						clobFallback = len(fallbackMarkets)
+						if fallbackErr != nil {
+							slog.Warn("settlement_clob_fallback_partial", "requested", len(missingIDs), "returned", clobFallback, "err", fallbackErr)
+						}
+						backoffUntil := now.Add(15 * time.Minute)
+						backedOff := 0
+						for _, conditionID := range missingIDs {
+							key := strings.ToLower(conditionID)
+							if _, found := byCond[key]; found {
+								continue
+							}
+							marketRetryAfter[key] = backoffUntil
+							backedOff++
+						}
+						if backedOff > 0 {
+							slog.Warn("settlement_market_backoff", "markets", backedOff, "retry_after", backoffUntil)
+						}
 					}
 				}
 				// Periodic "still holding" log (once per 5 min) — easy to grep for.
@@ -4539,6 +4648,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 						"markets_polled", len(ids),
 						"markets_returned", len(byCond),
 						"gamma_returned", len(mkts2),
+						"token_fallback_returned", tokenFallback,
 						"clob_fallback_returned", clobFallback,
 						"resolved_seen", countResolvedMap(byCond),
 					)
@@ -4625,10 +4735,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 							hadLadder := ladder.Has(p.ID)
 							ladder.Forget(p.ID)
 							if stillOpen && hadLadder {
-								ladder.OpenWithDeadline(remaining.ID, remaining.Market, remaining.AssetID, feed.Tick{
-									AssetID: remaining.AssetID, Market: remaining.Market,
-									Time: remaining.EntryTime, Mid: remaining.EntryMid,
-								}, remaining.Units, remaining.ExitDeadline)
+								ladder.SyncPosition(remaining)
 							}
 							if !stillOpen {
 								shadowExits.ActualClose(closed)
@@ -4656,26 +4763,27 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 							if jerr := jrn.Append(journal.TradeRecord{
 								ExecutionID: res.ExecutionID,
 								ID:          closed.ID, AssetID: closed.AssetID, Market: closed.Market,
-								Question:     closed.Question,
-								Outcome:      closed.Outcome,
-								Side:         "buy",
-								SizeUSD:      closed.SizeUSD,
-								Units:        closed.Units,
-								EntryMid:     closed.EntryMid,
-								EntryTime:    closed.EntryTime,
-								ExitMid:      closed.ExitMid,
-								ExitTime:     closed.ExitTime,
-								ExitReason:   string(closed.ExitReason),
-								HeldSec:      int(sig.HeldFor.Seconds()),
-								PnLUSD:       closed.PnLUSD,
-								EntryFeeUSD:  entryFeeShare,
-								ExitFeeUSD:   closed.ExitFeeUSD,
-								NetPnLUSD:    netPnL,
-								Tranche:      "timeout_flat",
-								OpenOrderID:  openOID,
-								CloseOrderID: res.OrderID,
-								Mode:         tradeMode,
-								SignalSource: source,
+								Question:      closed.Question,
+								Outcome:       closed.Outcome,
+								Side:          "buy",
+								SizeUSD:       closed.SizeUSD,
+								Units:         closed.Units,
+								EntryMid:      closed.EntryMid,
+								EntryTime:     closed.EntryTime,
+								ExitMid:       closed.ExitMid,
+								ExitTime:      closed.ExitTime,
+								ExitReason:    string(closed.ExitReason),
+								HeldSec:       int(sig.HeldFor.Seconds()),
+								PnLUSD:        closed.PnLUSD,
+								EntryFeeUSD:   entryFeeShare,
+								ExitFeeUSD:    closed.ExitFeeUSD,
+								NetPnLUSD:     netPnL,
+								Tranche:       "timeout_flat",
+								OpenOrderID:   openOID,
+								CloseOrderID:  res.OrderID,
+								Mode:          tradeMode,
+								SignalSource:  source,
+								PolicyVersion: closed.PolicyVersion,
 							}); jerr != nil {
 								slog.Warn("journal_append_fail", "asset", short(p.AssetID), "err", jerr.Error())
 							} else {
@@ -4827,10 +4935,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 					hadLadder := ladder.Has(p.ID)
 					ladder.Forget(p.ID)
 					if stillOpen && hadLadder {
-						ladder.OpenWithDeadline(remaining.ID, remaining.Market, remaining.AssetID, feed.Tick{
-							AssetID: remaining.AssetID, Market: remaining.Market,
-							Time: remaining.EntryTime, Mid: remaining.EntryMid,
-						}, remaining.Units, remaining.ExitDeadline)
+						ladder.SyncPosition(remaining)
 					}
 					if !stillOpen && recorder != nil {
 						if rerr := recorder.Stop(closed.ID); rerr != nil {
@@ -4883,26 +4988,27 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 					if jerr := jrn.Append(journal.TradeRecord{
 						ExecutionID: executionResult.ExecutionID,
 						ID:          closed.ID, AssetID: closed.AssetID, Market: closed.Market,
-						Question:     paperPositionQuestion(closed, m, meta[closed.AssetID]),
-						Outcome:      paperPositionOutcome(closed, m, slotIdx, meta[closed.AssetID]),
-						Side:         "buy",
-						SizeUSD:      closed.SizeUSD,
-						Units:        closed.Units,
-						EntryMid:     closed.EntryMid,
-						EntryTime:    closed.EntryTime,
-						ExitMid:      closed.ExitMid,
-						ExitTime:     closed.ExitTime,
-						ExitReason:   string(closed.ExitReason),
-						HeldSec:      int(sig.HeldFor.Seconds()),
-						PnLUSD:       closed.PnLUSD,
-						EntryFeeUSD:  entryFeeShare,
-						ExitFeeUSD:   exitFee,
-						NetPnLUSD:    netPnL,
-						Tranche:      tranche,
-						OpenOrderID:  openOID,
-						CloseOrderID: orderID,
-						Mode:         tradeMode,
-						SignalSource: source,
+						Question:      paperPositionQuestion(closed, m, meta[closed.AssetID]),
+						Outcome:       paperPositionOutcome(closed, m, slotIdx, meta[closed.AssetID]),
+						Side:          "buy",
+						SizeUSD:       closed.SizeUSD,
+						Units:         closed.Units,
+						EntryMid:      closed.EntryMid,
+						EntryTime:     closed.EntryTime,
+						ExitMid:       closed.ExitMid,
+						ExitTime:      closed.ExitTime,
+						ExitReason:    string(closed.ExitReason),
+						HeldSec:       int(sig.HeldFor.Seconds()),
+						PnLUSD:        closed.PnLUSD,
+						EntryFeeUSD:   entryFeeShare,
+						ExitFeeUSD:    exitFee,
+						NetPnLUSD:     netPnL,
+						Tranche:       tranche,
+						OpenOrderID:   openOID,
+						CloseOrderID:  orderID,
+						Mode:          tradeMode,
+						SignalSource:  source,
+						PolicyVersion: closed.PolicyVersion,
 					}); jerr != nil {
 						slog.Warn("journal_append_fail", "asset", short(p.AssetID), "err", jerr.Error())
 					} else {
@@ -5219,6 +5325,67 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 		return ctx.Err()
 	}
 	return ws.Run(ctx)
+}
+
+func missingSettlementConditionIDs(ids []string, markets map[string]feed.Market) []string {
+	missing := make([]string, 0, len(ids))
+	for _, conditionID := range ids {
+		if _, ok := markets[strings.ToLower(conditionID)]; !ok {
+			missing = append(missing, conditionID)
+		}
+	}
+	return missing
+}
+
+func settlementFallbackTokenIDs(open []strategy.Position, missingConditionIDs []string) []string {
+	missing := make(map[string]struct{}, len(missingConditionIDs))
+	for _, conditionID := range missingConditionIDs {
+		missing[strings.ToLower(strings.TrimSpace(conditionID))] = struct{}{}
+	}
+	seen := make(map[string]struct{})
+	var tokens []string
+	for _, p := range open {
+		if _, ok := missing[strings.ToLower(strings.TrimSpace(p.Market))]; !ok || p.AssetID == "" {
+			continue
+		}
+		if _, duplicate := seen[p.AssetID]; duplicate {
+			continue
+		}
+		seen[p.AssetID] = struct{}{}
+		tokens = append(tokens, p.AssetID)
+	}
+	return tokens
+}
+
+func indexSettlementMarketsByToken(open []strategy.Position, missingConditionIDs []string, markets []feed.Market, byCondition map[string]feed.Market) int {
+	missing := make(map[string]struct{}, len(missingConditionIDs))
+	for _, conditionID := range missingConditionIDs {
+		missing[strings.ToLower(strings.TrimSpace(conditionID))] = struct{}{}
+	}
+	conditionByToken := make(map[string]map[string]struct{})
+	for _, p := range open {
+		conditionID := strings.ToLower(strings.TrimSpace(p.Market))
+		if _, ok := missing[conditionID]; !ok || p.AssetID == "" {
+			continue
+		}
+		if conditionByToken[p.AssetID] == nil {
+			conditionByToken[p.AssetID] = map[string]struct{}{}
+		}
+		conditionByToken[p.AssetID][conditionID] = struct{}{}
+	}
+	recovered := 0
+	for _, market := range markets {
+		for _, tokenID := range market.ClobTokenIDs() {
+			for conditionID := range conditionByToken[tokenID] {
+				if _, exists := byCondition[conditionID]; exists {
+					continue
+				}
+				byCondition[conditionID] = market
+				recovered++
+			}
+		}
+	}
+	return recovered
 }
 
 // countResolved returns the number of markets in the slice that have already
@@ -5887,10 +6054,7 @@ func (h *buyHandler) OnClose(ctx context.Context, nonce string, messageID int64)
 		hadLadder := h.ladder.Has(pos.ID)
 		h.ladder.Forget(pos.ID)
 		if stillOpen && hadLadder {
-			h.ladder.OpenWithDeadline(remaining.ID, remaining.Market, remaining.AssetID, feed.Tick{
-				AssetID: remaining.AssetID, Market: remaining.Market,
-				Time: remaining.EntryTime, Mid: remaining.EntryMid,
-			}, remaining.Units, remaining.ExitDeadline)
+			h.ladder.SyncPosition(remaining)
 		}
 		if !stillOpen && h.recorder != nil {
 			_ = h.recorder.Stop(closed.ID)
@@ -5942,25 +6106,26 @@ func (h *buyHandler) OnClose(ctx context.Context, nonce string, messageID int64)
 			if err := h.jrn.Append(journal.TradeRecord{
 				ExecutionID: res.ExecutionID,
 				ID:          closed.ID, AssetID: closed.AssetID, Market: closed.Market,
-				Question:     ci.Question,
-				Outcome:      ci.Outcome,
-				Side:         "buy",
-				SizeUSD:      closed.SizeUSD,
-				Units:        closed.Units,
-				EntryMid:     closed.EntryMid,
-				EntryTime:    closed.EntryTime,
-				ExitMid:      closed.ExitMid,
-				ExitTime:     closed.ExitTime,
-				ExitReason:   "whale_sell",
-				HeldSec:      int(sig.HeldFor.Seconds()),
-				PnLUSD:       closed.PnLUSD,
-				EntryFeeUSD:  entryFeeShare,
-				ExitFeeUSD:   exitFee,
-				NetPnLUSD:    netPnL,
-				OpenOrderID:  openOID,
-				CloseOrderID: res.OrderID,
-				Mode:         orderMode(h.paper),
-				SignalSource: source,
+				Question:      ci.Question,
+				Outcome:       ci.Outcome,
+				Side:          "buy",
+				SizeUSD:       closed.SizeUSD,
+				Units:         closed.Units,
+				EntryMid:      closed.EntryMid,
+				EntryTime:     closed.EntryTime,
+				ExitMid:       closed.ExitMid,
+				ExitTime:      closed.ExitTime,
+				ExitReason:    "whale_sell",
+				HeldSec:       int(sig.HeldFor.Seconds()),
+				PnLUSD:        closed.PnLUSD,
+				EntryFeeUSD:   entryFeeShare,
+				ExitFeeUSD:    exitFee,
+				NetPnLUSD:     netPnL,
+				OpenOrderID:   openOID,
+				CloseOrderID:  res.OrderID,
+				Mode:          orderMode(h.paper),
+				SignalSource:  source,
+				PolicyVersion: closed.PolicyVersion,
 			}); err != nil {
 				slog.Warn("journal_append_fail", "asset", short(pos.AssetID), "err", err)
 			} else {
@@ -7431,6 +7596,16 @@ func copytradeExposureEventKey(ev whale.AlertEvent) string {
 		return "football_score_event:" + slug
 	}
 	return "football_score_event:" + whaleEventKey(ev.Question)
+}
+
+func copytradeCoreDedupeKey(ev whale.AlertEvent) string {
+	wallet := strings.ToLower(strings.TrimSpace(ev.Wallet))
+	conditionID := strings.ToLower(strings.TrimSpace(ev.ConditionID))
+	assetID := strings.ToLower(strings.TrimSpace(ev.AssetID))
+	if wallet == "" || conditionID == "" || assetID == "" {
+		return ""
+	}
+	return wallet + "|" + conditionID + "|" + assetID
 }
 
 func loadWhaleCooldownSeeds(path string, repeatCooldown, eventCooldown time.Duration) (map[string]time.Time, map[string]time.Time, int, int) {

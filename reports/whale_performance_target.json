@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-03T00:15:46+08:00",
+  "generated_at": "2026-08-04T13:15:57+08:00",
   "log_path": "/Users/murphyma/work/polymarket-go/db/journal/whale_trades.jsonl",
   "wallets_path": "/Users/murphyma/work/polymarket-go/wallets.strategy-target.txt",
   "report_path": "/Users/murphyma/work/polymarket-go/reports/whale_performance_target.md",
@@ -16,13 +16,13 @@
     "target": 500,
     "watch": 500
   },
-  "since": "2026-08-02T15:36:45Z",
+  "since": "2026-08-04T05:08:10Z",
   "repeat_cooldown": "3m0s",
   "repeat_min_notional": 5000,
   "raw_buys": 0,
   "suppressed_repeats": 0,
-  "logged_cooldown_buys": 1,
-  "logged_event_cooldown_buys": 1,
+  "logged_cooldown_buys": 0,
+  "logged_event_cooldown_buys": 0,
   "logged_duplicate_buys": 0,
   "logged_pending_consensus_buys": 0,
   "duplicate_buys": 0,
@@ -54,36 +54,5 @@
   "event_capped_proven_stake_usd": 0,
   "event_capped_proven_return_pct": 0,
   "event_capped_proven_win_rate_pct": 0,
-  "suppressed_by_wallet": [
-    {
-      "wallet": "0x29295021c598f1ec3efb894e69820f9691521dd0",
-      "label": "w_2929…1dd0",
-      "list": "target",
-      "tier": "C",
-      "asset_cooldown": 1,
-      "event_cooldown": 1,
-      "duplicate": 0,
-      "pending_consensus": 0,
-      "total": 2,
-      "notional_usd": 1999.9999979448962,
-      "last_time": "2026-08-03T00:06:47+08:00"
-    }
-  ],
-  "suppressed_by_event": [
-    {
-      "wallet": "0x29295021c598f1ec3efb894e69820f9691521dd0",
-      "label": "w_2929…1dd0",
-      "list": "target",
-      "tier": "C",
-      "event": "dota 2: rekonix vs yakult brothers",
-      "asset_cooldown": 1,
-      "event_cooldown": 1,
-      "duplicate": 0,
-      "pending_consensus": 0,
-      "total": 2,
-      "notional_usd": 1999.9999979448962,
-      "last_time": "2026-08-03T00:06:47+08:00"
-    }
-  ],
   "policy_violation_count": 0
 }

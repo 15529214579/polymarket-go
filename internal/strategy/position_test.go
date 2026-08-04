@@ -3,6 +3,7 @@ package strategy
 import (
 	"errors"
 	"math"
+	"os"
 	"testing"
 	"time"
 
@@ -163,6 +164,91 @@ func TestPositionManager_MaxPerEventExposureAcrossMarkets(t *testing.T) {
 	}
 	if got := pm.ExposureForEvent("football:match"); got != 60 {
 		t.Fatalf("event exposure=%v", got)
+	}
+}
+
+func TestPositionManager_SeparatesTradableAndCollectionCapacity(t *testing.T) {
+	cfg := PositionConfig{
+		PerPositionUSD: 20, MaxTotalOpenUSD: 20, MaxOpenPositions: 1,
+		MaxPerMarketUSD: 20, MaxPerEventUSD: 20,
+	}
+	pm := NewPositionManager(cfg)
+	now := time.Now()
+	if _, err := pm.OpenSizedForEventScoped("core-asset", "market", "event", tick(0.5, now), 20, 0, ExposureScopeTradable, "wallet|market|asset"); err != nil {
+		t.Fatalf("core open: %v", err)
+	}
+	if _, err := pm.OpenSizedForEventScoped("collect-asset", "market", "event", tick(0.5, now), 20, 0, ExposureScopeCollection, ""); err != nil {
+		t.Fatalf("collection should have independent capacity: %v", err)
+	}
+	if got := pm.ExposureForScope(ExposureScopeTradable); got != 20 {
+		t.Fatalf("tradable exposure=%v", got)
+	}
+	if got := pm.ExposureForScope(ExposureScopeCollection); got != 20 {
+		t.Fatalf("collection exposure=%v", got)
+	}
+	if _, err := pm.OpenSizedForEventScoped("core-2", "market-2", "event-2", tick(0.5, now), 20, 0, ExposureScopeTradable, "wallet|market-2|asset"); !errors.Is(err, ErrMaxPositions) {
+		t.Fatalf("second core position should hit core-only count cap, got %v", err)
+	}
+}
+
+func TestPositionManager_TradableDedupeIsAtomicAndScopeLocal(t *testing.T) {
+	cfg := DefaultPositionConfig()
+	cfg.MaxPerMarketUSD = 100
+	pm := NewPositionManager(cfg)
+	now := time.Now()
+	key := "wallet|market|asset"
+	if _, err := pm.OpenSizedForEventScoped("asset", "market", "event", tick(0.5, now), 5, 0, ExposureScopeTradable, key); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pm.OpenSizedForEventScoped("asset", "market", "event", tick(0.5, now), 5, 0, ExposureScopeTradable, key); !errors.Is(err, ErrDuplicatePosition) {
+		t.Fatalf("duplicate core open=%v", err)
+	}
+	if _, err := pm.OpenSizedForEventScoped("asset", "market", "event", tick(0.5, now), 5, 0, ExposureScopeCollection, key); err != nil {
+		t.Fatalf("same key in collection scope should not block: %v", err)
+	}
+}
+
+func TestPositionManager_FreezesPolicyAndMigratesLegacyOpen(t *testing.T) {
+	cfg := DefaultPositionConfig()
+	cfg.PolicyVersion = "policy-v5"
+	pm := NewPositionManager(cfg)
+	p, err := pm.Open("asset", "market", tick(0.5, time.Now()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.PolicyVersion != "policy-v5" || p.ExposureScope != ExposureScopeTradable {
+		t.Fatalf("new position metadata=%+v", p)
+	}
+
+	path := t.TempDir() + "/positions.json"
+	legacy := []byte(`{"next_id":1,"open":[{"ID":"p1","AssetID":"a","Market":"m","SizeUSD":5,"Units":10,"InitUnits":10,"EntryMid":0.5,"EntryTime":"2026-08-01T00:00:00Z","Status":"open","Source":"copytrade_collect"}],"closed":[]}`)
+	if err := os.WriteFile(path, legacy, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reloaded := NewPositionManager(cfg)
+	if err := reloaded.LoadState(path); err != nil {
+		t.Fatal(err)
+	}
+	got := reloaded.Snapshot()[0]
+	if got.PolicyVersion != LegacyPolicyVersion || got.ExposureScope != ExposureScopeCollection {
+		t.Fatalf("legacy migration=%+v", got)
+	}
+}
+
+func TestPositionManager_RestoresCoreDedupeKeyFromLegacySource(t *testing.T) {
+	wallet := "0x1111111111111111111111111111111111111111"
+	path := t.TempDir() + "/positions.json"
+	legacy := []byte(`{"next_id":1,"open":[{"ID":"p1","AssetID":"TOKEN","Market":"CONDITION","SizeUSD":5,"Units":10,"InitUnits":10,"EntryMid":0.5,"EntryTime":"2026-08-01T00:00:00Z","Status":"open","SignalSource":"copytrade_wallet:` + wallet + `"}],"closed":[]}`)
+	if err := os.WriteFile(path, legacy, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	pm := NewPositionManager(DefaultPositionConfig())
+	if err := pm.LoadState(path); err != nil {
+		t.Fatal(err)
+	}
+	want := wallet + "|condition|token"
+	if got := pm.Snapshot()[0].DedupeKey; got != want {
+		t.Fatalf("restored dedupe key=%q want=%q", got, want)
 	}
 }
 

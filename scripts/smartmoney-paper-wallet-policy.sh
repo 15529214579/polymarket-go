@@ -17,4 +17,8 @@ exec "$ROOT/bin/smartmoney-wallet-policy" \
   -min_positions "${SMARTMONEY_PAPER_WALLET_MIN_POSITIONS:-10}" \
   -promote_min_net "${SMARTMONEY_PAPER_WALLET_PROMOTE_MIN_NET:-5}" \
   -promote_min_roi "${SMARTMONEY_PAPER_WALLET_PROMOTE_MIN_ROI:-2}" \
+  -promote_min_win_rate "${SMARTMONEY_PAPER_WALLET_PROMOTE_MIN_WIN_RATE:-45}" \
+  -promote_min_trimmed_net "${SMARTMONEY_PAPER_WALLET_PROMOTE_MIN_TRIMMED_NET:-1}" \
+  -max_best_sample_share "${SMARTMONEY_PAPER_WALLET_MAX_BEST_SAMPLE_SHARE:-60}" \
+  -max_two_sided_markets "${SMARTMONEY_PAPER_WALLET_MAX_TWO_SIDED_MARKETS:-0}" \
   -demote_max_net "${SMARTMONEY_PAPER_WALLET_DEMOTE_MAX_NET:--5}" "$@"

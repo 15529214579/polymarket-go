@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,6 +24,10 @@ const (
 
 	HoldProfileShort = "short"
 	HoldProfileEvent = "event"
+
+	ExposureScopeTradable   = "tradable"
+	ExposureScopeCollection = "collection"
+	LegacyPolicyVersion     = "legacy/open-before-policy-freeze"
 )
 
 // Position represents a single paper (and eventually real) position.
@@ -64,6 +69,9 @@ type Position struct {
 	EventStart         time.Time `json:",omitempty"`
 	ExitDeadline       time.Time `json:",omitempty"`
 	ClosingUnits       float64   `json:",omitempty"`
+	ExposureScope      string    `json:",omitempty"`
+	DedupeKey          string    `json:",omitempty"`
+	PolicyVersion      string    `json:",omitempty"`
 }
 
 // PositionConfig drives sizing + exposure caps. SPEC §2 / §6.
@@ -73,6 +81,7 @@ type PositionConfig struct {
 	MaxOpenPositions int     // Hard cap on concurrent positions
 	MaxPerMarketUSD  float64 // Cap per conditionID (0 = unlimited)
 	MaxPerEventUSD   float64 // Cap across related conditions (0 = unlimited)
+	PolicyVersion    string  // Frozen onto each new position at entry.
 }
 
 func DefaultPositionConfig() PositionConfig {
@@ -105,20 +114,20 @@ type ClosedAccounting struct {
 }
 
 var (
-	ErrMaxPositions     = errors.New("max concurrent positions reached")
-	ErrMaxExposure      = errors.New("max total exposure reached")
-	ErrMaxPerMarket     = errors.New("max per-market exposure reached")
-	ErrMaxPerEvent      = errors.New("max per-event exposure reached")
-	ErrInvalidEntry     = errors.New("invalid entry mid")
-	ErrPositionNotFound = errors.New("no open position for id/asset")
-	ErrPositionClosing  = errors.New("position already has a close in progress")
+	ErrMaxPositions      = errors.New("max concurrent positions reached")
+	ErrMaxExposure       = errors.New("max total exposure reached")
+	ErrMaxPerMarket      = errors.New("max per-market exposure reached")
+	ErrMaxPerEvent       = errors.New("max per-event exposure reached")
+	ErrDuplicatePosition = errors.New("duplicate open position")
+	ErrInvalidEntry      = errors.New("invalid entry mid")
+	ErrPositionNotFound  = errors.New("no open position for id/asset")
+	ErrPositionClosing   = errors.New("position already has a close in progress")
 )
 
 // PositionManager is the single source of truth for open/closed positions.
-// Stacking is allowed: the same asset (and the same market) can hold multiple
-// concurrent positions — dedupe is intentionally absent so the paper run can
-// accumulate samples per market. Exposure and position-count caps still apply.
-// Concurrent-safe.
+// Stacking remains available for research collection. Tradable callers can
+// provide a dedupe key, which is checked atomically with scope-local exposure
+// caps so duplicate wallet signals cannot race into the core book.
 type PositionManager struct {
 	cfg      PositionConfig
 	mu       sync.Mutex
@@ -175,6 +184,13 @@ func (pm *PositionManager) OpenSized(assetID, market string, entry feed.Tick, si
 // OpenSizedForEvent atomically applies both condition-level and event-level
 // exposure caps. maxEventUSD overrides the configured event cap when positive.
 func (pm *PositionManager) OpenSizedForEvent(assetID, market, eventKey string, entry feed.Tick, sizeUSD, maxEventUSD float64) (*Position, error) {
+	return pm.OpenSizedForEventScoped(assetID, market, eventKey, entry, sizeUSD, maxEventUSD, ExposureScopeTradable, "")
+}
+
+// OpenSizedForEventScoped applies position, exposure, and dedupe limits within
+// one exposure scope. Collection positions therefore cannot consume tradable
+// capacity, while both books retain the configured safety limits.
+func (pm *PositionManager) OpenSizedForEventScoped(assetID, market, eventKey string, entry feed.Tick, sizeUSD, maxEventUSD float64, scope, dedupeKey string) (*Position, error) {
 	if entry.Mid <= 0 || entry.Mid >= 1 {
 		return nil, fmt.Errorf("%w: mid=%v", ErrInvalidEntry, entry.Mid)
 	}
@@ -184,17 +200,27 @@ func (pm *PositionManager) OpenSizedForEvent(assetID, market, eventKey string, e
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
-	if len(pm.open) >= pm.cfg.MaxOpenPositions {
+	scope = normalizeExposureScope(scope)
+	dedupeKey = strings.TrimSpace(strings.ToLower(dedupeKey))
+	if dedupeKey != "" {
+		for _, existing := range pm.open {
+			if positionExposureScope(existing) == scope && strings.EqualFold(existing.DedupeKey, dedupeKey) {
+				return nil, fmt.Errorf("%w: scope=%s key=%s", ErrDuplicatePosition, scope, dedupeKey)
+			}
+		}
+	}
+	if pm.openCountLocked(scope) >= pm.cfg.MaxOpenPositions {
 		return nil, ErrMaxPositions
 	}
-	if pm.totalExposureLocked()+sizeUSD > pm.cfg.MaxTotalOpenUSD+1e-9 {
+	if pm.scopeExposureLocked(scope)+sizeUSD > pm.cfg.MaxTotalOpenUSD+1e-9 {
 		return nil, ErrMaxExposure
 	}
 	if pm.cfg.MaxPerMarketUSD > 0 && market != "" {
-		if pm.marketExposureLocked(market)+sizeUSD > pm.cfg.MaxPerMarketUSD+1e-9 {
+		existing := pm.marketExposureForScopeLocked(market, scope)
+		if existing+sizeUSD > pm.cfg.MaxPerMarketUSD+1e-9 {
 			return nil, fmt.Errorf("%w: market=%s existing=$%.2f new=$%.2f cap=$%.2f",
 				ErrMaxPerMarket, market[:min(len(market), 12)],
-				pm.marketExposureLocked(market), sizeUSD, pm.cfg.MaxPerMarketUSD)
+				existing, sizeUSD, pm.cfg.MaxPerMarketUSD)
 		}
 	}
 	eventCap := pm.cfg.MaxPerEventUSD
@@ -202,25 +228,29 @@ func (pm *PositionManager) OpenSizedForEvent(assetID, market, eventKey string, e
 		eventCap = maxEventUSD
 	}
 	if eventCap > 0 && eventKey != "" {
-		if pm.eventExposureLocked(eventKey)+sizeUSD > eventCap+1e-9 {
+		existing := pm.eventExposureForScopeLocked(eventKey, scope)
+		if existing+sizeUSD > eventCap+1e-9 {
 			return nil, fmt.Errorf("%w: event=%s existing=$%.2f new=$%.2f cap=$%.2f",
-				ErrMaxPerEvent, eventKey[:min(len(eventKey), 32)], pm.eventExposureLocked(eventKey), sizeUSD, eventCap)
+				ErrMaxPerEvent, eventKey[:min(len(eventKey), 32)], existing, sizeUSD, eventCap)
 		}
 	}
 
 	pm.nextID++
 	units := sizeUSD / entry.Mid
 	p := &Position{
-		ID:        fmt.Sprintf("p%d", pm.nextID),
-		AssetID:   assetID,
-		Market:    market,
-		SizeUSD:   sizeUSD,
-		Units:     units,
-		InitUnits: units,
-		EntryMid:  entry.Mid,
-		EntryTime: entry.Time,
-		Status:    PosOpen,
-		EventKey:  eventKey,
+		ID:            fmt.Sprintf("p%d", pm.nextID),
+		AssetID:       assetID,
+		Market:        market,
+		SizeUSD:       sizeUSD,
+		Units:         units,
+		InitUnits:     units,
+		EntryMid:      entry.Mid,
+		EntryTime:     entry.Time,
+		Status:        PosOpen,
+		EventKey:      eventKey,
+		ExposureScope: scope,
+		DedupeKey:     dedupeKey,
+		PolicyVersion: strings.TrimSpace(pm.cfg.PolicyVersion),
 	}
 	pm.open[p.ID] = p
 	if pm.byAsset[assetID] == nil {
@@ -431,6 +461,9 @@ func (pm *PositionManager) partialCloseLocked(p *Position, closeUnits float64, e
 		HoldProfile:      p.HoldProfile,
 		EventStart:       p.EventStart,
 		ExitDeadline:     p.ExitDeadline,
+		ExposureScope:    p.ExposureScope,
+		DedupeKey:        p.DedupeKey,
+		PolicyVersion:    p.PolicyVersion,
 	}
 	tranche.NetPnLUSD = tranche.PnLUSD - tranche.EntryFeeUSD - tranche.ExitFeeUSD
 	p.EntryFeeChargedUSD += tranche.EntryFeeUSD
@@ -683,6 +716,10 @@ func (pm *PositionManager) RecoverOpen(recovered Position) (Position, bool, erro
 		return Position{}, false, fmt.Errorf("recover position %s: id already exists", recovered.ID)
 	}
 	recovered.Status = PosOpen
+	recovered.ExposureScope = normalizeExposureScope(recovered.ExposureScope)
+	if strings.TrimSpace(recovered.PolicyVersion) == "" {
+		recovered.PolicyVersion = LegacyPolicyVersion
+	}
 	recovered.InitUnits = recovered.Units
 	recovered.SizeUSD = recovered.Units * recovered.EntryMid
 	p := recovered
@@ -814,12 +851,42 @@ func (pm *PositionManager) totalExposureLocked() float64 {
 	return s
 }
 
+func (pm *PositionManager) openCountLocked(scope string) int {
+	count := 0
+	for _, p := range pm.open {
+		if positionExposureScope(p) == scope {
+			count++
+		}
+	}
+	return count
+}
+
+func (pm *PositionManager) scopeExposureLocked(scope string) float64 {
+	var total float64
+	for _, p := range pm.open {
+		if positionExposureScope(p) == scope {
+			total += p.SizeUSD
+		}
+	}
+	return total
+}
+
 func (pm *PositionManager) marketExposureLocked(market string) float64 {
 	var s float64
 	for _, p := range pm.byMarket[market] {
 		s += p.SizeUSD
 	}
 	return s
+}
+
+func (pm *PositionManager) marketExposureForScopeLocked(market, scope string) float64 {
+	var total float64
+	for _, p := range pm.byMarket[market] {
+		if positionExposureScope(p) == scope {
+			total += p.SizeUSD
+		}
+	}
+	return total
 }
 
 func (pm *PositionManager) eventExposureLocked(eventKey string) float64 {
@@ -832,6 +899,37 @@ func (pm *PositionManager) eventExposureLocked(eventKey string) float64 {
 	return total
 }
 
+func (pm *PositionManager) eventExposureForScopeLocked(eventKey, scope string) float64 {
+	var total float64
+	for _, p := range pm.open {
+		if p.EventKey == eventKey && positionExposureScope(p) == scope {
+			total += p.SizeUSD
+		}
+	}
+	return total
+}
+
+func normalizeExposureScope(scope string) string {
+	if strings.EqualFold(strings.TrimSpace(scope), ExposureScopeCollection) {
+		return ExposureScopeCollection
+	}
+	return ExposureScopeTradable
+}
+
+func positionExposureScope(p *Position) string {
+	if p == nil {
+		return ExposureScopeTradable
+	}
+	if strings.TrimSpace(p.ExposureScope) != "" {
+		return normalizeExposureScope(p.ExposureScope)
+	}
+	source := strings.ToLower(strings.TrimSpace(p.SignalSource + " " + p.Source))
+	if strings.Contains(source, "copytrade_collect") {
+		return ExposureScopeCollection
+	}
+	return ExposureScopeTradable
+}
+
 func (pm *PositionManager) ExposureForEvent(eventKey string) float64 {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
@@ -842,6 +940,20 @@ func (pm *PositionManager) ExposureForMarket(market string) float64 {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 	return pm.marketExposureLocked(market)
+}
+
+// ExposureForScope reports exposure without mixing the tradable and research
+// collection books.
+func (pm *PositionManager) ExposureForScope(scope string) float64 {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	return pm.scopeExposureLocked(normalizeExposureScope(scope))
+}
+
+func (pm *PositionManager) OpenCountForScope(scope string) int {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	return pm.openCountLocked(normalizeExposureScope(scope))
 }
 
 // positionState is the JSON-serializable snapshot for persistence.
@@ -948,6 +1060,13 @@ func (pm *PositionManager) LoadState(path string) error {
 		// A reservation cannot survive process death. The durable order ledger
 		// reconciles any submitted order before new closes are allowed.
 		p.ClosingUnits = 0
+		p.ExposureScope = positionExposureScope(p)
+		if p.DedupeKey == "" && p.ExposureScope == ExposureScopeTradable {
+			p.DedupeKey = persistedCopytradeDedupeKey(p)
+		}
+		if strings.TrimSpace(p.PolicyVersion) == "" {
+			p.PolicyVersion = LegacyPolicyVersion
+		}
 		pm.open[p.ID] = p
 		if pm.byAsset[p.AssetID] == nil {
 			pm.byAsset[p.AssetID] = map[string]*Position{}
@@ -961,4 +1080,21 @@ func (pm *PositionManager) LoadState(path string) error {
 		}
 	}
 	return nil
+}
+
+func persistedCopytradeDedupeKey(p *Position) string {
+	if p == nil || p.Market == "" || p.AssetID == "" {
+		return ""
+	}
+	source := strings.ToLower(strings.TrimSpace(p.SignalSource))
+	for _, prefix := range []string{"copytrade_wallet:", "copytrade_football_score_wallet:"} {
+		if !strings.HasPrefix(source, prefix) {
+			continue
+		}
+		wallet := strings.TrimPrefix(source, prefix)
+		if len(wallet) == 42 && strings.HasPrefix(wallet, "0x") {
+			return wallet + "|" + strings.ToLower(p.Market) + "|" + strings.ToLower(p.AssetID)
+		}
+	}
+	return ""
 }
