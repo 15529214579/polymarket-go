@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -395,9 +396,13 @@ func loadWalletMetas(path string) (map[string]walletMeta, error) {
 				case "tier":
 					meta.Tier = v
 				case "smart":
-					fmt.Sscanf(v, "%f", &meta.Smart)
+					if value, err := strconv.ParseFloat(v, 64); err == nil {
+						meta.Smart = value
+					}
 				case "bot":
-					fmt.Sscanf(v, "%f", &meta.Bot)
+					if value, err := strconv.ParseFloat(v, 64); err == nil {
+						meta.Bot = value
+					}
 				}
 			}
 		}

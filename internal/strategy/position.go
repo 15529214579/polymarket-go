@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -57,9 +58,12 @@ type Position struct {
 	SignalSource       string    `json:",omitempty"`
 	EventKey           string    `json:",omitempty"`
 	OpenOrderID        string    `json:",omitempty"`
+	CloseOrderID       string    `json:",omitempty"`
+	CloseExecutionID   string    `json:",omitempty"`
 	HoldProfile        string    `json:",omitempty"`
 	EventStart         time.Time `json:",omitempty"`
 	ExitDeadline       time.Time `json:",omitempty"`
+	ClosingUnits       float64   `json:",omitempty"`
 }
 
 // PositionConfig drives sizing + exposure caps. SPEC §2 / §6.
@@ -93,6 +97,7 @@ type PositionStats struct {
 // journal. It is used to migrate position snapshots written by older builds.
 type ClosedAccounting struct {
 	ID          string
+	EntryTime   time.Time
 	ExitTime    time.Time
 	EntryFeeUSD float64
 	ExitFeeUSD  float64
@@ -106,6 +111,7 @@ var (
 	ErrMaxPerEvent      = errors.New("max per-event exposure reached")
 	ErrInvalidEntry     = errors.New("invalid entry mid")
 	ErrPositionNotFound = errors.New("no open position for id/asset")
+	ErrPositionClosing  = errors.New("position already has a close in progress")
 )
 
 // PositionManager is the single source of truth for open/closed positions.
@@ -257,6 +263,22 @@ func (pm *PositionManager) SetOpenAttribution(posID, source, openOrderID string)
 	return nil
 }
 
+// SetOpenMetadata stores copy-trade context without exposing unlocked writes
+// to the manager's internal position pointer.
+func (pm *PositionManager) SetOpenMetadata(posID, question, outcome, source, walletLabel string) error {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	p, ok := pm.open[posID]
+	if !ok {
+		return ErrPositionNotFound
+	}
+	p.Question = question
+	p.Outcome = outcome
+	p.Source = source
+	p.WalletLabel = walletLabel
+	return nil
+}
+
 // ConfigureOpenHold persists the timeout policy for a filled position. A
 // pre-event sports position is held until EventStart + eventPostStartHold;
 // other positions retain the ordinary EntryTime + maxHold deadline.
@@ -371,38 +393,44 @@ func (pm *PositionManager) PartialClose(posID string, closeUnits float64, exit E
 	if closeUnits <= 0 {
 		return Position{}, fmt.Errorf("%w: close units=%v", ErrInvalidEntry, closeUnits)
 	}
+	return pm.partialCloseLocked(p, closeUnits, exit)
+}
+
+func (pm *PositionManager) partialCloseLocked(p *Position, closeUnits float64, exit ExitSignal) (Position, error) {
 	if closeUnits >= p.Units-1e-9 {
 		pm.closeLocked(p, exit)
 		return *p, nil
 	}
 	tranche := &Position{
-		ID:           p.ID,
-		AssetID:      p.AssetID,
-		Market:       p.Market,
-		SizeUSD:      closeUnits * p.EntryMid,
-		Units:        closeUnits,
-		InitUnits:    p.InitUnits,
-		OpenFeeUSD:   p.OpenFeeUSD,
-		EntryFeeUSD:  apportionedOpenFee(p, closeUnits),
-		ExitFeeUSD:   exit.ExitFeeUSD,
-		EntryMid:     p.EntryMid,
-		EntryTime:    p.EntryTime,
-		ExitMid:      exit.ExitMid,
-		ExitTime:     exit.Time,
-		ExitReason:   exit.Reason,
-		PnLUSD:       closeUnits * (exit.ExitMid - p.EntryMid),
-		Accounted:    true,
-		Status:       PosClosed,
-		Question:     p.Question,
-		Outcome:      p.Outcome,
-		Source:       p.Source,
-		WalletLabel:  p.WalletLabel,
-		SignalSource: p.SignalSource,
-		EventKey:     p.EventKey,
-		OpenOrderID:  p.OpenOrderID,
-		HoldProfile:  p.HoldProfile,
-		EventStart:   p.EventStart,
-		ExitDeadline: p.ExitDeadline,
+		ID:               p.ID,
+		AssetID:          p.AssetID,
+		Market:           p.Market,
+		SizeUSD:          closeUnits * p.EntryMid,
+		Units:            closeUnits,
+		InitUnits:        p.InitUnits,
+		OpenFeeUSD:       p.OpenFeeUSD,
+		EntryFeeUSD:      apportionedOpenFee(p, closeUnits),
+		ExitFeeUSD:       exit.ExitFeeUSD,
+		EntryMid:         p.EntryMid,
+		EntryTime:        p.EntryTime,
+		ExitMid:          exit.ExitMid,
+		ExitTime:         exit.Time,
+		ExitReason:       exit.Reason,
+		PnLUSD:           closeUnits * (exit.ExitMid - p.EntryMid),
+		Accounted:        true,
+		Status:           PosClosed,
+		Question:         p.Question,
+		Outcome:          p.Outcome,
+		Source:           p.Source,
+		WalletLabel:      p.WalletLabel,
+		SignalSource:     p.SignalSource,
+		EventKey:         p.EventKey,
+		OpenOrderID:      p.OpenOrderID,
+		CloseOrderID:     exit.CloseOrderID,
+		CloseExecutionID: exit.CloseExecutionID,
+		HoldProfile:      p.HoldProfile,
+		EventStart:       p.EventStart,
+		ExitDeadline:     p.ExitDeadline,
 	}
 	tranche.NetPnLUSD = tranche.PnLUSD - tranche.EntryFeeUSD - tranche.ExitFeeUSD
 	p.EntryFeeChargedUSD += tranche.EntryFeeUSD
@@ -410,6 +438,79 @@ func (pm *PositionManager) PartialClose(posID string, closeUnits float64, exit E
 	p.SizeUSD = p.Units * p.EntryMid
 	pm.closed = append(pm.closed, tranche)
 	return *tranche, nil
+}
+
+// BeginClose atomically reserves a position for one closing order. A second
+// close path receives ErrPositionClosing and must not submit another SELL.
+func (pm *PositionManager) BeginClose(posID string, closeUnits float64) (Position, error) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	p, ok := pm.open[posID]
+	if !ok {
+		return Position{}, ErrPositionNotFound
+	}
+	if p.ClosingUnits > 0 {
+		return Position{}, ErrPositionClosing
+	}
+	if closeUnits <= 0 {
+		return Position{}, fmt.Errorf("%w: close units=%v", ErrInvalidEntry, closeUnits)
+	}
+	if closeUnits > p.Units {
+		closeUnits = p.Units
+	}
+	p.ClosingUnits = closeUnits
+	return *p, nil
+}
+
+// AbortClose releases a close reservation after an unfilled or failed order.
+func (pm *PositionManager) AbortClose(posID string) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	if p, ok := pm.open[posID]; ok {
+		p.ClosingUnits = 0
+	}
+}
+
+// ApplyCloseFill replaces the requested close reservation with the shares
+// actually filled by the venue. Partial fills therefore leave the unfilled
+// remainder open instead of realizing it in PnL.
+func (pm *PositionManager) ApplyCloseFill(posID string, filledUnits float64) error {
+	if filledUnits <= 0 || math.IsNaN(filledUnits) || math.IsInf(filledUnits, 0) {
+		return fmt.Errorf("%w: filled close units=%v", ErrInvalidEntry, filledUnits)
+	}
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	p, ok := pm.open[posID]
+	if !ok {
+		return ErrPositionNotFound
+	}
+	if p.ClosingUnits <= 0 {
+		return fmt.Errorf("%w: no close reservation", ErrPositionClosing)
+	}
+	if filledUnits > p.ClosingUnits+1e-9 {
+		return fmt.Errorf("%w: filled close units %.8f exceed reserved %.8f", ErrInvalidEntry, filledUnits, p.ClosingUnits)
+	}
+	if filledUnits > p.ClosingUnits {
+		filledUnits = p.ClosingUnits
+	}
+	p.ClosingUnits = filledUnits
+	return nil
+}
+
+// CommitClose applies the units reserved by BeginClose after a confirmed fill.
+func (pm *PositionManager) CommitClose(posID string, exit ExitSignal) (Position, error) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	p, ok := pm.open[posID]
+	if !ok {
+		return Position{}, ErrPositionNotFound
+	}
+	closeUnits := p.ClosingUnits
+	if closeUnits <= 0 {
+		return Position{}, fmt.Errorf("%w: no close reservation", ErrPositionClosing)
+	}
+	p.ClosingUnits = 0
+	return pm.partialCloseLocked(p, closeUnits, exit)
 }
 
 // Close realizes PnL against the exit signal for the given posID and moves
@@ -449,6 +550,9 @@ func (pm *PositionManager) CloseFirstByAsset(assetID string, exit ExitSignal) (P
 
 // closeLocked mutates state; caller must hold pm.mu.
 func (pm *PositionManager) closeLocked(p *Position, exit ExitSignal) {
+	p.ClosingUnits = 0
+	p.CloseOrderID = exit.CloseOrderID
+	p.CloseExecutionID = exit.CloseExecutionID
 	p.ExitMid = exit.ExitMid
 	p.ExitTime = exit.Time
 	p.ExitReason = exit.Reason
@@ -507,6 +611,97 @@ func (pm *PositionManager) Snapshot() []Position {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].EntryTime.Before(out[j].EntryTime) })
 	return out
+}
+
+// OpenByID returns an open position copy for durable execution recovery.
+func (pm *PositionManager) OpenByID(posID string) (Position, bool) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	p, ok := pm.open[posID]
+	if !ok {
+		return Position{}, false
+	}
+	return *p, true
+}
+
+// HasOrderID reports whether a fill has already been reflected in open or
+// closed position state. It makes ledger replay idempotent.
+func (pm *PositionManager) HasOrderID(orderID string) bool {
+	if orderID == "" {
+		return false
+	}
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	for _, p := range pm.open {
+		if p.OpenOrderID == orderID {
+			return true
+		}
+	}
+	for _, p := range pm.closed {
+		if p.OpenOrderID == orderID {
+			return true
+		}
+	}
+	return false
+}
+
+// ClosedByExecution returns the closed tranche produced by a SELL execution.
+// It lets startup recovery finish journal persistence without closing twice.
+func (pm *PositionManager) ClosedByExecution(executionID string) (Position, bool) {
+	if executionID == "" {
+		return Position{}, false
+	}
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	for _, p := range pm.closed {
+		if p.CloseExecutionID == executionID {
+			return *p, true
+		}
+	}
+	return Position{}, false
+}
+
+// RecoverOpen inserts a confirmed BUY that was durable in the order ledger
+// but not yet present in the position snapshot when the process stopped.
+func (pm *PositionManager) RecoverOpen(recovered Position) (Position, bool, error) {
+	if recovered.ID == "" || recovered.AssetID == "" || recovered.EntryMid <= 0 || recovered.EntryMid >= 1 || recovered.Units <= 0 {
+		return Position{}, false, fmt.Errorf("%w: invalid recovered position", ErrInvalidEntry)
+	}
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	for _, p := range pm.open {
+		if recovered.OpenOrderID != "" && p.OpenOrderID == recovered.OpenOrderID {
+			return *p, false, nil
+		}
+	}
+	for _, p := range pm.closed {
+		if recovered.OpenOrderID != "" && p.OpenOrderID == recovered.OpenOrderID {
+			return *p, false, nil
+		}
+	}
+	if _, exists := pm.open[recovered.ID]; exists {
+		return Position{}, false, fmt.Errorf("recover position %s: id already exists", recovered.ID)
+	}
+	recovered.Status = PosOpen
+	recovered.InitUnits = recovered.Units
+	recovered.SizeUSD = recovered.Units * recovered.EntryMid
+	p := recovered
+	pm.open[p.ID] = &p
+	if pm.byAsset[p.AssetID] == nil {
+		pm.byAsset[p.AssetID] = map[string]*Position{}
+	}
+	pm.byAsset[p.AssetID][p.ID] = &p
+	if p.Market != "" {
+		if pm.byMarket[p.Market] == nil {
+			pm.byMarket[p.Market] = map[string]*Position{}
+		}
+		pm.byMarket[p.Market][p.ID] = &p
+	}
+	var recoveredID int
+	if _, err := fmt.Sscanf(p.ID, "p%d", &recoveredID); err == nil && recoveredID > pm.nextID {
+		pm.nextID = recoveredID
+	}
+	return p, true, nil
 }
 
 // Closed returns a copy of all closed positions in close-time order.
@@ -582,16 +777,23 @@ func (pm *PositionManager) ReconcileClosedAccounting(records []ClosedAccounting)
 func (pm *PositionManager) ReconcileOpenEntryFees(records []ClosedAccounting) int {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
-	chargedByID := make(map[string]float64)
+	type key struct {
+		id string
+		t  int64
+	}
+	chargedByPosition := make(map[key]float64)
 	for _, rec := range records {
-		chargedByID[rec.ID] += rec.EntryFeeUSD
+		if rec.EntryTime.IsZero() {
+			continue
+		}
+		chargedByPosition[key{id: rec.ID, t: rec.EntryTime.UnixNano()}] += rec.EntryFeeUSD
 	}
 	updated := 0
 	for _, p := range pm.open {
 		if p.EntryFeeChargedUSD > 0 {
 			continue
 		}
-		charged := chargedByID[p.ID]
+		charged := chargedByPosition[key{id: p.ID, t: p.EntryTime.UnixNano()}]
 		if charged <= 0 {
 			continue
 		}
@@ -679,13 +881,16 @@ func (pm *PositionManager) SaveState(path string) error {
 
 func writeStateAtomic(path string, data []byte) error {
 	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
 	tmp, err := os.CreateTemp(dir, ".positions-*.tmp")
 	if err != nil {
 		return err
 	}
 	tmpPath := tmp.Name()
 	defer os.Remove(tmpPath)
-	if err := tmp.Chmod(0o644); err != nil {
+	if err := tmp.Chmod(0o600); err != nil {
 		_ = tmp.Close()
 		return err
 	}
@@ -693,10 +898,23 @@ func writeStateAtomic(path string, data []byte) error {
 		_ = tmp.Close()
 		return err
 	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmpPath, path)
+	if err := os.Rename(tmpPath, path); err != nil {
+		return err
+	}
+	dirHandle, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	syncErr := dirHandle.Sync()
+	closeErr := dirHandle.Close()
+	return errors.Join(syncErr, closeErr)
 }
 
 // LoadState restores positions from a JSON file written by SaveState.
@@ -727,6 +945,9 @@ func (pm *PositionManager) LoadState(path string) error {
 	}
 
 	for _, p := range st.Open {
+		// A reservation cannot survive process death. The durable order ledger
+		// reconciles any submitted order before new closes are allowed.
+		p.ClosingUnits = 0
 		pm.open[p.ID] = p
 		if pm.byAsset[p.AssetID] == nil {
 			pm.byAsset[p.AssetID] = map[string]*Position{}

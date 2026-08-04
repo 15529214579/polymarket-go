@@ -3,6 +3,7 @@ package order
 import (
 	"context"
 	"crypto/ecdsa"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/big"
@@ -18,12 +19,20 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
+type txRevertedError struct {
+	hash common.Hash
+}
+
+func (e *txRevertedError) Error() string {
+	return fmt.Sprintf("tx reverted: %s", e.hash.Hex())
+}
+
 const (
 	PolygonRPC            = "https://polygon-bor-rpc.publicnode.com"
 	USDCeAddress          = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"
 	PUSDAddress           = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB"
 	CollateralOnrampAddr  = "0x93070a847efEf7F70739046A929D47a521F5B8ee"
-	ConditionalTokensAddr = "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045"
+	ConditionalTokensAddr = "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045" // #nosec G101 -- public contract address, not a credential.
 	NegRiskAdapterAddr    = "0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296"
 	USDCDecimals          = 6
 	ApproveGas            = 60_000
@@ -420,7 +429,7 @@ func (o *OnChain) sendTx(ctx context.Context, to common.Address, data []byte, ga
 		return fmt.Errorf("wait receipt: %w", err)
 	}
 	if receipt.Status != 1 {
-		return fmt.Errorf("tx reverted: %s", signedTx.Hash().Hex())
+		return &txRevertedError{hash: signedTx.Hash()}
 	}
 	slog.Info("tx_confirmed", "hash", signedTx.Hash().Hex(), "gas_used", receipt.GasUsed)
 	return nil
@@ -455,12 +464,15 @@ func formatUSDC(raw *big.Int) string {
 }
 
 func (o *OnChain) RedeemPosition(ctx context.Context, conditionIDHex, assetID string, outcomeIndex int, size float64, negRisk bool) error {
+	indexSet, err := redemptionIndexSet(outcomeIndex)
+	if err != nil {
+		return err
+	}
 	conditionBytes := common.FromHex(conditionIDHex)
 	if len(conditionBytes) != common.HashLength {
 		return fmt.Errorf("invalid condition ID %q", conditionIDHex)
 	}
 	conditionID := common.BytesToHash(conditionBytes)
-	indexSet := new(big.Int).Lsh(big.NewInt(1), uint(outcomeIndex))
 	collateral, err := o.positionCollateral(ctx, conditionID, indexSet, assetID)
 	if err != nil {
 		return err
@@ -498,19 +510,18 @@ func (o *OnChain) RedeemPosition(ctx context.Context, conditionIDHex, assetID st
 		if err := o.ensureERC1155Approval(ctx, common.HexToAddress(ConditionalTokensAddr), common.HexToAddress(NegRiskAdapterAddr)); err != nil {
 			slog.Warn("erc1155_approval_failed", "err", err)
 		}
-		sizeRaw := new(big.Int).SetInt64(int64(size * 1e6))
 		amounts := []*big.Int{big.NewInt(0), big.NewInt(0)}
-		if outcomeIndex < len(amounts) {
-			amounts[outcomeIndex] = sizeRaw
-		}
+		amounts[outcomeIndex] = new(big.Int).Set(tokenBefore)
 		data, err := negRiskRedeemABI.Pack("redeemPositions", conditionID, amounts)
 		if err != nil {
 			return fmt.Errorf("pack neg-risk redeem: %w", err)
 		}
 		if err := o.sendTx(ctx, common.HexToAddress(NegRiskAdapterAddr), data, RedeemGas); err == nil {
 			return o.verifyRedemption(ctx, assetID, collateral, collateralName, tokenBefore, collateralBefore)
+		} else if !negRiskFallbackAllowed(err) {
+			return fmt.Errorf("neg-risk adapter redemption not confirmed reverted; refusing duplicate fallback: %w", err)
 		} else {
-			slog.Warn("negrisk_adapter_redeem_failed_fallback_ctf", "err", err)
+			slog.Warn("negrisk_adapter_redeem_reverted_fallback_ctf", "err", err)
 		}
 	}
 
@@ -528,6 +539,18 @@ func (o *OnChain) RedeemPosition(ctx context.Context, conditionIDHex, assetID st
 		return err
 	}
 	return o.verifyRedemption(ctx, assetID, collateral, collateralName, tokenBefore, collateralBefore)
+}
+
+func negRiskFallbackAllowed(err error) bool {
+	var reverted *txRevertedError
+	return errors.As(err, &reverted)
+}
+
+func redemptionIndexSet(outcomeIndex int) (*big.Int, error) {
+	if outcomeIndex < 0 || outcomeIndex > 1 {
+		return nil, fmt.Errorf("invalid binary outcome index %d", outcomeIndex)
+	}
+	return new(big.Int).Lsh(big.NewInt(1), uint(outcomeIndex)), nil
 }
 
 func (o *OnChain) positionCollateral(ctx context.Context, conditionID common.Hash, indexSet *big.Int, assetID string) (common.Address, error) {

@@ -106,6 +106,7 @@ func LoadMnemonicFromBitwarden(itemName, fieldName string) (string, error) {
 	}
 	// Call `bw` directly — no `bash -c`, no shell interpolation — and
 	// parse the JSON locally. Side-steps shell-injection and gosec G204.
+	// #nosec G204 -- arguments are passed directly to bw without shell interpolation.
 	out, err := exec.Command(bitwardenCLIPath(), "get", "item", itemName).Output()
 	if err != nil {
 		return "", fmt.Errorf("order: bw get item %q: %w", itemName, err)
@@ -149,7 +150,5 @@ func LoadWalletFromBitwarden(itemName, fieldName, hdPath string) (*Wallet, error
 	if err != nil {
 		return nil, err
 	}
-	wallet, err := NewWalletFromMnemonic(mnemonic, hdPath)
-	mnemonic = ""
-	return wallet, err
+	return NewWalletFromMnemonic(mnemonic, hdPath)
 }

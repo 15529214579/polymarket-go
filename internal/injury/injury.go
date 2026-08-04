@@ -122,10 +122,10 @@ type Scanner struct {
 	seen     map[string]time.Time // "2006-01-02:team:player:status" → alert time
 	seenPath string               // persistence file path
 
-	mu        sync.RWMutex
-	cache     map[string][]InjuryEntry // team → current star injuries (refreshed each Scan)
-	allCache  map[string][]InjuryEntry // team → ALL injuries (stars + non-stars, OUT/Doubtful/Questionable)
-	games     map[string]GameInfo      // team name → today's game (both teams point to same GameInfo)
+	mu       sync.RWMutex
+	cache    map[string][]InjuryEntry // team → current star injuries (refreshed each Scan)
+	allCache map[string][]InjuryEntry // team → ALL injuries (stars + non-stars, OUT/Doubtful/Questionable)
+	games    map[string]GameInfo      // team name → today's game (both teams point to same GameInfo)
 }
 
 func NewScanner(cfg Config, dbDir string) *Scanner {

@@ -155,7 +155,7 @@ func (c *Client) ClosedPositions(ctx context.Context, wallet string, limit int) 
 
 func (c *Client) getJSON(ctx context.Context, reqURL string, dst any) error {
 	for attempt := 1; attempt <= c.maxAttempts; attempt++ {
-		err, retryable, retryAfter, status := c.getJSONAttempt(ctx, reqURL, dst)
+		retryable, retryAfter, status, err := c.getJSONAttempt(ctx, reqURL, dst)
 		if err == nil {
 			return nil
 		}
@@ -187,29 +187,29 @@ func (c *Client) getJSON(ctx context.Context, reqURL string, dst any) error {
 	return fmt.Errorf("GET %s: retry loop exhausted", reqURL)
 }
 
-func (c *Client) getJSONAttempt(ctx context.Context, reqURL string, dst any) (error, bool, time.Duration, int) {
+func (c *Client) getJSONAttempt(ctx context.Context, reqURL string, dst any) (bool, time.Duration, int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
-		return err, false, 0, 0
+		return false, 0, 0, err
 	}
 	req.Header.Set("User-Agent", "polymarket-go-wallet-discover/1.0")
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return err, ctx.Err() == nil, 0, 0
+		return ctx.Err() == nil, 0, 0, err
 	}
 	body, readErr := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	_ = resp.Body.Close()
 	if readErr != nil {
-		return readErr, true, 0, resp.StatusCode
+		return true, 0, resp.StatusCode, readErr
 	}
 	if resp.StatusCode >= 400 {
 		err = fmt.Errorf("GET %s: HTTP %d: %s", reqURL, resp.StatusCode, trunc(string(body), 300))
-		return err, retryableStatus(resp.StatusCode), parseRetryAfter(resp.Header.Get("Retry-After")), resp.StatusCode
+		return retryableStatus(resp.StatusCode), parseRetryAfter(resp.Header.Get("Retry-After")), resp.StatusCode, err
 	}
 	if err := json.Unmarshal(body, dst); err != nil {
-		return fmt.Errorf("decode %s: %w: %s", reqURL, err, trunc(string(body), 300)), false, 0, resp.StatusCode
+		return false, 0, resp.StatusCode, fmt.Errorf("decode %s: %w: %s", reqURL, err, trunc(string(body), 300))
 	}
-	return nil, false, 0, resp.StatusCode
+	return false, 0, resp.StatusCode, nil
 }
 
 func (c *Client) retryDelay(attempt int) time.Duration {

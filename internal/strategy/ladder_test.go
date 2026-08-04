@@ -49,6 +49,7 @@ func TestLadder_TP1_ThenTP2_Chain(t *testing.T) {
 	if ex.Final {
 		t.Fatalf("tp1 should not be final with frac=0.50")
 	}
+	l.Confirm("p1")
 	// Still below TP2 (0.40×1.30=0.52) — no emit.
 	if _, fired := l.OnTick("p1", lt(0.50, t0.Add(3*time.Second))); fired {
 		t.Fatalf("premature emit between TP1 and TP2")
@@ -64,8 +65,24 @@ func TestLadder_TP1_ThenTP2_Chain(t *testing.T) {
 	if !ex2.Final {
 		t.Fatalf("tp2 should be final — nothing left")
 	}
+	l.Confirm("p1")
 	if l.Has("p1") {
 		t.Fatalf("tracker should have dropped posID after final tranche")
+	}
+}
+
+func TestLadder_TP1PartialFillRetriesOnlyRemainder(t *testing.T) {
+	l := NewLadderTracker(lcfg())
+	t0 := time.Now()
+	l.Open("p1", "M", "A", feed.Tick{Time: t0, Mid: 0.40}, 100)
+	ex, fired := l.OnTick("p1", lt(0.46, t0.Add(time.Second)))
+	if !fired || ex.CloseUnits != 50 {
+		t.Fatalf("first=%+v fired=%v", ex, fired)
+	}
+	l.Confirm("p1", 20)
+	retry, fired := l.OnTick("p1", lt(0.46, t0.Add(2*time.Second)))
+	if !fired || retry.Tranche != "t1" || retry.CloseUnits != 30 {
+		t.Fatalf("retry=%+v fired=%v", retry, fired)
 	}
 }
 
@@ -81,6 +98,7 @@ func TestLadder_GapsPastTP2_StillSplitsTranches(t *testing.T) {
 	if !fired || ex.Tranche != "t1" {
 		t.Fatalf("expected tp1 first on gap, got %+v", ex)
 	}
+	l.Confirm("p1")
 	// Next tick at same price should now emit TP2.
 	ex2, fired := l.OnTick("p1", lt(0.60, t0.Add(2*time.Second)))
 	if !fired || ex2.Tranche != "t2" {
@@ -89,6 +107,7 @@ func TestLadder_GapsPastTP2_StillSplitsTranches(t *testing.T) {
 	if !ex2.Final {
 		t.Fatalf("second tranche should be final")
 	}
+	l.Confirm("p1")
 }
 
 func TestLadder_StopLoss_ClosesEverything(t *testing.T) {
@@ -104,8 +123,12 @@ func TestLadder_StopLoss_ClosesEverything(t *testing.T) {
 	if absDiff(ex.CloseUnits, 80) > 1e-9 {
 		t.Fatalf("sl should close all remaining, got %v", ex.CloseUnits)
 	}
-	if !ex.Final || l.Has("p1") {
-		t.Fatalf("sl should be final and drop state")
+	if !ex.Final || !l.Has("p1") {
+		t.Fatalf("sl should remain pending until confirmation")
+	}
+	l.Confirm("p1")
+	if l.Has("p1") {
+		t.Fatalf("confirmed sl should drop state")
 	}
 }
 
@@ -120,8 +143,16 @@ func TestLadder_Timeout_Fires(t *testing.T) {
 	if !fired || ex.Reason != ExitLadderTimeout {
 		t.Fatalf("timeout miss: fired=%v ex=%+v", fired, ex)
 	}
-	if !ex.Final || l.Has("p1") {
-		t.Fatalf("timeout should be final")
+	if !ex.Final || !l.Has("p1") {
+		t.Fatalf("timeout should remain pending")
+	}
+	l.Retry("p1")
+	if _, fired := l.OnTick("p1", lt(0.51, t0.Add(160*time.Millisecond))); !fired {
+		t.Fatalf("failed timeout close should retry")
+	}
+	l.Confirm("p1")
+	if l.Has("p1") {
+		t.Fatalf("confirmed timeout should drop state")
 	}
 }
 

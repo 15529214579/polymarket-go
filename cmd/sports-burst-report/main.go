@@ -424,7 +424,9 @@ func loadWalletStatuses(path string) (map[string]walletStatus, error) {
 			status.List = "review_noise"
 		}
 		if raw := strings.TrimSpace(meta["bot"]); raw != "" {
-			fmt.Sscanf(raw, "%f", &status.Bot)
+			if value, err := strconv.ParseFloat(raw, 64); err == nil {
+				status.Bot = value
+			}
 		}
 		out[addr] = status
 	}

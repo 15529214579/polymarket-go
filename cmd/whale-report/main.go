@@ -1569,22 +1569,7 @@ func formatListMinNotional(listMins map[string]float64) string {
 func snapshotStatsList(in []walletStats) []snapshotStats {
 	out := make([]snapshotStats, 0, len(in))
 	for _, st := range in {
-		out = append(out, snapshotStats{
-			Wallet:       st.Wallet,
-			Label:        st.Label,
-			List:         st.List,
-			Tier:         st.Tier,
-			Signals:      st.Signals,
-			Closed:       st.Closed,
-			Settled:      st.Settled,
-			Marked:       st.Marked,
-			Open:         st.Open,
-			Wins:         st.Wins,
-			PnLUSD:       st.PnLUSD,
-			StakeUSD:     st.StakeUSD,
-			ReturnPct:    st.ReturnPct,
-			AvgReturnPct: st.AvgReturnPct,
-		})
+		out = append(out, snapshotStats(st))
 	}
 	return out
 }

@@ -10,11 +10,11 @@ import (
 
 // CoinConfig defines parameters for a crypto price-level strategy.
 type CoinConfig struct {
-	Name         string   // display name: "ETH", "SOL"
-	BinancePair  string   // e.g. "ETHUSDT", "SOLUSDT"
-	GammaSlug    string   // PM event slug
-	MinStrike    float64  // ignore strikes below this (filters noise)
-	VolFloorPct  float64  // minimum annualized vol (e.g. 0.30 = 30%)
+	Name        string  // display name: "ETH", "SOL"
+	BinancePair string  // e.g. "ETHUSDT", "SOLUSDT"
+	GammaSlug   string  // PM event slug
+	MinStrike   float64 // ignore strikes below this (filters noise)
+	VolFloorPct float64 // minimum annualized vol (e.g. 0.30 = 30%)
 }
 
 var (

@@ -1,3 +1,4 @@
+// Package iterate evaluates journal results and proposes bounded strategy changes.
 package iterate
 
 import (

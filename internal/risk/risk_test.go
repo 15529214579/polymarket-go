@@ -368,6 +368,26 @@ func TestLoadState_DifferentDay_IgnoresDayPnL(t *testing.T) {
 	}
 }
 
+func TestLoadState_DifferentDayPreservesBreaker(t *testing.T) {
+	yesterday := time.Date(2026, 4, 26, 14, 0, 0, 0, time.UTC)
+	m := New(testCfg(), yesterday)
+	m.Pause(yesterday)
+	path := filepath.Join(t.TempDir(), "risk.json")
+	if err := m.SaveState(path); err != nil {
+		t.Fatal(err)
+	}
+
+	today := yesterday.Add(24 * time.Hour)
+	reloaded := New(testCfg(), today)
+	if err := reloaded.LoadState(path, today); err != nil {
+		t.Fatal(err)
+	}
+	state := reloaded.State()
+	if !state.Blocked || state.BlockReason != BlockManualPause || !state.BlockedAt.Equal(yesterday) {
+		t.Fatalf("breaker not restored: %+v", state)
+	}
+}
+
 func TestLoadState_MissingFile(t *testing.T) {
 	now := time.Date(2026, 4, 27, 14, 0, 0, 0, time.UTC)
 	m := New(testCfg(), now)

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -548,17 +549,29 @@ func loadWalletStatuses(path string) (map[string]walletStatus, error) {
 				case "source":
 					status.Source = v
 				case "smart":
-					fmt.Sscanf(v, "%f", &status.Smart)
+					if value, err := strconv.ParseFloat(v, 64); err == nil {
+						status.Smart = value
+					}
 				case "bot":
-					fmt.Sscanf(v, "%f", &status.Bot)
+					if value, err := strconv.ParseFloat(v, 64); err == nil {
+						status.Bot = value
+					}
 				case "edgeN":
-					fmt.Sscanf(v, "%d", &status.EdgeN)
+					if value, err := strconv.Atoi(v); err == nil {
+						status.EdgeN = value
+					}
 				case "edgeAvgPP":
-					fmt.Sscanf(v, "%f", &status.EdgeAvg)
+					if value, err := strconv.ParseFloat(v, 64); err == nil {
+						status.EdgeAvg = value
+					}
 				case "edge5mPP":
-					fmt.Sscanf(v, "%f", &status.Edge5m)
+					if value, err := strconv.ParseFloat(v, 64); err == nil {
+						status.Edge5m = value
+					}
 				case "edge15mPP":
-					fmt.Sscanf(v, "%f", &status.Edge15m)
+					if value, err := strconv.ParseFloat(v, 64); err == nil {
+						status.Edge15m = value
+					}
 				}
 			}
 			if isBlockedTapeGateStatus(gateStatus) {
@@ -1128,11 +1141,6 @@ func annotateAlertTrade(tr tapeTrade, reason string) tapeTrade {
 		tr.KnownList = "insider_scout"
 	}
 	return tr
-}
-
-func shouldAlertTrade(tr tapeTrade, policy alertPolicy) bool {
-	ok, _ := alertDecision(tr, policy)
-	return ok
 }
 
 func alertDecision(tr tapeTrade, policy alertPolicy) (bool, string) {
@@ -2292,7 +2300,7 @@ func hasSentAssetWallet(st sentState, asset, wallet string) bool {
 
 func lastSentByAssetWallet(st sentState) map[string]time.Time {
 	out := map[string]time.Time{}
-	for key, rawTs := range st.Sent {
+	for key, rawTS := range st.Sent {
 		parts := strings.Split(strings.ToLower(key), "|")
 		if len(parts) < 3 {
 			continue
@@ -2303,7 +2311,7 @@ func lastSentByAssetWallet(st sentState) map[string]time.Time {
 		if posKey == "|" {
 			continue
 		}
-		ts, err := time.Parse(time.RFC3339, rawTs)
+		ts, err := time.Parse(time.RFC3339, rawTS)
 		if err != nil {
 			continue
 		}

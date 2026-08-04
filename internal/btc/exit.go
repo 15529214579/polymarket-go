@@ -12,9 +12,9 @@ import (
 type ExitReason string
 
 const (
-	ExitGapNarrowed ExitReason = "gap_narrowed"  // BS-PM gap shrunk below threshold
-	ExitStopLoss    ExitReason = "stop_loss"      // BTC moved >5% against position
-	ExitTimeout     ExitReason = "timeout"        // held >7 days without gap recovery
+	ExitGapNarrowed ExitReason = "gap_narrowed" // BS-PM gap shrunk below threshold
+	ExitStopLoss    ExitReason = "stop_loss"    // BTC moved >5% against position
+	ExitTimeout     ExitReason = "timeout"      // held >7 days without gap recovery
 )
 
 // ExitConfig configures the exit strategy thresholds.

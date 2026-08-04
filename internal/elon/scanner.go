@@ -29,21 +29,21 @@ type TweetCountMarket struct {
 
 // TweetSignal is emitted when the current tweet count implies edge vs PM price.
 type TweetSignal struct {
-	Market      TweetCountMarket
+	Market       TweetCountMarket
 	CurrentCount int
-	ModelProb   float64
-	PMPrice     float64
-	Edge        float64
-	Side        string // "YES" or "NO"
-	HoursLeft   float64
+	ModelProb    float64
+	PMPrice      float64
+	Edge         float64
+	Side         string // "YES" or "NO"
+	HoursLeft    float64
 }
 
 var (
-	reElonSlug   = regexp.MustCompile(`elon-musk-of-tweets-`)
-	reRange      = regexp.MustCompile(`(\d+)-(\d+)\s+tweets`)
-	reLessThan   = regexp.MustCompile(`<\s*(\d+)\s+tweets`)
-	reMoreThan   = regexp.MustCompile(`(\d+)\+\s+tweets`)
-	reDateRange  = regexp.MustCompile(`from\s+(\w+\s+\d+)\s+to\s+(\w+\s+\d+),?\s+(\d{4})`)
+	reElonSlug  = regexp.MustCompile(`elon-musk-of-tweets-`)
+	reRange     = regexp.MustCompile(`(\d+)-(\d+)\s+tweets`)
+	reLessThan  = regexp.MustCompile(`<\s*(\d+)\s+tweets`)
+	reMoreThan  = regexp.MustCompile(`(\d+)\+\s+tweets`)
+	reDateRange = regexp.MustCompile(`from\s+(\w+\s+\d+)\s+to\s+(\w+\s+\d+),?\s+(\d{4})`)
 )
 
 // FetchElonMarkets retrieves active Elon tweet count markets from gamma.

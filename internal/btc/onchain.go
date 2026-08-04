@@ -12,25 +12,25 @@ import (
 )
 
 type OnChainMetrics struct {
-	MempoolTxs       int     // pending transactions
-	AvgFee24h        float64 // average tx fee in USD (24h)
-	HashRate         float64 // network hashrate (TH/s)
-	Difficulty       float64 // current difficulty
-	BlockHeight      int64   // latest block
-	MempoolSize      float64 // mempool size in bytes
-	ExchangeNetFlow  string  // "INFLOW" / "OUTFLOW" / "NEUTRAL" (from mempool heuristic)
-	OnChainSignal    string  // "BULLISH" / "BEARISH" / "NEUTRAL"
-	OnChainScore     float64 // -1.0 to +1.0
+	MempoolTxs      int     // pending transactions
+	AvgFee24h       float64 // average tx fee in USD (24h)
+	HashRate        float64 // network hashrate (TH/s)
+	Difficulty      float64 // current difficulty
+	BlockHeight     int64   // latest block
+	MempoolSize     float64 // mempool size in bytes
+	ExchangeNetFlow string  // "INFLOW" / "OUTFLOW" / "NEUTRAL" (from mempool heuristic)
+	OnChainSignal   string  // "BULLISH" / "BEARISH" / "NEUTRAL"
+	OnChainScore    float64 // -1.0 to +1.0
 }
 
 type blockchairStats struct {
 	Data struct {
-		MempoolTxs       int             `json:"mempool_transactions"`
-		AvgFee24h        json.Number     `json:"average_transaction_fee_24h"`
-		HashRate         json.Number     `json:"hashrate_24h"`
-		Difficulty       json.Number     `json:"difficulty"`
-		BestBlockHeight  int64           `json:"best_block_height"`
-		MempoolSize      json.Number     `json:"mempool_size"`
+		MempoolTxs      int         `json:"mempool_transactions"`
+		AvgFee24h       json.Number `json:"average_transaction_fee_24h"`
+		HashRate        json.Number `json:"hashrate_24h"`
+		Difficulty      json.Number `json:"difficulty"`
+		BestBlockHeight int64       `json:"best_block_height"`
+		MempoolSize     json.Number `json:"mempool_size"`
 	} `json:"data"`
 }
 

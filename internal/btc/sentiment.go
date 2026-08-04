@@ -18,13 +18,13 @@ const (
 )
 
 type FearGreed struct {
-	Value          int       // 0-100
-	Classification string   // "Extreme Fear", "Fear", "Neutral", "Greed", "Extreme Greed"
+	Value          int    // 0-100
+	Classification string // "Extreme Fear", "Fear", "Neutral", "Greed", "Extreme Greed"
 	Timestamp      time.Time
 }
 
 type FundingRate struct {
-	Rate      float64   // e.g. 0.0001 = 0.01%
+	Rate      float64 // e.g. 0.0001 = 0.01%
 	MarkPrice float64
 	Timestamp time.Time
 }

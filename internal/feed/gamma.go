@@ -4,6 +4,7 @@ package feed
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -79,6 +81,147 @@ type CLOBMarketInfo struct {
 	GameStart    time.Time
 	TakerFeeRate float64
 	FeeRateKnown bool
+}
+
+type CLOBToken struct {
+	TokenID string  `json:"token_id"`
+	Outcome string  `json:"outcome"`
+	Price   float64 `json:"price"`
+	Winner  bool    `json:"winner"`
+}
+
+type CLOBMarket struct {
+	ConditionID     string      `json:"condition_id"`
+	Question        string      `json:"question"`
+	MarketSlug      string      `json:"market_slug"`
+	EndDateISO      string      `json:"end_date_iso"`
+	GameStartTime   string      `json:"game_start_time"`
+	Active          bool        `json:"active"`
+	Closed          bool        `json:"closed"`
+	Archived        bool        `json:"archived"`
+	AcceptingOrders bool        `json:"accepting_orders"`
+	NegRisk         bool        `json:"neg_risk"`
+	Tokens          []CLOBToken `json:"tokens"`
+}
+
+func (m CLOBMarket) asMarket() Market {
+	tokenIDs := make([]string, 0, len(m.Tokens))
+	outcomes := make([]string, 0, len(m.Tokens))
+	prices := make([]string, 0, len(m.Tokens))
+	hasWinner := false
+	for _, token := range m.Tokens {
+		if token.Winner {
+			hasWinner = true
+			break
+		}
+	}
+	for _, token := range m.Tokens {
+		tokenIDs = append(tokenIDs, token.TokenID)
+		outcomes = append(outcomes, token.Outcome)
+		price := token.Price
+		if m.Closed && hasWinner {
+			price = 0
+			if token.Winner {
+				price = 1
+			}
+		}
+		prices = append(prices, strconv.FormatFloat(price, 'f', -1, 64))
+	}
+	idsRaw, _ := json.Marshal(tokenIDs)
+	outcomesRaw, _ := json.Marshal(outcomes)
+	pricesRaw, _ := json.Marshal(prices)
+	return Market{
+		ConditionID:      m.ConditionID,
+		Slug:             m.MarketSlug,
+		Question:         m.Question,
+		Active:           m.Active,
+		Closed:           m.Closed,
+		AcceptingOrders:  m.AcceptingOrders,
+		EndDate:          m.EndDateISO,
+		GameStartTime:    m.GameStartTime,
+		ClobTokenIDsRaw:  string(idsRaw),
+		OutcomePricesRaw: string(pricesRaw),
+		OutcomesRaw:      string(outcomesRaw),
+		NegRisk:          m.NegRisk,
+	}
+}
+
+// GetCLOBMarket fetches durable CLOB market state, including winner flags.
+func (c *GammaClient) GetCLOBMarket(ctx context.Context, conditionID string) (Market, error) {
+	if strings.TrimSpace(conditionID) == "" {
+		return Market{}, fmt.Errorf("empty condition id")
+	}
+	base := c.clobBase
+	if base == "" {
+		base = clobBase
+	}
+	req, err := http.NewRequestWithContext(ctx, "GET", base+"/markets/"+url.PathEscape(conditionID), nil)
+	if err != nil {
+		return Market{}, err
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return Market{}, fmt.Errorf("clob market GET: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	if err != nil {
+		return Market{}, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return Market{}, fmt.Errorf("clob market %d: %s", resp.StatusCode, truncate(string(body), 200))
+	}
+	var market CLOBMarket
+	if err := json.Unmarshal(body, &market); err != nil {
+		return Market{}, fmt.Errorf("clob market decode: %w", err)
+	}
+	if market.ConditionID == "" {
+		market.ConditionID = conditionID
+	}
+	return market.asMarket(), nil
+}
+
+// GetCLOBMarkets bounds fallback fan-out and returns successful markets even
+// when some old condition IDs no longer exist.
+func (c *GammaClient) GetCLOBMarkets(ctx context.Context, conditionIDs []string) ([]Market, error) {
+	unique := make(map[string]string, len(conditionIDs))
+	for _, id := range conditionIDs {
+		id = strings.TrimSpace(id)
+		if id != "" {
+			unique[strings.ToLower(id)] = id
+		}
+	}
+	sem := make(chan struct{}, 8)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	markets := make([]Market, 0, len(unique))
+	errs := make([]error, 0)
+	for _, conditionID := range unique {
+		conditionID := conditionID
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				mu.Lock()
+				errs = append(errs, ctx.Err())
+				mu.Unlock()
+				return
+			}
+			market, err := c.GetCLOBMarket(ctx, conditionID)
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				errs = append(errs, fmt.Errorf("%s: %w", conditionID, err))
+				return
+			}
+			markets = append(markets, market)
+		}()
+	}
+	wg.Wait()
+	return markets, errors.Join(errs...)
 }
 
 // GetCLOBMarketInfo reads the authoritative game start and fee curve used by
@@ -235,10 +378,7 @@ func IsLoLMarket(m Market) bool {
 	if !isMoneylineQuestion(q) || !isMoneylineSlug(slug) {
 		return false
 	}
-	isLoL := false
-	if strings.HasPrefix(q, "lol:") || strings.HasPrefix(q, "lol ") {
-		isLoL = true
-	}
+	isLoL := strings.HasPrefix(q, "lol:") || strings.HasPrefix(q, "lol ")
 	if strings.Contains(q, "league of legends") {
 		isLoL = true
 	}
@@ -503,7 +643,7 @@ func IsBasketballMarket(m Market) bool {
 }
 
 func isBasketballTeamMatchQuestion(q string) bool {
-	if !(strings.Contains(q, " vs ") || strings.Contains(q, " vs. ") || strings.Contains(q, " at ")) {
+	if !strings.Contains(q, " vs ") && !strings.Contains(q, " vs. ") && !strings.Contains(q, " at ") {
 		return false
 	}
 	teams := 0

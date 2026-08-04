@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # bot-daemon.sh — start | stop | status | tail | restart for the paper detect bot.
-# Logs go to db/agent.log (stdout) + db/agent.err (stderr).
-# Single instance; PID file at db/bot.pid.
+# This is the legacy 5U paper runner. Keep its process state and logs separate
+# from the whale-push worker, which has its own lifecycle.
 set -u
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-PIDFILE="$ROOT/db/bot.pid"
-LOG="$ROOT/db/agent.log"
-ERR="$ROOT/db/agent.err"
-mkdir -p "$ROOT/db"
+PIDFILE="$ROOT/db/legacy-paper.pid"
+LOG="$ROOT/logs/legacy-paper.log"
+ERR="$ROOT/logs/legacy-paper.err"
+mkdir -p "$ROOT/db" "$ROOT/logs"
 
 action="${1:-status}"
 

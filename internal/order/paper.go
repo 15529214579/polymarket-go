@@ -111,6 +111,9 @@ func (p *PaperClient) executionReference(in Intent, now time.Time) (float64, str
 		fallback = in.LimitPx
 	}
 	if in.PaperQuoteAt.IsZero() {
+		if in.PaperRequireQuote {
+			return fallback, "quote_required", 0, false, "no executable order-book quote"
+		}
 		model := "limit_fallback"
 		if in.PaperReferencePx > 0 && in.PaperReferencePx < 1 {
 			model = "signal_fallback"
@@ -122,11 +125,16 @@ func (p *PaperClient) executionReference(in Intent, now time.Time) (float64, str
 		age = 0
 	}
 	if age > p.maxQuoteAge {
-		return fallback, "stale_quote_fallback", age, true, ""
+		if !in.PaperRequireQuote {
+			return fallback, "stale_quote_fallback", age, true, ""
+		}
+		return fallback, "stale_quote", age, false, "order-book quote is stale"
 	}
 	quote := in.PaperBestAsk
+	depth := in.PaperBestAskSize
 	if in.Side == Sell {
 		quote = in.PaperBestBid
+		depth = in.PaperBestBidSize
 	}
 	if quote <= 0 || quote >= 1 {
 		return quote, "top_of_book", age, false, "no executable top-of-book quote"
@@ -136,6 +144,15 @@ func (p *PaperClient) executionReference(in Intent, now time.Time) (float64, str
 	}
 	if in.Side == Sell && quote < in.LimitPx-1e-9 {
 		return quote, "top_of_book", age, false, "best bid below sell limit"
+	}
+	if in.PaperRequireQuote {
+		units := in.SizeShares
+		if units <= 0 {
+			units = in.SizeUSD / quote
+		}
+		if depth+1e-9 < units {
+			return quote, "top_of_book", age, false, fmt.Sprintf("insufficient top-of-book depth: need %.6f shares, have %.6f", units, depth)
+		}
 	}
 	return quote, "top_of_book", age, true, ""
 }

@@ -3,11 +3,14 @@ package order
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"math/big"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -112,6 +115,10 @@ func (c *V2Client) Submit(ctx context.Context, in Intent) (Result, error) {
 	if err != nil {
 		return Result{Status: StatusRejected, Error: err.Error()}, fmt.Errorf("order: eip712 hash: %w", err)
 	}
+	preparedOrderID := common.BytesToHash(digest).Hex()
+	if err := notifyPreparedOrder(ctx, preparedOrderID); err != nil {
+		return Result{OrderID: preparedOrderID, Status: StatusRejected, Error: err.Error()}, fmt.Errorf("order: persist prepared order: %w", err)
+	}
 	sig, err := c.wallet.SignDigest(digest)
 	if err != nil {
 		return Result{Status: StatusRejected, Error: err.Error()}, fmt.Errorf("order: sign: %w", err)
@@ -213,18 +220,12 @@ func (c *V2Client) Submit(ctx context.Context, in Intent) (Result, error) {
 		return c.pollUntilFilled(ctx, clobResp.OrderID, in, now)
 	}
 
-	// Anything other than "matched" means not immediately filled — cancel and fail.
+	// Anything other than "matched" or "delayed" must reach a confirmed
+	// terminal state before the caller may release its position reservation.
 	slog.Warn("v2_order_no_match", "order_id", clobResp.OrderID,
 		"status", clobResp.Status, "limit_px", in.LimitPx,
 		"hint", "not immediately filled, cancelling")
-	c.tryCancelOrder(context.Background(), clobResp.OrderID)
-	errMsg := fmt.Sprintf("order %s but not filled — limit %.4f below best ask, cancelled", clobResp.Status, in.LimitPx)
-	return Result{
-		OrderID:  clobResp.OrderID,
-		Status:   StatusExpired,
-		SubmitAt: now,
-		Error:    errMsg,
-	}, fmt.Errorf("order: %s", errMsg)
+	return c.cancelAndResolve(clobResp.OrderID, in, now, "post response "+clobResp.Status)
 }
 
 func (c *V2Client) pollUntilFilled(ctx context.Context, orderID string, in Intent, submitAt time.Time) (Result, error) {
@@ -233,9 +234,7 @@ func (c *V2Client) pollUntilFilled(ctx context.Context, orderID string, in Inten
 	// Sports orders can enter a one-second matching delay.
 	select {
 	case <-ctx.Done():
-		c.tryCancelOrder(context.Background(), orderID)
-		return Result{OrderID: orderID, Status: StatusExpired, SubmitAt: submitAt,
-			Error: "context cancelled"}, ctx.Err()
+		return c.cancelAndResolve(orderID, in, submitAt, "context cancelled")
 	case <-time.After(1 * time.Second):
 	}
 
@@ -248,14 +247,10 @@ func (c *V2Client) pollUntilFilled(ctx context.Context, orderID string, in Inten
 	for {
 		select {
 		case <-ctx.Done():
-			c.tryCancelOrder(context.Background(), orderID)
-			return Result{OrderID: orderID, Status: StatusExpired, SubmitAt: submitAt,
-				Error: "context cancelled"}, ctx.Err()
+			return c.cancelAndResolve(orderID, in, submitAt, "context cancelled")
 		case <-deadline:
 			slog.Warn("v2_poll_timeout", "order_id", orderID, "timeout", pollTimeout)
-			c.tryCancelOrder(context.Background(), orderID)
-			return Result{OrderID: orderID, Status: StatusExpired, SubmitAt: submitAt,
-				Error: "poll timeout"}, nil
+			return c.cancelAndResolve(orderID, in, submitAt, "poll timeout")
 		case <-ticker.C:
 			os, err := c.GetOrder(ctx, orderID)
 			if err != nil {
@@ -263,8 +258,7 @@ func (c *V2Client) pollUntilFilled(ctx context.Context, orderID string, in Inten
 					consecutive404++
 					if consecutive404 >= max404 {
 						slog.Warn("v2_poll_404_bail", "order_id", orderID, "consecutive", consecutive404)
-						return Result{OrderID: orderID, Status: StatusExpired, SubmitAt: submitAt,
-							Error: "order not found (404)"}, nil
+						return c.cancelAndResolve(orderID, in, submitAt, "order lookup returned 404")
 					}
 				}
 				slog.Warn("v2_poll_err", "order_id", orderID, "err", err, "404_count", consecutive404)
@@ -276,23 +270,7 @@ func (c *V2Client) pollUntilFilled(ctx context.Context, orderID string, in Inten
 			case "MATCHED", "ORDER_STATUS_MATCHED":
 				slog.Info("v2_order_filled_after_poll", "order_id", orderID,
 					"trades", len(os.AssociateTrades), "size_matched", os.SizeMatched)
-				avgPx := in.LimitPx
-				if os.AvgPrice > 0 {
-					avgPx = os.AvgPrice
-				}
-				filledSize := in.SizeUSD / avgPx
-				if os.SizeMatched > 0 {
-					filledSize = os.SizeMatched
-				}
-				return Result{
-					OrderID:    orderID,
-					Status:     StatusFilled,
-					FilledSize: filledSize,
-					AvgPrice:   avgPx,
-					SubmitAt:   submitAt,
-					FilledAt:   time.Now(),
-					FeeUSD:     c.fillFeeUSD(ctx, in.Market, filledSize, avgPx),
-				}, nil
+				return c.resultForFill(ctx, orderID, in, submitAt, os), nil
 			case "CANCELLED", "CANCELED", "ORDER_STATUS_CANCELED", "ORDER_STATUS_CANCELED_MARKET_RESOLVED":
 				if os.SizeMatched > 0 {
 					return c.resultForPartialFill(ctx, orderID, in, submitAt, os), nil
@@ -302,8 +280,7 @@ func (c *V2Client) pollUntilFilled(ctx context.Context, orderID string, in Inten
 					Error: "cancelled"}, nil
 			default:
 				if os.SizeMatched > 0 {
-					c.tryCancelOrder(context.Background(), orderID)
-					return c.resultForPartialFill(ctx, orderID, in, submitAt, os), nil
+					return c.cancelAndResolve(orderID, in, submitAt, "partial fill remained open")
 				}
 				slog.Debug("v2_poll_still_pending", "order_id", orderID, "status", os.Status)
 			}
@@ -325,8 +302,20 @@ type OrderStatusResponse struct {
 	Price           string   `json:"price"`
 }
 
+type authenticatedTrade struct {
+	ID           string `json:"id"`
+	TakerOrderID string `json:"taker_order_id"`
+	SizeRaw      string `json:"size"`
+	PriceRaw     string `json:"price"`
+	Status       string `json:"status"`
+}
+
+type authenticatedTradesResponse struct {
+	Data []authenticatedTrade `json:"data"`
+}
+
 func (c *V2Client) GetOrder(ctx context.Context, orderID string) (*OrderStatusResponse, error) {
-	path := "/data/order/" + orderID
+	path := "/order/" + url.PathEscape(orderID)
 	headers := buildL2Headers(c.creds, c.wallet.Address(), "GET", path, "")
 
 	req, err := http.NewRequestWithContext(ctx, "GET", c.clobBase+path, nil)
@@ -358,19 +347,134 @@ func (c *V2Client) GetOrder(ctx context.Context, orderID string) (*OrderStatusRe
 }
 
 func (c *V2Client) resultForPartialFill(ctx context.Context, orderID string, in Intent, submitAt time.Time, status *OrderStatusResponse) Result {
-	avgPrice := status.AvgPrice
+	return c.resultForFill(ctx, orderID, in, submitAt, status)
+}
+
+func (c *V2Client) resultForFill(ctx context.Context, orderID string, in Intent, submitAt time.Time, status *OrderStatusResponse) Result {
+	tradeSize, tradeAvgPrice := c.tradeVWAP(ctx, status.AssociateTrades)
+	filledSize := status.SizeMatched
+	if filledSize <= 0 {
+		filledSize = tradeSize
+	}
+	avgPrice := 0.0
+	tradeCoverageTolerance := math.Max(1e-6, filledSize*1e-6)
+	if tradeAvgPrice > 0 && (status.SizeMatched <= 0 || math.Abs(tradeSize-status.SizeMatched) <= tradeCoverageTolerance) {
+		avgPrice = tradeAvgPrice
+	} else if tradeSize > 0 && status.SizeMatched > 0 {
+		slog.Warn("v2_trade_details_incomplete",
+			"order_id", orderID,
+			"trade_size", tradeSize,
+			"status_size_matched", status.SizeMatched,
+			"fallback_price", status.AvgPrice)
+	}
+	if avgPrice <= 0 {
+		avgPrice = status.AvgPrice
+	}
 	if avgPrice <= 0 {
 		avgPrice = in.LimitPx
+	}
+	if filledSize <= 0 && avgPrice > 0 {
+		if in.SizeShares > 0 {
+			filledSize = in.SizeShares
+		} else {
+			filledSize = in.SizeUSD / avgPrice
+		}
 	}
 	return Result{
 		OrderID:    orderID,
 		Status:     StatusFilled,
-		FilledSize: status.SizeMatched,
+		FilledSize: filledSize,
 		AvgPrice:   avgPrice,
 		SubmitAt:   submitAt,
 		FilledAt:   time.Now(),
-		FeeUSD:     c.fillFeeUSD(ctx, in.Market, status.SizeMatched, avgPrice),
+		FeeUSD:     c.fillFeeUSD(ctx, in.Market, filledSize, avgPrice),
 	}
+}
+
+func (c *V2Client) tradeVWAP(ctx context.Context, tradeIDs []string) (filledSize, avgPrice float64) {
+	var notional float64
+	seen := make(map[string]struct{}, len(tradeIDs))
+	for _, tradeID := range tradeIDs {
+		tradeID = strings.TrimSpace(tradeID)
+		if tradeID == "" {
+			continue
+		}
+		if _, duplicate := seen[tradeID]; duplicate {
+			continue
+		}
+		seen[tradeID] = struct{}{}
+		path := "/trades?id=" + url.QueryEscape(tradeID)
+		headers := buildL2Headers(c.creds, c.wallet.Address(), "GET", path, "")
+		req, err := http.NewRequestWithContext(ctx, "GET", c.clobBase+path, nil)
+		if err != nil {
+			continue
+		}
+		for key, value := range headers {
+			req.Header[key] = value
+		}
+		resp, err := c.http.Do(req)
+		if err != nil {
+			slog.Warn("v2_trade_fetch_fail", "trade_id", tradeID, "err", err)
+			continue
+		}
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		closeErr := resp.Body.Close()
+		if readErr != nil || closeErr != nil || resp.StatusCode != http.StatusOK {
+			slog.Warn("v2_trade_fetch_fail", "trade_id", tradeID, "status", resp.StatusCode, "read_err", readErr, "close_err", closeErr)
+			continue
+		}
+		var payload authenticatedTradesResponse
+		if err := json.Unmarshal(body, &payload); err != nil {
+			slog.Warn("v2_trade_decode_fail", "trade_id", tradeID, "err", err)
+			continue
+		}
+		for _, trade := range payload.Data {
+			if trade.ID != "" && !strings.EqualFold(trade.ID, tradeID) {
+				continue
+			}
+			size := parseFixedAmount(trade.SizeRaw)
+			price, err := strconv.ParseFloat(strings.TrimSpace(trade.PriceRaw), 64)
+			if err != nil || size <= 0 || price <= 0 || price >= 1 {
+				continue
+			}
+			filledSize += size
+			notional += size * price
+		}
+	}
+	if filledSize > 0 {
+		avgPrice = notional / filledSize
+	}
+	return filledSize, avgPrice
+}
+
+func (c *V2Client) cancelAndResolve(orderID string, in Intent, submitAt time.Time, reason string) (Result, error) {
+	cancelCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	cancelErr := c.tryCancelOrder(cancelCtx, orderID)
+	cancel()
+
+	lookupCtx, lookupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	status, lookupErr := c.GetOrder(lookupCtx, orderID)
+	lookupCancel()
+	if lookupErr == nil {
+		normalized := strings.ToUpper(status.Status)
+		if normalized == "MATCHED" || normalized == "ORDER_STATUS_MATCHED" {
+			return c.resultForFill(context.Background(), orderID, in, submitAt, status), nil
+		}
+		switch normalized {
+		case "CANCELLED", "CANCELED", "ORDER_STATUS_CANCELED", "ORDER_STATUS_CANCELED_MARKET_RESOLVED":
+			if status.SizeMatched > 0 {
+				return c.resultForPartialFill(context.Background(), orderID, in, submitAt, status), nil
+			}
+			return Result{OrderID: orderID, Status: StatusExpired, SubmitAt: submitAt, Error: reason}, nil
+		}
+	}
+
+	err := errors.Join(cancelErr, lookupErr)
+	if err == nil {
+		err = fmt.Errorf("order remained non-terminal after cancellation")
+	}
+	message := fmt.Sprintf("%s; terminal state unconfirmed: %v", reason, err)
+	return Result{OrderID: orderID, Status: StatusPending, SubmitAt: submitAt, Error: message}, fmt.Errorf("order: %s", message)
 }
 
 func (c *V2Client) CancelOrder(ctx context.Context, orderID string) error {
@@ -425,15 +529,22 @@ func (c *V2Client) CancelOrder(ctx context.Context, orderID string) error {
 	return nil
 }
 
-func (c *V2Client) tryCancelOrder(ctx context.Context, orderID string) {
+func (c *V2Client) tryCancelOrder(ctx context.Context, orderID string) error {
+	var errs []error
 	for i := 0; i < maxCancelAttempts; i++ {
 		if err := c.CancelOrder(ctx, orderID); err != nil {
+			errs = append(errs, err)
 			slog.Warn("v2_cancel_attempt_failed", "order_id", orderID, "attempt", i+1, "err", err)
-			time.Sleep(500 * time.Millisecond)
+			select {
+			case <-ctx.Done():
+				return errors.Join(append(errs, ctx.Err())...)
+			case <-time.After(500 * time.Millisecond):
+			}
 			continue
 		}
-		return
+		return nil
 	}
+	return errors.Join(errs...)
 }
 
 func (c *V2Client) CancelAllOpen(ctx context.Context) error {

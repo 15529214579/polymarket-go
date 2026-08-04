@@ -11,15 +11,18 @@ import (
 // Tick is a 1-second summary for one asset.
 // Emitted at the close of each second; counters cover that second only.
 type Tick struct {
-	AssetID string
-	Market  string
-	Time    time.Time
-	BestBid float64
-	BestAsk float64
-	Mid     float64
-	Trades  int
-	BuyVol  float64
-	SellVol float64
+	AssetID     string
+	Market      string
+	Time        time.Time
+	QuoteTime   time.Time
+	BestBid     float64
+	BestBidSize float64
+	BestAsk     float64
+	BestAskSize float64
+	Mid         float64
+	Trades      int
+	BuyVol      float64
+	SellVol     float64
 }
 
 // WindowStats summarizes the last N 1-second ticks for one asset.
@@ -52,11 +55,14 @@ type Sampler struct {
 }
 
 type assetState struct {
-	market  string
-	bestBid float64
-	bestAsk float64
-	lastMid float64
-	seen    bool
+	market      string
+	bestBid     float64
+	bestBidSize float64
+	bestAsk     float64
+	bestAskSize float64
+	lastBookAt  time.Time
+	lastMid     float64
+	seen        bool
 
 	// accumulators for the current (in-progress) second
 	buyVol  float64
@@ -115,13 +121,21 @@ func (s *Sampler) onBook(ev BookEvent) {
 	st := s.ensure(ev.AssetID, ev.Market)
 	if len(ev.Bids) > 0 {
 		st.bestBid = ev.Bids[0].Price
+		st.bestBidSize = ev.Bids[0].Size
 	} else {
 		st.bestBid = 0
+		st.bestBidSize = 0
 	}
 	if len(ev.Asks) > 0 {
 		st.bestAsk = ev.Asks[0].Price
+		st.bestAskSize = ev.Asks[0].Size
 	} else {
 		st.bestAsk = 0
+		st.bestAskSize = 0
+	}
+	st.lastBookAt = ev.Timestamp
+	if st.lastBookAt.IsZero() {
+		st.lastBookAt = time.Now().UTC()
 	}
 	st.seen = true
 }
@@ -161,15 +175,18 @@ func (s *Sampler) flushSecond(now time.Time) {
 		}
 		mid := midOf(st.bestBid, st.bestAsk, st.lastMid)
 		t := Tick{
-			AssetID: assetID,
-			Market:  st.market,
-			Time:    now,
-			BestBid: st.bestBid,
-			BestAsk: st.bestAsk,
-			Mid:     mid,
-			Trades:  st.trades,
-			BuyVol:  st.buyVol,
-			SellVol: st.sellVol,
+			AssetID:     assetID,
+			Market:      st.market,
+			Time:        now,
+			QuoteTime:   st.lastBookAt,
+			BestBid:     st.bestBid,
+			BestBidSize: st.bestBidSize,
+			BestAsk:     st.bestAsk,
+			BestAskSize: st.bestAskSize,
+			Mid:         mid,
+			Trades:      st.trades,
+			BuyVol:      st.buyVol,
+			SellVol:     st.sellVol,
 		}
 		st.ring[st.head] = t
 		st.head = (st.head + 1) % s.windowSec

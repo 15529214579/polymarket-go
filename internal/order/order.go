@@ -42,6 +42,8 @@ const (
 // Intent is the minimum the strategy layer owns. The signer/client turns this
 // into a V2-shaped Order before submission.
 type Intent struct {
+	ClientID             string // durable caller correlation id (normally position id)
+	Reason               string // strategy reason for audit/recovery
 	AssetID              string // ERC1155 token id
 	Market               string // conditionID (for dedupe + logs)
 	Side                 Side
@@ -54,18 +56,22 @@ type Intent struct {
 	TakerFeeRateOverride *float64  // paper only; nil uses the client's fallback rate
 	PaperReferencePx     float64   // paper only; signal/mid fallback when no fresh quote exists
 	PaperBestBid         float64   // paper only; latest executable bid
+	PaperBestBidSize     float64   // paper only; shares available at best bid
 	PaperBestAsk         float64   // paper only; latest executable ask
+	PaperBestAskSize     float64   // paper only; shares available at best ask
 	PaperQuoteAt         time.Time // paper only; zero means no order-book quote was supplied
+	PaperRequireQuote    bool      // paper only; fail closed without a fresh, deep-enough quote
 }
 
 // Result is what Submit returns — unified for paper + real.
 type Result struct {
-	OrderID    string // paper: local uuid; real: CLOB id
-	Status     Status
-	FilledSize float64 // units filled
-	AvgPrice   float64
-	SubmitAt   time.Time
-	FilledAt   time.Time
+	ExecutionID string // durable local execution ledger id
+	OrderID     string // paper: local uuid; real: CLOB id
+	Status      Status
+	FilledSize  float64 // units filled
+	AvgPrice    float64
+	SubmitAt    time.Time
+	FilledAt    time.Time
 	// FeeUSD is the platform/builder fee paid on this fill, in USDC. Paper
 	// mode computes it from its configured fee model; real V2 populates it
 	// from the CLOB fill receipt. Net PnL accounting subtracts this per-leg.

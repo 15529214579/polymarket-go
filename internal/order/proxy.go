@@ -1,8 +1,9 @@
 package order
 
 import (
+	cryptorand "crypto/rand"
 	"log/slog"
-	"math/rand"
+	"math/big"
 	"net/http"
 	"net/url"
 	"os"
@@ -26,7 +27,9 @@ func InitProxy() {
 			return
 		}
 		proxyList = proxies
-		proxyIdx.Store(int64(rand.Intn(len(proxies))))
+		if n, err := cryptorand.Int(cryptorand.Reader, big.NewInt(int64(len(proxies)))); err == nil {
+			proxyIdx.Store(n.Int64())
+		}
 		http.DefaultTransport = &http.Transport{
 			Proxy: rotateProxy,
 		}

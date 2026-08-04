@@ -1,6 +1,7 @@
 package order
 
 import (
+	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -154,9 +155,12 @@ func RequireExchangeAddress(override string) (common.Address, error) {
 	return common.HexToAddress(addr), nil
 }
 
-// NewSalt returns a V2-friendly salt: unix-micros + 4 random bytes, so
-// parallel signs from the same wallet never collide.
+// NewSalt returns a positive random int64 so concurrent orders cannot share
+// the same EIP-712 salt while the JSON representation remains portable.
 func NewSalt() *big.Int {
-	now := time.Now().UnixMicro()
-	return big.NewInt(now)
+	max := new(big.Int).Lsh(big.NewInt(1), 63)
+	if salt, err := rand.Int(rand.Reader, max); err == nil && salt.Sign() > 0 {
+		return salt
+	}
+	return big.NewInt(time.Now().UnixNano() & int64(^uint64(0)>>1))
 }

@@ -2,6 +2,7 @@ package whale
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"os"
@@ -90,6 +91,59 @@ func TestSeedReplayDisabledByDefault(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Fatalf("replayed alerts=%d, want 0", len(got))
+	}
+}
+
+func TestFetchTradesPaginates(t *testing.T) {
+	tracker := NewTracker(Config{MaxPages: maxActivityPages}, nil)
+	requests := 0
+	tracker.http = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		requests++
+		offset := req.URL.Query().Get("offset")
+		if offset == "0" {
+			rows := make([]trade, 500)
+			for i := range rows {
+				rows[i] = trade{Asset: "asset-" + strconv.Itoa(i), Timestamp: 100}
+			}
+			raw, _ := json.Marshal(rows)
+			return jsonResponse(string(raw)), nil
+		}
+		if offset == "500" {
+			return jsonResponse(`[{"asset":"asset-500","timestamp":100}]`), nil
+		}
+		t.Fatalf("unexpected offset %s", offset)
+		return nil, nil
+	})}
+	trades, err := tracker.fetchTrades(context.Background(), "0xwallet", 99, maxActivityPages)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(trades) != 501 || requests != 2 {
+		t.Fatalf("trades=%d requests=%d, want 501/2", len(trades), requests)
+	}
+}
+
+func TestTradeKeyDistinguishesFillsInSameTransaction(t *testing.T) {
+	left := trade{TransactionHash: "0xsame", Asset: "asset-a", Side: "BUY", Size: 1, Price: 0.5, Timestamp: 100}
+	right := left
+	right.Asset = "asset-b"
+	if tradeKey(&left) == tradeKey(&right) {
+		t.Fatal("tradeKey collapsed distinct fills")
+	}
+}
+
+func TestTrackerWatermarkPersists(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "watermarks.json")
+	wallet := WalletEntry{Address: "0x1111111111111111111111111111111111111111"}
+	tracker := NewTracker(Config{Wallets: []WalletEntry{wallet}, StatePath: path}, nil)
+	tracker.advanceFloor(wallet.Address, 123)
+	if err := tracker.persistState(); err != nil {
+		t.Fatal(err)
+	}
+	reloaded := NewTracker(Config{Wallets: []WalletEntry{wallet}, StatePath: path}, nil)
+	state := reloaded.states[strings.ToLower(wallet.Address)]
+	if state.lastTS != 123 {
+		t.Fatalf("lastTS=%d, want 123", state.lastTS)
 	}
 }
 

@@ -5,8 +5,9 @@ import "math"
 // KellyFraction computes the optimal bet fraction using the Kelly Criterion.
 //
 // For a binary bet at PM price p (probability of winning = p_fair, payout = 1/p - 1):
-//   f* = (b*p_fair - q) / b
-//   where b = net payout odds = (1/p - 1), q = 1 - p_fair
+//
+//	f* = (b*p_fair - q) / b
+//	where b = net payout odds = (1/p - 1), q = 1 - p_fair
 //
 // We use half-Kelly (f*/2) for safety.
 func KellyFraction(pmPrice, fairProb float64) float64 {

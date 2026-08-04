@@ -112,7 +112,7 @@ func buildStats(trades []Trade, closed []ClosedPosition, cfg Config) WalletStats
 		validForRatios++
 	}
 	if validForRatios > 0 {
-		st.ExtremePriceRatio = st.ExtremePriceRatio / float64(validForRatios)
+		st.ExtremePriceRatio /= float64(validForRatios)
 		st.FixedAmountRatio = maxBucketRatio(amountBuckets, validForRatios)
 		st.FixedPriceRatio = maxBucketRatio(priceBuckets, validForRatios)
 		st.AvgTradeNotional = totalNotional / float64(validForRatios)

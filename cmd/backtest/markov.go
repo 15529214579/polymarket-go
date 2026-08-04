@@ -174,10 +174,10 @@ func classifyVol(buyRatio float64) int {
 }
 
 type tickFeatures struct {
-	delta30s  float64
-	delta60s  float64
-	buyRatio  float64
-	state     int
+	delta30s float64
+	delta60s float64
+	buyRatio float64
+	state    int
 }
 
 func computeFeatures(ticks []richTick, i int) tickFeatures {
@@ -260,12 +260,6 @@ func (f forwardStats) avgRet120() float64 {
 		return 0
 	}
 	return f.sumRet120 / float64(f.n)
-}
-func (f forwardStats) posRate30() float64 {
-	if f.n == 0 {
-		return 0
-	}
-	return 100 * float64(f.nPos30) / float64(f.n)
 }
 func (f forwardStats) posRate60() float64 {
 	if f.n == 0 {
@@ -399,24 +393,24 @@ type markovConfig struct {
 	feeBP             float64
 	cooldownSec       int
 	warmupTicks       int
-	requireTrendUp    bool    // require 60s trend to be Up (>3pp)
-	requireVolBuy     bool    // require buy ratio > 0.60
+	requireTrendUp    bool // require 60s trend to be Up (>3pp)
+	requireVolBuy     bool // require buy ratio > 0.60
 }
 
 type markovResult struct {
-	label       string
-	nPaths      int
-	nSignals    int
-	nTrades     int
-	wins        int
-	losses      int
-	sumPnL      float64
-	maxDD       float64
-	avgHoldSec  float64
-	tpHit       int
-	slHit       int
-	timeoutHit  int
-	naturalHit  int
+	label      string
+	nPaths     int
+	nSignals   int
+	nTrades    int
+	wins       int
+	losses     int
+	sumPnL     float64
+	maxDD      float64
+	avgHoldSec float64
+	tpHit      int
+	slHit      int
+	timeoutHit int
+	naturalHit int
 }
 
 func (r markovResult) winRate() float64 {
@@ -1064,7 +1058,7 @@ func runMarkovBacktest(tickDir string, feeBP float64) error {
 
 	// flash SL analysis: how many entries in momentum baseline hit SL within 30s?
 	fmt.Println("\n  Flash SL analysis (momentum entries that SL within 30s):")
-	flashSL, totalEntries := 0, 0
+	flashSL, totalEntries, filteredEntries := 0, 0, 0
 	for _, p := range paths {
 		var entryIdx int
 		inPos := false
@@ -1123,14 +1117,14 @@ func runMarkovBacktest(tickDir string, feeBP float64) error {
 			f := computeFeatures(p.Ticks, i)
 			fs := fwdStats[f.state]
 			if fs.n >= 10 && fs.avgRet60() < 0 {
-				// would Markov have filtered this?
+				filteredEntries++
 			}
 		}
 	}
 	if totalEntries > 0 {
 		fmt.Printf("    Total momentum entries: %d\n", totalEntries)
 		fmt.Printf("    Flash SL (≤30s): %d (%.0f%%)\n", flashSL, 100*float64(flashSL)/float64(totalEntries))
-		fmt.Printf("    → Markov filter would skip entries in states with E[60s] < 0\n")
+		fmt.Printf("    Markov-filtered entries: %d (%.0f%%)\n", filteredEntries, 100*float64(filteredEntries)/float64(totalEntries))
 	}
 
 	return nil

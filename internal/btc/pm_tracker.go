@@ -24,9 +24,9 @@ const (
 type PMMarket struct {
 	MarketID     string
 	Question     string
-	Strike       float64 // parsed strike price from question
-	YesPrice     float64 // 0..1
-	NoPrice      float64 // 0..1
+	Strike       float64  // parsed strike price from question
+	YesPrice     float64  // 0..1
+	NoPrice      float64  // 0..1
 	ClobTokenIDs []string // CLOB token IDs for orderbook queries
 	FetchedAt    time.Time
 }
@@ -43,10 +43,10 @@ type ImpliedCurvePoint struct {
 // ---------------------------------------------------------------------------
 
 type gammaEvent struct {
-	ID       string        `json:"id"`
-	Title    string        `json:"title"`
-	Slug     string        `json:"slug"`
-	Markets  []gammaMarket `json:"markets"`
+	ID      string        `json:"id"`
+	Title   string        `json:"title"`
+	Slug    string        `json:"slug"`
+	Markets []gammaMarket `json:"markets"`
 }
 
 type gammaMarket struct {
@@ -204,9 +204,7 @@ func BuildImpliedCurve(markets []PMMarket) []ImpliedCurvePoint {
 // Gap analysis: PM implied vs Markov-predicted probability
 // ---------------------------------------------------------------------------
 
-// MarkovVsPM compares the Markov model's predicted BTC direction (bull/bear)
-// against PM market implied probabilities, returning opportunities where the
-// gap exceeds minGapPP percentage points.
+// GapOpportunity describes a model-versus-market probability gap.
 type GapOpportunity struct {
 	Strike        float64
 	YesPrice      float64 // raw PM Yes price

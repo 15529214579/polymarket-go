@@ -115,7 +115,7 @@ EOF
 
 # ── P10 日志异常自动扫描（每 20min cron-poke 触发） ──
 anomaly_log="$ROOT/logs/anomaly-${day}.log"
-daemon_log="$ROOT/db/agent.log"
+daemon_log="$ROOT/logs/legacy-paper.log"
 if [ -f "$daemon_log" ]; then
   cutoff=$(date -v-20M '+%Y-%m-%dT%H:%M' 2>/dev/null || date -d '20 minutes ago' '+%Y-%m-%dT%H:%M' 2>/dev/null || echo "")
   if [ -n "$cutoff" ]; then

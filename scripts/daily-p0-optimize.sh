@@ -96,6 +96,34 @@ is_allowed_path() {
   return 1
 }
 
+is_protected_path() {
+  case "$1" in
+	cmd/bot/main.go|cmd/trade/*|internal/order/*|internal/strategy/position.go|internal/risk/*|internal/journal/*|internal/feed/*|internal/whale/tracker.go|scripts/daily-p0-optimize.sh|scripts/daily-git-save.sh|scripts/install-*|scripts/*live*|scripts/start-*|scripts/bot-daemon.sh|scripts/component-flags.sh|scripts/hourly-wallet-promotion.sh|scripts/wallet-discover.sh|scripts/smartmoney-health-check.sh)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+acquire_lock() {
+  if mkdir "$LOCK_DIR" 2>/dev/null; then
+    printf '%s\n' "$$" > "$LOCK_DIR/pid"
+    return 0
+  fi
+  local pid command
+  pid="$(cat "$LOCK_DIR/pid" 2>/dev/null || true)"
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    command="$(ps -o command= -p "$pid" 2>/dev/null || true)"
+    case "$command" in
+      *daily-p0-optimize.sh*|"") return 1 ;;
+    esac
+  fi
+  rm -f "$LOCK_DIR/pid"
+  rmdir "$LOCK_DIR" 2>/dev/null || return 1
+  mkdir "$LOCK_DIR" || return 1
+  printf '%s\n' "$$" > "$LOCK_DIR/pid"
+}
+
 quarantine_worktree_changes() {
   [ "$WORKTREE_CREATED" -eq 1 ] || return 0
   if [ -n "$(git -C "$WORKTREE_DIR" status --porcelain)" ]; then
@@ -126,8 +154,9 @@ cleanup() {
     write_state failed "${AUTOMATION_COMMIT:-$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)}" || true
   fi
   rm -f "$CHANGED_FILE" "$RUN_PROMPT_FILE"
-  if [ "$LOCK_OWNED" -eq 1 ]; then
-    rmdir "$LOCK_DIR" 2>/dev/null || true
+	if [ "$LOCK_OWNED" -eq 1 ]; then
+	  rm -f "$LOCK_DIR/pid"
+	  rmdir "$LOCK_DIR" 2>/dev/null || true
   fi
 }
 trap cleanup EXIT
@@ -153,7 +182,7 @@ if [ "${1:-run}" = "check" ]; then
   exit 0
 fi
 
-if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+if ! acquire_lock; then
   log "Another daily P0 optimizer run is active; skipping."
   SUCCESS=1
   exit 0
@@ -295,12 +324,10 @@ if [ "$CAN_CHANGE" -ne 1 ]; then
 fi
 
 while IFS= read -r path; do
-  case "$path" in
-    scripts/daily-p0-optimize.sh|scripts/install-daily-p0-launchd.sh|scripts/daily-git-save.sh)
-      log "Rejected modification of autonomous control file: $path"
-      exit 1
-      ;;
-  esac
+	if is_protected_path "$path"; then
+	  log "Rejected modification of protected execution or automation file: $path"
+	  exit 1
+	fi
 done < "$CHANGED_FILE"
 
 FILE_COUNT="$(wc -l < "$CHANGED_FILE" | tr -d ' ')"

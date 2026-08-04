@@ -9,11 +9,23 @@ export PATH="/usr/local/go/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/u
 
 LOCK_DIR="$ROOT/db/hourly-wallet-promotion.lock"
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
-  printf 'hourly-wallet-promotion.already_running lock=%s\n' "$LOCK_DIR"
-  exit 0
+	lock_pid="$(cat "$LOCK_DIR/pid" 2>/dev/null || true)"
+	if [ -n "$lock_pid" ] && kill -0 "$lock_pid" 2>/dev/null; then
+		lock_command="$(ps -o command= -p "$lock_pid" 2>/dev/null || true)"
+		case "$lock_command" in
+			*hourly-wallet-promotion.sh*|"")
+				printf 'hourly-wallet-promotion.already_running lock=%s pid=%s\n' "$LOCK_DIR" "$lock_pid"
+				exit 0
+				;;
+		esac
+	fi
+	rm -f "$LOCK_DIR/pid"
+	rmdir "$LOCK_DIR" 2>/dev/null || { printf 'hourly-wallet-promotion.lock_unavailable lock=%s\n' "$LOCK_DIR"; exit 0; }
+	mkdir "$LOCK_DIR" 2>/dev/null || { printf 'hourly-wallet-promotion.already_running lock=%s\n' "$LOCK_DIR"; exit 0; }
 fi
+printf '%s\n' "$$" > "$LOCK_DIR/pid"
 TMP=""
-trap 'rmdir "$LOCK_DIR" 2>/dev/null || true; [ -z "$TMP" ] || rm -f "$TMP"' EXIT
+trap 'rm -f "$LOCK_DIR/pid"; rmdir "$LOCK_DIR" 2>/dev/null || true; [ -z "$TMP" ] || rm -f "$TMP"' EXIT
 
 mkdir -p "$ROOT/db" "$ROOT/logs" "$ROOT/reports"
 
@@ -49,9 +61,9 @@ printf 'hourly-wallet-promotion.start ts=%s scores=%s out=%s\n' "$(date -u +%Y-%
 
 if [ "${HOURLY_WALLET_DISCOVER:-1}" = "1" ]; then
   printf 'hourly-wallet-promotion.discover start\n'
-  SCORES_BAK="$ROOT/db/hourly-wallet-promotion.wallet_scores.backup.json"
-  if [ -s "$SCORES" ]; then
-    cp "$SCORES" "$SCORES_BAK"
+	SCORES_BAK="$ROOT/db/hourly-wallet-promotion.wallet_scores.backup.json"
+	if [ -s "$SCORES" ]; then
+	  cp -p "$SCORES" "$SCORES_BAK"
   fi
   if LEADERBOARD_LIMIT="${HOURLY_LEADERBOARD_LIMIT:-300}" \
     DISCOVER_MARKETS="${HOURLY_DISCOVER_MARKETS:-15}" \
@@ -65,8 +77,8 @@ if [ "${HOURLY_WALLET_DISCOVER:-1}" = "1" ]; then
     printf 'hourly-wallet-promotion.discover ok\n'
   else
     printf 'hourly-wallet-promotion.discover failed; promoting from existing scores\n'
-    if [ -s "$SCORES_BAK" ]; then
-      cp "$SCORES_BAK" "$SCORES"
+	if [ -s "$SCORES_BAK" ]; then
+	  cp -p "$SCORES_BAK" "$SCORES"
       printf 'hourly-wallet-promotion.discover restored scores=%s\n' "$SCORES"
     fi
   fi
@@ -95,6 +107,18 @@ if [ "${HOURLY_FOOTBALL_SCORE_DISCOVER:-1}" = "1" ]; then
     rm -f "$score_tmp"
     printf 'hourly-wallet-promotion.football_score empty_or_failed preserved=%s\n' "$FOOTBALL_SCORE_OUT"
   fi
+fi
+
+if [ ! -s "$SCORES" ]; then
+	printf 'hourly-wallet-promotion.skip reason=scores_missing path=%s\n' "$SCORES"
+	exit 0
+fi
+score_mtime="$(stat -f '%m' "$SCORES" 2>/dev/null || stat -c '%Y' "$SCORES" 2>/dev/null || printf '0')"
+score_age=$(( $(date +%s) - score_mtime ))
+score_max_age="${HOURLY_SCORE_MAX_AGE_SEC:-21600}"
+if [ "$score_mtime" -le 0 ] || [ "$score_age" -gt "$score_max_age" ]; then
+	printf 'hourly-wallet-promotion.skip reason=scores_stale age_sec=%s max_age_sec=%s path=%s\n' "$score_age" "$score_max_age" "$SCORES"
+	exit 0
 fi
 
 python3 - "$SCORES" "$OUT" "$TMP" "$ROOT" <<'PY'
@@ -188,9 +212,12 @@ def qualifies(row):
         return False
     if row.get("tier") not in {"A", "B", "C"}:
         return False
+    if row.get("data_status") != "complete":
+        return False
     if float(row.get("smart_money_score") or 0) < min_smart:
         return False
-    if float(row.get("bot_score") or 999) > max_bot:
+    bot_score = row.get("bot_score")
+    if bot_score is None or float(bot_score) > max_bot:
         return False
     if float(row.get("edge_score") or 0) < min_edge:
         return False
@@ -293,10 +320,6 @@ if [ "${HOURLY_PROMOTION_RESTART:-1}" = "1" ] && [ "$whale_effective_changed" = 
   screen_name="${HOURLY_PROMOTION_SCREEN:-polymarket-whale-push}"
 	printf 'hourly-wallet-promotion.restart screen=%s output_changed=%s effective_changed=%s\n' "$screen_name" "$changed" "$whale_effective_changed"
   screen -S "$screen_name" -X quit >/dev/null 2>&1 || true
-  old_pid="$(cat "$ROOT/db/bot.pid" 2>/dev/null || true)"
-  if [ -n "$old_pid" ]; then
-    kill "$old_pid" >/dev/null 2>&1 || true
-  fi
   sleep 1
   screen -dmS "$screen_name" "$ROOT/scripts/start-whale-push.sh"
 else

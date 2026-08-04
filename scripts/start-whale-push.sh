@@ -5,7 +5,6 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LOG="$ROOT/db/agent.log"
 ERR="$ROOT/db/agent.err"
-PIDFILE="$ROOT/db/bot.pid"
 WRAPPER_PIDFILE="$ROOT/db/whale-push.pid"
 CHILD_PIDFILE="$ROOT/db/whale-push.child.pid"
 LOCKDIR="$ROOT/db/whale-push.lock"
@@ -14,9 +13,10 @@ WHALE_BASE_WALLETS_FILE="${WHALE_WALLETS_FILE:-$ROOT/wallets.strategy-push.txt}"
 WHALE_EXTRA_WALLETS_FILES="${WHALE_EXTRA_WALLETS_FILES:-$ROOT/wallets.football-score-push.txt $ROOT/wallets.leaderboard-push.txt $ROOT/wallets.leaderboard-watch.txt $ROOT/wallets.leaderboard-sports-push.txt $ROOT/wallets.sports-holders-push.txt $ROOT/wallets.hourly-push.txt}"
 WHALE_EXCLUDE_WALLETS_FILES="${WHALE_EXCLUDE_WALLETS_FILES:-$ROOT/wallets.strategy-quarantine.txt $ROOT/wallets.strategy-review-noise.txt $ROOT/db/strategy_iteration/wallets.strategy-exclude.txt}"
 WHALE_RUNTIME_WALLETS_FILE="${WHALE_RUNTIME_WALLETS_FILE:-$ROOT/db/whale-push.wallets.txt}"
+WHALE_STATE_DIR="${WHALE_STATE_DIR:-$ROOT/db/whale-push}"
 WHALE_WALLETS_FILE="$WHALE_BASE_WALLETS_FILE"
 
-mkdir -p "$ROOT/db"
+mkdir -p "$ROOT/db" "$WHALE_STATE_DIR"
 cd "$ROOT"
 exec >> "$LOG" 2>> "$ERR"
 
@@ -124,7 +124,6 @@ stop_pidfile() {
 
 stop_pidfile "$CHILD_PIDFILE"
 stop_pidfile "$WRAPPER_PIDFILE"
-stop_pidfile "$PIDFILE"
 acquire_lock
 
 export RESTART_REASON="${RESTART_REASON:-whale-push}"
@@ -151,7 +150,6 @@ policy_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   printf 'whale_confirm_bypass_usd=%s\n' "$WHALE_CONFIRM_BYPASS_USD"
 } > "$POLICY_START_FILE"
 
-echo $$ > "$PIDFILE"
 echo $$ > "$WRAPPER_PIDFILE"
 
 echo "whale-push.start pid=$$ wallets=$WHALE_WALLETS_FILE policy_started_at=$policy_started_at policy_file=$POLICY_START_FILE"
@@ -188,8 +186,13 @@ while :; do
     -whale_enabled \
     -whale_min_usd="${WHALE_MIN_USD:-500}" \
     -whale_interval="${WHALE_INTERVAL:-10s}" \
-    -whale_replay_window="${WHALE_REPLAY_WINDOW:-15m}" \
-    -wallets_file="$WHALE_WALLETS_FILE" \
+	-whale_replay_window="${WHALE_REPLAY_WINDOW:-15m}" \
+	-positions_state="$WHALE_STATE_DIR/positions.json" \
+	-risk_state="$WHALE_STATE_DIR/risk_state.json" \
+	-buy_times_state="$WHALE_STATE_DIR/buy_times.json" \
+	-journal_dir="$WHALE_STATE_DIR/journal" \
+	-tickpath_dir="$WHALE_STATE_DIR/tickpath" \
+	-wallets_file="$WHALE_WALLETS_FILE" \
     -copytrade_size=0 \
     -wallet_tiers="$ROOT/db/user_wallet_review/copytrade_backtest_results.generated.json" \
     -min_tier=A &

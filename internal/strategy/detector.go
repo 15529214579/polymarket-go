@@ -38,15 +38,15 @@ func (s Signal) String() string {
 }
 
 type Config struct {
-	WindowSec            int
-	MinDeltaPP           float64
-	TailLen              int
-	MinTailUpticks       int
-	MinBuyRatio          float64
-	MinSamplesWarm       int           // don't fire until window has this many samples
-	CooldownPerAsset     time.Duration // dedup per asset after a fire
-	CooldownAfterSL      time.Duration // extended cooldown after a stop-loss exit
-	ConfirmDelay         time.Duration // wait this long after signal, re-check before firing
+	WindowSec        int
+	MinDeltaPP       float64
+	TailLen          int
+	MinTailUpticks   int
+	MinBuyRatio      float64
+	MinSamplesWarm   int           // don't fire until window has this many samples
+	CooldownPerAsset time.Duration // dedup per asset after a fire
+	CooldownAfterSL  time.Duration // extended cooldown after a stop-loss exit
+	ConfirmDelay     time.Duration // wait this long after signal, re-check before firing
 }
 
 func DefaultConfig() Config {
@@ -64,7 +64,7 @@ func DefaultConfig() Config {
 }
 
 type pendingConfirm struct {
-	signal Signal
+	signal  Signal
 	readyAt time.Time
 }
 
@@ -73,9 +73,9 @@ type Detector struct {
 	sampler *feed.Sampler
 	out     chan Signal
 
-	lastFire      map[string]time.Time
-	marketAssets  map[string][]string // conditionID → []assetID
-	pending       map[string]*pendingConfirm // assetID → awaiting confirmation
+	lastFire     map[string]time.Time
+	marketAssets map[string][]string        // conditionID → []assetID
+	pending      map[string]*pendingConfirm // assetID → awaiting confirmation
 }
 
 func NewDetector(cfg Config, sampler *feed.Sampler) *Detector {

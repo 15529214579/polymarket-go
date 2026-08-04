@@ -15,10 +15,10 @@ import (
 //   2 = Volatile   (big moves, no clear direction)
 
 const (
-	RegimeTrend  = 0
-	RegimeMR     = 1
-	RegimeVolat  = 2
-	NRegimes     = 3
+	RegimeTrend = 0
+	RegimeMR    = 1
+	RegimeVolat = 2
+	NRegimes    = 3
 )
 
 var regimeNames = [NRegimes]string{"TREND", "MEAN_REVERT", "VOLATILE"}
@@ -33,9 +33,9 @@ func RegimeName(r int) string {
 
 // HMMModel holds the trained parameters.
 type HMMModel struct {
-	Pi    [NRegimes]float64             // initial state distribution
-	Trans [NRegimes][NRegimes]float64   // transition matrix
-	Emit  [NRegimes][NStates]float64    // emission matrix
+	Pi    [NRegimes]float64           // initial state distribution
+	Trans [NRegimes][NRegimes]float64 // transition matrix
+	Emit  [NRegimes][NStates]float64  // emission matrix
 }
 
 // DefaultHMMPriors returns hand-tuned priors based on BTC market structure.
@@ -249,10 +249,10 @@ func scaleRow(row []float64) {
 	}
 }
 
-func logLikelihood(alpha [][NRegimes]float64, T int) float64 {
+func logLikelihood(alpha [][NRegimes]float64, t int) float64 {
 	var sum float64
 	for i := 0; i < NRegimes; i++ {
-		sum += alpha[T-1][i]
+		sum += alpha[t-1][i]
 	}
 	if sum <= 0 {
 		return math.Inf(-1)

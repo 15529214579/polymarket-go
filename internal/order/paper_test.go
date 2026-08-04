@@ -3,6 +3,7 @@ package order
 import (
 	"context"
 	"math"
+	"strings"
 	"testing"
 	"time"
 )
@@ -74,17 +75,55 @@ func TestPaperFreshQuoteWithoutExecutableSideExpires(t *testing.T) {
 	}
 }
 
-func TestPaperStaleQuoteFallsBackToSignalPrice(t *testing.T) {
+func TestPaperStaleQuoteExpires(t *testing.T) {
 	p := NewPaperClient(0)
 	result, err := p.Submit(context.Background(), Intent{
 		AssetID: "a", Side: Buy, SizeUSD: 20, LimitPx: 0.60,
-		PaperReferencePx: 0.50, PaperBestAsk: 0.58, PaperQuoteAt: time.Now().Add(-time.Minute),
+		PaperReferencePx: 0.50, PaperBestAsk: 0.58, PaperBestAskSize: 100,
+		PaperQuoteAt: time.Now().Add(-time.Minute), PaperRequireQuote: true,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Status != StatusFilled || result.AvgPrice != 0.50 || result.ExecutionModel != "stale_quote_fallback" {
+	if result.Status != StatusExpired || result.ExecutionModel != "stale_quote" {
 		t.Fatalf("result=%+v", result)
+	}
+}
+
+func TestPaperNonStrictOrderPreservesStaleQuoteFallback(t *testing.T) {
+	p := NewPaperClient(0)
+	result, err := p.Submit(context.Background(), Intent{
+		AssetID: "asset", Side: Buy, SizeUSD: 5, LimitPx: 0.5,
+		PaperReferencePx: 0.49, PaperBestAsk: 0.5,
+		PaperQuoteAt: time.Now().Add(-time.Minute),
+	})
+	if err != nil || result.Status != StatusFilled || result.ExecutionModel != "stale_quote_fallback" || result.AvgPrice != 0.49 {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+}
+
+func TestPaperRequiredQuoteRejectsMissingAndShallowBook(t *testing.T) {
+	p := NewPaperClient(0)
+	missing, err := p.Submit(context.Background(), Intent{
+		AssetID: "a", Side: Buy, SizeUSD: 20, LimitPx: 0.60,
+		PaperReferencePx: 0.50, PaperRequireQuote: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if missing.Status != StatusExpired || missing.ExecutionModel != "quote_required" {
+		t.Fatalf("missing quote result=%+v", missing)
+	}
+	shallow, err := p.Submit(context.Background(), Intent{
+		AssetID: "a", Side: Buy, SizeUSD: 20, LimitPx: 0.60,
+		PaperReferencePx: 0.50, PaperBestAsk: 0.50, PaperBestAskSize: 10,
+		PaperQuoteAt: time.Now(), PaperRequireQuote: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shallow.Status != StatusExpired || !strings.Contains(shallow.Error, "insufficient") {
+		t.Fatalf("shallow result=%+v", shallow)
 	}
 }
 

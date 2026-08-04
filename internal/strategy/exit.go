@@ -2,6 +2,7 @@ package strategy
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/15529214579/polymarket-go/internal/feed"
@@ -20,17 +21,19 @@ const (
 
 // ExitSignal is emitted when an open position should be closed.
 type ExitSignal struct {
-	AssetID    string
-	Market     string
-	Time       time.Time
-	EntryMid   float64
-	PeakMid    float64
-	ExitMid    float64
-	HeldFor    time.Duration
-	ChangePP   float64 // (exit - entry) in pp
-	DrawdownPP float64 // (peak - exit) in pp
-	ExitFeeUSD float64 // fee paid on the closing fill
-	Reason     ExitReason
+	CloseExecutionID string
+	CloseOrderID     string
+	AssetID          string
+	Market           string
+	Time             time.Time
+	EntryMid         float64
+	PeakMid          float64
+	ExitMid          float64
+	HeldFor          time.Duration
+	ChangePP         float64 // (exit - entry) in pp
+	DrawdownPP       float64 // (peak - exit) in pp
+	ExitFeeUSD       float64 // fee paid on the closing fill
+	Reason           ExitReason
 }
 
 func (e ExitSignal) String() string {
@@ -73,12 +76,14 @@ type trackedPosition struct {
 	peakMid    float64
 	lastMid    float64
 	consecDown int
+	pending    bool
 }
 
 // ExitTracker holds open positions and emits exits when rules trip.
 // Thread model: feed ticks in from one goroutine; callers pull ExitSignal from Signals().
 type ExitTracker struct {
 	cfg ExitConfig
+	mu  sync.Mutex
 	pos map[string]*trackedPosition
 	out chan ExitSignal
 }
@@ -96,6 +101,8 @@ func (e *ExitTracker) Signals() <-chan ExitSignal { return e.out }
 
 // Open registers a new position at the given entry tick. No-op if already open.
 func (e *ExitTracker) Open(assetID, market string, entry feed.Tick) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	if _, exists := e.pos[assetID]; exists {
 		return
 	}
@@ -111,6 +118,8 @@ func (e *ExitTracker) Open(assetID, market string, entry feed.Tick) {
 
 // Has reports whether a position is currently open for assetID.
 func (e *ExitTracker) Has(assetID string) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	_, ok := e.pos[assetID]
 	return ok
 }
@@ -118,8 +127,10 @@ func (e *ExitTracker) Has(assetID string) bool {
 // OnTick feeds a 1s tick through the tracker. Emits an ExitSignal and closes the
 // position if any exit rule fires. Returns the emitted signal (zero if none).
 func (e *ExitTracker) OnTick(t feed.Tick) (ExitSignal, bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	p, ok := e.pos[t.AssetID]
-	if !ok {
+	if !ok || p.pending {
 		return ExitSignal{}, false
 	}
 
@@ -173,10 +184,28 @@ func (e *ExitTracker) close(p *trackedPosition, t feed.Tick, reason ExitReason) 
 		DrawdownPP: (p.peakMid - t.Mid) * 100,
 		Reason:     reason,
 	}
-	delete(e.pos, p.AssetID)
+	p.pending = true
 	select {
 	case e.out <- sig:
 	default:
 	}
 	return sig
+}
+
+// ConfirmClose removes a pending exit only after its sell has been confirmed.
+func (e *ExitTracker) ConfirmClose(assetID string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if p, ok := e.pos[assetID]; ok && p.pending {
+		delete(e.pos, assetID)
+	}
+}
+
+// RetryClose releases a pending signal after a failed sell so a later tick can retry.
+func (e *ExitTracker) RetryClose(assetID string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if p, ok := e.pos[assetID]; ok {
+		p.pending = false
+	}
 }

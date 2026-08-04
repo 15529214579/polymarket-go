@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,16 +19,16 @@ import (
 
 // ScanConfig holds configurable thresholds for the arb scanner.
 type ScanConfig struct {
-	MinGapPP       float64 // minimum net EV in pp to flag (default 5)
-	TradingCostPP  float64 // estimated round-trip cost in pp (default 2)
-	MinBookCount   int     // consensus filter: min bookmakers (default 3)
-	DeviationPP    float64 // consensus filter: max deviation from median (default 0.05)
-	BaseBetUSDC    float64 // base bet size (default 2.5)
-	MaxBetUSDC     float64 // max bet size (default 5.0)
-	Tier2MinPP     float64 // net_ev threshold for tier 2 (default 10)
-	Tier3MinPP     float64 // net_ev threshold for tier 3 (default 15)
-	Tier2Mult      float64 // multiplier for tier 2 (default 1.5)
-	Tier3Mult      float64 // multiplier for tier 3 (default 2.0)
+	MinGapPP      float64 // minimum net EV in pp to flag (default 5)
+	TradingCostPP float64 // estimated round-trip cost in pp (default 2)
+	MinBookCount  int     // consensus filter: min bookmakers (default 3)
+	DeviationPP   float64 // consensus filter: max deviation from median (default 0.05)
+	BaseBetUSDC   float64 // base bet size (default 2.5)
+	MaxBetUSDC    float64 // max bet size (default 5.0)
+	Tier2MinPP    float64 // net_ev threshold for tier 2 (default 10)
+	Tier3MinPP    float64 // net_ev threshold for tier 3 (default 15)
+	Tier2Mult     float64 // multiplier for tier 2 (default 1.5)
+	Tier3Mult     float64 // multiplier for tier 3 (default 2.0)
 }
 
 func DefaultScanConfig() ScanConfig {
@@ -63,21 +64,21 @@ func (c ScanConfig) tieredBetSize(netEvPP float64) float64 {
 
 // polyMarket is a minimal Gamma API market representation for arb matching.
 type polyMarket struct {
-	ConditionID string `json:"conditionId"`
-	ID          string `json:"id"`
-	Question    string `json:"question"`
-	Slug        string `json:"slug"`
-	EndDate     string `json:"endDate"`
-	Active      bool   `json:"active"`
-	Closed      bool   `json:"closed"`
+	ConditionID string          `json:"conditionId"`
+	ID          string          `json:"id"`
+	Question    string          `json:"question"`
+	Slug        string          `json:"slug"`
+	EndDate     string          `json:"endDate"`
+	Active      bool            `json:"active"`
+	Closed      bool            `json:"closed"`
 	Tokens      json.RawMessage `json:"clobTokenIds"`
 	Prices      json.RawMessage `json:"outcomePrices"`
 	Outcomes    json.RawMessage `json:"outcomes"`
 }
 
-func (m polyMarket) tokenIDs() []string   { return parseJSONStringArray(m.Tokens) }
+func (m polyMarket) tokenIDs() []string      { return parseJSONStringArray(m.Tokens) }
 func (m polyMarket) outcomePrices() []string { return parseJSONStringArray(m.Prices) }
-func (m polyMarket) outcomeList() []string { return parseJSONStringArray(m.Outcomes) }
+func (m polyMarket) outcomeList() []string   { return parseJSONStringArray(m.Outcomes) }
 
 func parseJSONStringArray(raw json.RawMessage) []string {
 	if len(raw) == 0 {
@@ -123,9 +124,11 @@ func (m polyMarket) extractTokenAndPrice() (string, string, float64, float64, bo
 
 	prices := m.outcomePrices()
 	if len(prices) >= 2 {
-		var yp, np float64
-		fmt.Sscanf(prices[0], "%f", &yp)
-		fmt.Sscanf(prices[1], "%f", &np)
+		yp, yesErr := strconv.ParseFloat(prices[0], 64)
+		np, noErr := strconv.ParseFloat(prices[1], 64)
+		if yesErr != nil || noErr != nil {
+			return "", "", 0, 0, false
+		}
 		if yp > 0 || np > 0 {
 			return yesToken, noToken, yp, np, true
 		}
@@ -294,13 +297,13 @@ func (s *Scanner) matchAndScore(oddsItems []odds.BookmakerOdds, polyMarkets []po
 		// Store snapshot to DB regardless of threshold.
 		if s.store != nil {
 			s.store.Insert(odds.OddsSnapshot{
-				MarketID:        tokenID,
-				Sport:           item.Sport,
-				EventName:       item.EventName + " — " + item.TeamOrSide,
-				PolymarketPrice: polyPrice,
-				Bookmaker:       item.Bookmaker,
-				BookmakerProb:   item.BookmakerProb,
-				GapPP:           math.Round(gap*100) / 100,
+				MarketID:          tokenID,
+				Sport:             item.Sport,
+				EventName:         item.EventName + " — " + item.TeamOrSide,
+				PolymarketPrice:   polyPrice,
+				Bookmaker:         item.Bookmaker,
+				BookmakerProb:     item.BookmakerProb,
+				GapPP:             math.Round(gap*100) / 100,
 				SnapshotTimestamp: time.Now(),
 			})
 		}

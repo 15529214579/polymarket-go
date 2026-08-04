@@ -133,13 +133,6 @@ func PredictMultiTF(ctx context.Context) (*MultiTFPrediction, error) {
 	return mtp, nil
 }
 
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
 // MultiTFEntryFilter returns true if the multi-timeframe signal supports
 // entering a position in the given direction. Only blocks when there is
 // strong directional conflict (all timeframes aligned against the trade).

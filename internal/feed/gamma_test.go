@@ -600,3 +600,34 @@ func TestGetCLOBEventStart(t *testing.T) {
 		t.Fatalf("fee info=%+v", info)
 	}
 }
+
+func TestGetCLOBMarketConvertsWinnerToSettlementPrices(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path != "/markets/0xabc" {
+			t.Fatalf("path=%q", r.URL.Path)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body: io.NopCloser(strings.NewReader(`{
+				"condition_id":"0xabc","question":"Winner?","closed":true,
+				"tokens":[
+					{"token_id":"1","outcome":"Yes","price":0.999,"winner":true},
+					{"token_id":"2","outcome":"No","price":0.001,"winner":false}
+				]
+			}`)),
+			Header: make(http.Header),
+		}, nil
+	})}
+	c := &GammaClient{http: client, clobBase: "https://clob.test"}
+	market, err := c.GetCLOBMarket(context.Background(), "0xabc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prices := market.OutcomePrices()
+	if !market.Closed || len(prices) != 2 || prices[0] != "1" || prices[1] != "0" {
+		t.Fatalf("market=%+v prices=%v", market, prices)
+	}
+	if got := market.ClobTokenIDs(); len(got) != 2 || got[0] != "1" || got[1] != "2" {
+		t.Fatalf("token ids=%v", got)
+	}
+}

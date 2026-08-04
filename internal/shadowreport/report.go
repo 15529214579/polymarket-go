@@ -1,3 +1,4 @@
+// Package shadowreport compares actual exits with unexecuted policy alternatives.
 package shadowreport
 
 import (

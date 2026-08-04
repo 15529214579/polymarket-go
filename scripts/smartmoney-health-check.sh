@@ -11,10 +11,22 @@ mkdir -p "$ROOT/db/launchd-health" "$ROOT/logs"
 
 LOCK_DIR="$ROOT/db/launchd-health.lock"
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
-  printf 'health.already_running lock=%s\n' "$LOCK_DIR"
-  exit 0
+	lock_pid="$(cat "$LOCK_DIR/pid" 2>/dev/null || true)"
+	if [ -n "$lock_pid" ] && kill -0 "$lock_pid" 2>/dev/null; then
+		lock_command="$(ps -o command= -p "$lock_pid" 2>/dev/null || true)"
+		case "$lock_command" in
+			*smartmoney-health-check.sh*|"")
+				printf 'health.already_running lock=%s pid=%s\n' "$LOCK_DIR" "$lock_pid"
+				exit 0
+				;;
+		esac
+	fi
+	rm -f "$LOCK_DIR/pid"
+	rmdir "$LOCK_DIR" 2>/dev/null || { printf 'health.lock_unavailable lock=%s\n' "$LOCK_DIR"; exit 0; }
+	mkdir "$LOCK_DIR" 2>/dev/null || { printf 'health.already_running lock=%s\n' "$LOCK_DIR"; exit 0; }
 fi
-trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
+printf '%s\n' "$$" > "$LOCK_DIR/pid"
+trap 'rm -f "$LOCK_DIR/pid"; rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
 
 STATE="$ROOT/db/launchd-health/state.json"
 MAX_LOG_AGE_SEC="${POLYMARKET_HEALTH_MAX_LOG_AGE_SEC:-300}"
@@ -79,9 +91,13 @@ restart_whale_push() {
   printf 'health.restart component=whale-push reason=%s\n' "$whale_reason"
   screen -S "$WHALE_SCREEN" -X quit >/dev/null 2>&1 || true
   child_pid="$(cat "$ROOT/db/whale-push.child.pid" 2>/dev/null || true)"
-  old_pid="$(cat "$ROOT/db/whale-push.pid" 2>/dev/null || cat "$ROOT/db/bot.pid" 2>/dev/null || true)"
-  [ -n "$child_pid" ] && kill "$child_pid" >/dev/null 2>&1 || true
-  [ -n "$old_pid" ] && kill "$old_pid" >/dev/null 2>&1 || true
+  old_pid="$(cat "$ROOT/db/whale-push.pid" 2>/dev/null || true)"
+  if [ -n "$child_pid" ] && pid_matches "$ROOT/db/whale-push.child.pid" "-signal_mode=whale"; then
+    kill "$child_pid" >/dev/null 2>&1 || true
+  fi
+  if [ -n "$old_pid" ] && pid_matches "$ROOT/db/whale-push.pid" "start-whale-push.sh"; then
+    kill "$old_pid" >/dev/null 2>&1 || true
+  fi
   sleep 1
   screen -dmS "$WHALE_SCREEN" "$ROOT/scripts/start-whale-push.sh"
 }

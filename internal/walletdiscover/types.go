@@ -1,3 +1,4 @@
+// Package walletdiscover discovers, scores, and persists candidate wallets.
 package walletdiscover
 
 import (

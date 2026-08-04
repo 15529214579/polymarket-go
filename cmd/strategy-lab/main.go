@@ -1748,9 +1748,7 @@ func writePushWalletsFile(path string, core, watch, sports, scout, target, flow,
 func writeDirectTapeObserveFile(path string, scores, push []walletdiscover.WalletScore, inputs []tapeInput, minMaxBuy, minBuyNotional, maxBot float64) error {
 	rows := directTapeObserveRows(scores, push, inputs, minMaxBuy, minBuyNotional, maxBot)
 	lines := make([]string, 0, len(rows))
-	for _, row := range rows {
-		lines = append(lines, row)
-	}
+	lines = append(lines, rows...)
 	sort.Strings(lines)
 	content := strings.Join(lines, "\n")
 	if content != "" {

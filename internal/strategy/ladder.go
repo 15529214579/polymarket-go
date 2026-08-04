@@ -19,7 +19,7 @@ type LadderConfig struct {
 	MaxHold time.Duration // force-close after held duration reaches this
 }
 
-// DefaultLadderConfig: TP disabled (999% = ride to settlement/timeout),
+// DefaultLadderConfig returns defaults with TP disabled (999% = ride to settlement/timeout),
 // SL 15%, 4h MaxHold. Updated 2026-04-24 21:38 SGT after tickpath sweep
 // (42 paths, 25K ticks): SL 5%→15% cuts false stops from 26→14; TP unlimited
 // outperforms 15/30% by +$30 over sample; entry cap 0.70→0.50 cuts losing band.
@@ -71,6 +71,8 @@ type ladderState struct {
 	InitUnits float64
 	RemUnits  float64
 	TP1Done   bool
+	TP1Closed float64
+	Pending   *LadderExit
 }
 
 // LadderTracker owns per-position ladder state, keyed by posID. The caller
@@ -135,7 +137,7 @@ func (l *LadderTracker) OnTick(posID string, t feed.Tick) (LadderExit, bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	st, ok := l.states[posID]
-	if !ok {
+	if !ok || st.Pending != nil {
 		return LadderExit{}, false
 	}
 
@@ -147,43 +149,42 @@ func (l *LadderTracker) OnTick(posID string, t feed.Tick) (LadderExit, bool) {
 	tp2Px := st.EntryMid * (1 + l.cfg.TP2Pct)
 
 	if mid <= slPx {
-		return l.emitLocked(st, t, st.RemUnits, "sl", ExitLadderSL, heldFor), true
+		return l.proposeLocked(st, t, st.RemUnits, "sl", ExitLadderSL, heldFor), true
 	}
 	timeoutDue := !st.Deadline.IsZero() && !t.Time.Before(st.Deadline)
 	if st.Deadline.IsZero() {
 		timeoutDue = heldFor >= l.cfg.MaxHold
 	}
 	if timeoutDue {
-		return l.emitLocked(st, t, st.RemUnits, "timeout", ExitLadderTimeout, heldFor), true
+		return l.proposeLocked(st, t, st.RemUnits, "timeout", ExitLadderTimeout, heldFor), true
 	}
 	if st.TP1Done && mid >= tp2Px {
 		units := st.InitUnits * l.cfg.TP2Frac
 		if units > st.RemUnits {
 			units = st.RemUnits
 		}
-		return l.emitLocked(st, t, units, "t2", ExitLadderTP2, heldFor), true
+		return l.proposeLocked(st, t, units, "t2", ExitLadderTP2, heldFor), true
 	}
 	if !st.TP1Done && mid >= tp1Px {
-		units := st.InitUnits * l.cfg.TP1Frac
+		target := st.InitUnits * l.cfg.TP1Frac
+		units := target - st.TP1Closed
+		if units <= 1e-9 {
+			st.TP1Done = true
+			return LadderExit{}, false
+		}
 		if units > st.RemUnits {
 			units = st.RemUnits
 		}
-		st.TP1Done = true
-		return l.emitLocked(st, t, units, "t1", ExitLadderTP1, heldFor), true
+		return l.proposeLocked(st, t, units, "t1", ExitLadderTP1, heldFor), true
 	}
 	return LadderExit{}, false
 }
 
-func (l *LadderTracker) emitLocked(st *ladderState, t feed.Tick, units float64, tranche string, reason ExitReason, heldFor time.Duration) LadderExit {
+func (l *LadderTracker) proposeLocked(st *ladderState, t feed.Tick, units float64, tranche string, reason ExitReason, heldFor time.Duration) LadderExit {
 	if units > st.RemUnits {
 		units = st.RemUnits
 	}
-	st.RemUnits -= units
-	final := st.RemUnits <= 1e-9
-	if final {
-		delete(l.states, st.PosID)
-	}
-	return LadderExit{
+	exit := LadderExit{
 		PosID:      st.PosID,
 		AssetID:    st.AssetID,
 		Market:     st.Market,
@@ -192,8 +193,53 @@ func (l *LadderTracker) emitLocked(st *ladderState, t feed.Tick, units float64, 
 		ExitMid:    t.Mid,
 		CloseUnits: units,
 		Tranche:    tranche,
-		Final:      final,
+		Final:      st.RemUnits-units <= 1e-9,
 		Reason:     reason,
 		HeldFor:    heldFor,
+	}
+	st.Pending = &exit
+	return exit
+}
+
+// Confirm applies the pending tranche only after the closing fill is durable.
+func (l *LadderTracker) Confirm(posID string, filledUnits ...float64) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	st, ok := l.states[posID]
+	if !ok || st.Pending == nil {
+		return
+	}
+	pending := st.Pending
+	units := pending.CloseUnits
+	if len(filledUnits) > 0 {
+		units = filledUnits[0]
+	}
+	if units <= 0 {
+		return
+	}
+	if units > pending.CloseUnits {
+		units = pending.CloseUnits
+	}
+	if units > st.RemUnits {
+		units = st.RemUnits
+	}
+	st.RemUnits -= units
+	if pending.Tranche == "t1" {
+		st.TP1Closed += units
+		st.TP1Done = st.TP1Closed+1e-9 >= st.InitUnits*l.cfg.TP1Frac
+	}
+	if st.RemUnits <= 1e-9 {
+		delete(l.states, posID)
+		return
+	}
+	st.Pending = nil
+}
+
+// Retry releases a pending tranche after a failed order without consuming state.
+func (l *LadderTracker) Retry(posID string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if st, ok := l.states[posID]; ok {
+		st.Pending = nil
 	}
 }

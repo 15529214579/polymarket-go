@@ -27,11 +27,31 @@ Arm-file schema:
 
 - Bot default maximum per live BUY: `20U`; SELL exits are not capped by the
   entry limit.
-- Bot default maximum filled BUY notional per process: `100U`.
-- Standalone `trade` maximum per BUY: `20U`.
+- Bot default maximum BUY notional per arm window: `100U`. A BUY reserves its
+  full amount in `db/live/live-session.json` before submission, then terminal
+  fills/non-fills adjust the reservation. Unknown outcomes remain reserved, so
+  a restart cannot increase the available limit.
+- Standalone `trade` maximum per BUY is `20U` and its default arm-window total
+  is `100U`; it shares the same durable session state with the bot.
 - The guard is checked immediately before every order is signed.
 - API startup uses only the existing-key derivation endpoint; it does not try
   to create a new API key.
+
+## Execution State
+
+Paper and live bot state use separate roots: `db/paper/` and `db/live/`.
+Explicit live paths must also contain a dedicated `live` directory; ambiguous
+legacy paths such as `db/positions.json` are rejected in live mode.
+
+Both the bot and standalone `trade` command persist order intent, prepared
+order hash, terminal result, and application status in
+`db/live/orders.sqlite`. Startup reconciles uncertain orders with the CLOB,
+cancels any non-terminal remainder, and refuses new live orders while an
+execution remains unresolved. A partial fill is booked only after the order is
+confirmed matched or cancelled; an unconfirmed remainder stays pending.
+SQLite also enforces one pending execution per mode across processes, and the
+next order is blocked until the previous fill is durable in position state and
+the trade journal.
 
 ## Wallet Maintenance Boundary
 
@@ -67,7 +87,11 @@ The task is fail-closed. All of the following must be true:
 - `db/live/redeem.disabled` is absent. Its presence always wins.
 - `db/live/redeem.enabled` is a regular, non-symlink file owned by the current
   user with mode `0600`.
-- The enable file contains exactly the expected public wallet address.
+- The enable file is JSON containing the expected `wallet`, the reviewed full
+  Git `commit`, and timezone-aware `armed_at` / `expires_at` timestamps. The
+  validity window must be at most 24 hours and the commit must still be `HEAD`.
+- `go.mod`, `go.sum`, `cmd/`, and `internal/` must be clean, so the maintenance
+  binary is built from exactly the armed source revision.
 - A valid `BW_SESSION` is supplied to the launchd process environment. The
   session is never stored in the plist, repository, state file, or logs.
 

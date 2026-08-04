@@ -109,17 +109,6 @@ func runBTCMarkovBacktest(days int, trainPct float64, dbDir string) error {
 // Backtest engine
 // ---------------------------------------------------------------------------
 
-type btcDayResult struct {
-	Date          time.Time
-	PredictedBull bool   // model predicted bullish
-	ActualBull    bool   // next-day close > open
-	PredState     int
-	ActualState   int
-	PredReturn    float64 // model's expected return (pp)
-	ActualReturn  float64 // actual 1h return
-	SimPnL        float64 // simulated PnL for this bar
-}
-
 type btcBacktestResult struct {
 	Days         int
 	Correct      int

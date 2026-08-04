@@ -34,20 +34,20 @@ func DefaultStrategyConfig() StrategyConfig {
 
 // Signal is one actionable crypto market gap detected by the strategy.
 type Signal struct {
-	Coin         string  // "BTC", "ETH", "SOL", etc. Empty = BTC for backwards compat
-	Strike       float64
-	Question     string
-	MarketID     string
-	PMPrice      float64 // current PM Yes price
-	BSProb       float64 // model fair value
-	GapPP        float64 // (BSProb - PMPrice) * 100; positive = BUY_YES
-	Direction    string  // BUY_YES or BUY_NO
-	EdgeRatio    float64 // |gap| / PMPrice
-	Spot         float64 // BTC spot at signal time
-	Sigma        float64 // annualized vol used
-	SentimentMod float64 // sentiment multiplier (>1 = amplified, <1 = dampened)
-	FearGreed    int     // 0-100 F&G index at signal time
-	FundingRate  float64 // perpetual funding rate at signal time
+	Coin             string // "BTC", "ETH", "SOL", etc. Empty = BTC for backwards compat
+	Strike           float64
+	Question         string
+	MarketID         string
+	PMPrice          float64 // current PM Yes price
+	BSProb           float64 // model fair value
+	GapPP            float64 // (BSProb - PMPrice) * 100; positive = BUY_YES
+	Direction        string  // BUY_YES or BUY_NO
+	EdgeRatio        float64 // |gap| / PMPrice
+	Spot             float64 // BTC spot at signal time
+	Sigma            float64 // annualized vol used
+	SentimentMod     float64 // sentiment multiplier (>1 = amplified, <1 = dampened)
+	FearGreed        int     // 0-100 F&G index at signal time
+	FundingRate      float64 // perpetual funding rate at signal time
 	RegimeBias       float64 // regime direction bias multiplier
 	InstitutionalMod float64 // institutional flow modifier
 	OnChainMod       float64 // on-chain metrics modifier
@@ -181,11 +181,6 @@ func RunStrategyWithExit(ctx context.Context, cfg StrategyConfig, cb SignalCallb
 			scan("sharp_move")
 		}
 	}
-}
-
-func scanOnce(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]Signal, error) {
-	signals, _, _, _, _, err := scanOnceWithState(ctx, db, cfg)
-	return signals, err
 }
 
 func scanOnceWithState(ctx context.Context, db *sql.DB, cfg StrategyConfig) ([]Signal, []PMMarket, float64, float64, float64, error) {

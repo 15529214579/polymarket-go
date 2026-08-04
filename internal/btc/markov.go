@@ -21,18 +21,18 @@ import "fmt"
 // Combined state = returnBucket*3 + volumeRegime  → 15 states total
 
 const (
-	RetSurge = iota // >+2%
-	RetUp           // +0.5% to +2%
-	RetFlat         // -0.5% to +0.5%
-	RetDown         // -2% to -0.5%
-	RetCrash        // <-2%
+	RetSurge    = iota // >+2%
+	RetUp              // +0.5% to +2%
+	RetFlat            // -0.5% to +0.5%
+	RetDown            // -2% to -0.5%
+	RetCrash           // <-2%
 	nRetBuckets = 5
 )
 
 const (
-	VolHigh = iota // > 1.5× 24h avg
-	VolMed         // 0.75× to 1.5×
-	VolLow         // < 0.75×
+	VolHigh     = iota // > 1.5× 24h avg
+	VolMed             // 0.75× to 1.5×
+	VolLow             // < 0.75×
 	nVolRegimes = 3
 )
 
@@ -176,9 +176,9 @@ func (tm *TransitionMatrix) RowProbs(s int) []float64 {
 
 // ReturnStats accumulates actual returns per state for evaluating the model.
 type ReturnStats struct {
-	N        int
-	SumRet   float64 // sum of 1-period % returns following this state
-	NPos     int     // count where next-period return > 0
+	N      int
+	SumRet float64 // sum of 1-period % returns following this state
+	NPos   int     // count where next-period return > 0
 }
 
 func (r *ReturnStats) Add(ret float64) {
@@ -230,12 +230,12 @@ func BuildReturnStats(candles []Candle) [NStates]ReturnStats {
 
 // Prediction holds the model's output for a given current state.
 type Prediction struct {
-	CurrentState      int
-	CurrentStateName  string
-	NextProbs         []float64 // probability of transitioning to each next state
-	ExpectedReturn    float64   // E[next-period return] = Σ p(s') × avgRet(s')
-	BullProb          float64   // P(next candle closes up) — weighted by return stats
-	BearProb          float64   // P(next candle closes down)
+	CurrentState     int
+	CurrentStateName string
+	NextProbs        []float64 // probability of transitioning to each next state
+	ExpectedReturn   float64   // E[next-period return] = Σ p(s') × avgRet(s')
+	BullProb         float64   // P(next candle closes up) — weighted by return stats
+	BearProb         float64   // P(next candle closes down)
 }
 
 // Predict returns a Prediction from the trained model for the given current state.

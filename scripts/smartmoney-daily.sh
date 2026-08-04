@@ -171,13 +171,8 @@ nonnegative_int() {
 
 restart_worker() {
   local screen_name="${SMARTMONEY_SCREEN:-polymarket-whale-push}"
-  local old_pid=''
 
-  old_pid="$(cat "$ROOT/db/bot.pid" 2>/dev/null || true)"
   screen -S "$screen_name" -X quit >/dev/null 2>&1 || true
-  if [ -n "$old_pid" ]; then
-    kill "$old_pid" >/dev/null 2>&1 || true
-  fi
   sleep 1
   screen -dmS "$screen_name" "$ROOT/scripts/start-whale-push.sh"
   printf 'restarted screen %s' "$screen_name"

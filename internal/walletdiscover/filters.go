@@ -274,9 +274,7 @@ func followTargetCategoriesOnly(rawAllowed string) bool {
 		return false
 	}
 	for _, part := range []string{"basketball", "soccer", "esports"} {
-		if _, ok := allowed[part]; ok {
-			delete(allowed, part)
-		}
+		delete(allowed, part)
 	}
 	return len(allowed) == 0
 }

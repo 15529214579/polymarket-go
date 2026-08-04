@@ -144,10 +144,10 @@ func GetMacroState(now time.Time) MacroState {
 	}
 
 	return MacroState{
-		NextEvent:  next,
-		HoursUntil: hours,
+		NextEvent:     next,
+		HoursUntil:    hours,
 		VolMultiplier: 1.0,
-		Phase:      "normal",
+		Phase:         "normal",
 	}
 }
 

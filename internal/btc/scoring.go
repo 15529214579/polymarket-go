@@ -4,13 +4,13 @@ import "math"
 
 // SignalScore is a 0-100 composite quality score for a BTC signal.
 type SignalScore struct {
-	Total          int     // 0-100
-	GapScore       int     // 0-35: BS gap magnitude
-	SentimentScore int     // 0-15: sentiment alignment
-	RegimeScore    int     // 0-20: HMM regime support
-	TFScore        int     // 0-15: multi-TF alignment
-	EdgeScore      int     // 0-15: edge ratio (gap relative to price)
-	Tier           string  // "AUTO" (>80) / "SIGNAL" (60-80) / "LOG" (<60)
+	Total          int    // 0-100
+	GapScore       int    // 0-35: BS gap magnitude
+	SentimentScore int    // 0-15: sentiment alignment
+	RegimeScore    int    // 0-20: HMM regime support
+	TFScore        int    // 0-15: multi-TF alignment
+	EdgeScore      int    // 0-15: edge ratio (gap relative to price)
+	Tier           string // "AUTO" (>80) / "SIGNAL" (60-80) / "LOG" (<60)
 }
 
 // ScoreSignal computes a composite quality score.

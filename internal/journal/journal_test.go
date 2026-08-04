@@ -163,6 +163,16 @@ func TestSummarize_EmptyDay(t *testing.T) {
 	}
 }
 
+func TestSummarizeHeadlineHoldExcludesCollectionTrades(t *testing.T) {
+	s := Summarize("2026-08-03", []TradeRecord{
+		{PnLUSD: 1, HeldSec: 60, SignalSource: "auto"},
+		{PnLUSD: 2, HeldSec: 3600, SignalSource: "copytrade_collect_wallet:0x1"},
+	})
+	if s.Trades != 1 || s.AvgHeldSec != 60 {
+		t.Fatalf("trades=%d avgHeld=%d, want 1/60", s.Trades, s.AvgHeldSec)
+	}
+}
+
 func TestSummarizeSeparatesBroadCollectionFromHeadline(t *testing.T) {
 	s := Summarize("2026-08-03", []TradeRecord{
 		{ID: "tradable", SignalSource: "copytrade_wallet:0x1", PnLUSD: 2, NetPnLUSD: 1.5, EntryFeeUSD: 0.25, ExitFeeUSD: 0.25},

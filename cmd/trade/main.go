@@ -9,8 +9,10 @@ import (
 	"log/slog"
 	"math/big"
 	nethttp "net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -40,7 +42,11 @@ func main() {
 	liveArmFile := flag.String("live-arm-file", "db/live-trading.enabled", "short-lived, wallet-bound live trading arm file")
 	liveDisableFile := flag.String("live-disable-file", "db/live-trading.disabled", "live trading kill-switch file")
 	liveMaxOrderUSD := flag.Float64("live-max-order-usd", 20.0, "hard maximum notional for one live BUY; exits are not capped")
+	liveMaxSessionBuyUSD := flag.Float64("live-max-session-buy-usd", 100.0, "hard maximum reserved/filled BUY notional for one arm window")
 	liveMaxArmDuration := flag.Duration("live-max-arm-duration", 24*time.Hour, "maximum accepted live arm-file validity window")
+	liveSessionStatePath := flag.String("live-session-state", "db/live/live-session.json", "durable live guard session state")
+	executionLedgerPath := flag.String("execution-ledger", "db/live/orders.sqlite", "durable live order execution ledger")
+	buyTimesStatePath := flag.String("buy-times-state", "db/live/buy_times.json", "durable live buy-time state")
 	flag.Parse()
 
 	if err := validateOperationFlags(*wrapApprove, *redeemAll, *readiness, *publicReadiness, *queryOpenOrders, *cancelOpenOrders, *dryRun); err != nil {
@@ -48,6 +54,23 @@ func main() {
 		os.Exit(1)
 	}
 	managementMode := *queryOpenOrders || *cancelOpenOrders || *readiness || *publicReadiness || *redeemAll || *wrapApprove
+	if !managementMode {
+		for _, state := range []struct {
+			name string
+			path *string
+		}{
+			{"live session", liveSessionStatePath},
+			{"execution ledger", executionLedgerPath},
+			{"buy times", buyTimesStatePath},
+		} {
+			validated, err := validateLiveRuntimeStatePath(*state.path, state.name)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "ERROR:", err)
+				os.Exit(1)
+			}
+			*state.path = validated
+		}
+	}
 	if !managementMode && (*assetID == "" || *limitPx <= 0) {
 		fmt.Fprintln(os.Stderr, "Usage: trade -asset <tokenID> -price <0..1> -size <usd> [-negrisk] [-dry-run]")
 		fmt.Fprintln(os.Stderr, "Maintenance: trade -wrap-approve | -redeem-all | -readiness | -readiness-public")
@@ -124,8 +147,9 @@ func main() {
 			DisableFile:      *liveDisableFile,
 			ExpectedWallet:   wallet.Address().Hex(),
 			MaxOrderUSD:      *liveMaxOrderUSD,
-			MaxSessionBuyUSD: *liveMaxOrderUSD,
+			MaxSessionBuyUSD: *liveMaxSessionBuyUSD,
 			MaxArmDuration:   *liveMaxArmDuration,
+			SessionStatePath: *liveSessionStatePath,
 		}
 		if err := order.CheckLiveGuard(liveGuardCfg); err != nil {
 			slog.Error("live_guard_rejected", "err", err)
@@ -141,7 +165,34 @@ func main() {
 	slog.Info("api_key_derived")
 	client := order.NewV2Client(wallet, creds, *negRisk)
 	var submitClient order.Client = client
+	var executionLedger *order.ExecutionLedger
 	if !managementMode {
+		executionLedger, err = order.OpenExecutionLedger(*executionLedgerPath)
+		if err != nil {
+			slog.Error("execution_ledger_init_failed", "err", err)
+			os.Exit(1)
+		}
+		defer func() {
+			if err := executionLedger.Close(); err != nil {
+				slog.Error("execution_ledger_close_failed", "err", err)
+			}
+		}()
+		if err := executionLedger.ReconcileLive(context.Background(), client); err != nil {
+			slog.Warn("execution_ledger_reconcile_partial", "err", err)
+		}
+		unresolved, err := executionLedger.UnresolvedCount("live")
+		if err != nil {
+			slog.Error("execution_ledger_count_failed", "err", err)
+			os.Exit(1)
+		}
+		if unresolved > 0 {
+			slog.Error("execution_ledger_unresolved", "count", unresolved)
+			os.Exit(1)
+		}
+		if err := applyRecoveredTradeFills(executionLedger, *buyTimesStatePath); err != nil {
+			slog.Error("execution_ledger_recovery_failed", "err", err)
+			os.Exit(1)
+		}
 		guardedClient, err := order.NewGuardedClient(client, liveGuardCfg)
 		if err != nil {
 			slog.Error("live_guard_init_failed", "err", err)
@@ -151,7 +202,12 @@ func main() {
 			slog.Error("live_guard_rejected", "err", err)
 			os.Exit(1)
 		}
-		submitClient = guardedClient
+		ledgerClient, err := order.NewLedgerClient(guardedClient, executionLedger, "live")
+		if err != nil {
+			slog.Error("execution_ledger_wrap_failed", "err", err)
+			os.Exit(1)
+		}
+		submitClient = ledgerClient
 	}
 
 	if *readiness {
@@ -164,8 +220,8 @@ func main() {
 
 	if *queryOpenOrders {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
 		openOrders, err := client.GetOpenOrders(ctx)
+		cancel()
 		if err != nil {
 			slog.Error("open_orders_query_failed", "err", err)
 			os.Exit(1)
@@ -179,8 +235,9 @@ func main() {
 
 	if *cancelOpenOrders {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-		if err := client.CancelAllOpen(ctx); err != nil {
+		err := client.CancelAllOpen(ctx)
+		cancel()
+		if err != nil {
 			slog.Error("cancel_all_failed", "err", err)
 			os.Exit(1)
 		}
@@ -227,7 +284,16 @@ func main() {
 
 	if result.Status == order.StatusFilled {
 		fmt.Println("\n✅ ORDER FILLED")
-		saveBuyTime(*assetID)
+		if intent.Side == order.Buy {
+			if err := saveBuyTime(*buyTimesStatePath, *assetID, result.FilledAt); err != nil {
+				slog.Error("buy_time_save_failed", "asset", *assetID, "err", err)
+				os.Exit(1)
+			}
+		}
+		if err := executionLedger.MarkApplied(result.ExecutionID); err != nil {
+			slog.Error("execution_ledger_mark_applied_failed", "execution_id", result.ExecutionID, "err", err)
+			os.Exit(1)
+		}
 	} else {
 		fmt.Printf("\n⚠️  Status: %s — %s\n", result.Status, result.Error)
 	}
@@ -300,7 +366,7 @@ func buildIntent(assetID, market, side string, sizeUSD, limitPx float64, negRisk
 		Side:    order.Side(side),
 		SizeUSD: sizeUSD,
 		LimitPx: limitPx,
-		Type:    order.GTC,
+		Type:    order.FAK,
 		NegRisk: negRisk,
 	}, nil
 }
@@ -400,17 +466,108 @@ func formatUnits(raw *big.Int, decimals, precision int) string {
 	return value.Text('f', precision)
 }
 
-func saveBuyTime(asset string) {
-	path := "db/buy_times.json"
+func applyRecoveredTradeFills(ledger *order.ExecutionLedger, buyTimesPath string) error {
+	nonFills, err := ledger.UnappliedNonFills("live")
+	if err != nil {
+		return err
+	}
+	for _, record := range nonFills {
+		if err := ledger.MarkApplied(record.ID); err != nil {
+			return err
+		}
+		slog.Warn("execution_ledger_nonfill_recovered",
+			"execution_id", record.ID,
+			"order_id", record.OrderID,
+			"status", record.Status,
+			"side", record.Intent.Side,
+		)
+	}
+	records, err := ledger.UnappliedFills("live")
+	if err != nil {
+		return err
+	}
+	for _, record := range records {
+		if record.Intent.Side == order.Buy {
+			filledAt := record.Result.FilledAt
+			if filledAt.IsZero() {
+				filledAt = record.UpdatedAt
+			}
+			if err := saveBuyTime(buyTimesPath, record.Intent.AssetID, filledAt); err != nil {
+				return fmt.Errorf("recover execution %s buy time: %w", record.ID, err)
+			}
+		}
+		if err := ledger.MarkApplied(record.ID); err != nil {
+			return err
+		}
+		slog.Warn("execution_ledger_fill_recovered",
+			"execution_id", record.ID,
+			"order_id", record.Result.OrderID,
+			"side", record.Intent.Side,
+			"asset", record.Intent.AssetID,
+			"filled_size", record.Result.FilledSize,
+			"avg_price", record.Result.AvgPrice,
+		)
+	}
+	return nil
+}
+
+func saveBuyTime(path, asset string, filledAt time.Time) error {
+	if filledAt.IsZero() {
+		filledAt = time.Now()
+	}
 	data := map[string]string{}
 	if raw, err := os.ReadFile(path); err == nil {
-		json.Unmarshal(raw, &data)
+		if err := json.Unmarshal(raw, &data); err != nil {
+			return err
+		}
+	} else if !os.IsNotExist(err) {
+		return err
 	}
-	data[asset] = time.Now().Format(time.RFC3339)
-	if out, err := json.MarshalIndent(data, "", "  "); err == nil {
-		os.WriteFile(path, out, 0644)
-		slog.Info("buy_time_saved", "asset", asset[:20])
+	data[asset] = filledAt.UTC().Format(time.RFC3339Nano)
+	out, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return err
 	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".buy-times-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(out); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return err
+	}
+	dirHandle, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	if err := dirHandle.Sync(); err != nil {
+		_ = dirHandle.Close()
+		return err
+	}
+	if err := dirHandle.Close(); err != nil {
+		return err
+	}
+	slog.Info("buy_time_saved", "asset", asset[:min(len(asset), 20)])
+	return nil
 }
 
 type dataAPIPosition struct {
@@ -435,23 +592,12 @@ func runRedeemAll(oc *order.OnChain, walletAddr, redeemedStatePath string) error
 	if err := os.MkdirAll(filepath.Dir(redeemedStatePath), 0700); err != nil {
 		return fmt.Errorf("create redeemed state directory: %w", err)
 	}
-	reqURL := "https://data-api.polymarket.com/positions?user=" + strings.ToLower(walletAddr) + "&sizeThreshold=0.01&limit=200"
 	httpClient := &nethttp.Client{Timeout: 30 * time.Second}
-	resp, err := httpClient.Get(reqURL)
+	fetchCtx, fetchCancel := context.WithTimeout(context.Background(), 45*time.Second)
+	positions, err := fetchRedeemablePositions(fetchCtx, httpClient, "https://data-api.polymarket.com", walletAddr)
+	fetchCancel()
 	if err != nil {
-		return fmt.Errorf("data API positions: %w", err)
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return fmt.Errorf("read data API positions: %w", err)
-	}
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("data API returned HTTP %d: %s", resp.StatusCode, string(body[:min(len(body), 200)]))
-	}
-	var positions []dataAPIPosition
-	if err := json.Unmarshal(body, &positions); err != nil {
-		return fmt.Errorf("decode data API positions: %w", err)
+		return err
 	}
 
 	redeemed := map[string]bool{}
@@ -548,14 +694,63 @@ func runRedeemAll(oc *order.OnChain, walletAddr, redeemedStatePath string) error
 	return nil
 }
 
+func fetchRedeemablePositions(ctx context.Context, client *nethttp.Client, baseURL, walletAddr string) ([]dataAPIPosition, error) {
+	const pageLimit = 500
+	var positions []dataAPIPosition
+	for offset := 0; offset <= 10000; offset += pageLimit {
+		query := url.Values{
+			"user":          {strings.ToLower(strings.TrimSpace(walletAddr))},
+			"sizeThreshold": {"0.01"},
+			"redeemable":    {"true"},
+			"limit":         {strconv.Itoa(pageLimit)},
+			"offset":        {strconv.Itoa(offset)},
+		}
+		req, err := nethttp.NewRequestWithContext(ctx, nethttp.MethodGet, strings.TrimRight(baseURL, "/")+"/positions?"+query.Encode(), nil)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("data API positions: %w", err)
+		}
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+		closeErr := resp.Body.Close()
+		if readErr != nil {
+			return nil, fmt.Errorf("read data API positions: %w", readErr)
+		}
+		if closeErr != nil {
+			return nil, fmt.Errorf("close data API response: %w", closeErr)
+		}
+		if resp.StatusCode >= 400 {
+			return nil, fmt.Errorf("data API returned HTTP %d: %s", resp.StatusCode, string(body[:min(len(body), 200)]))
+		}
+		var page []dataAPIPosition
+		if err := json.Unmarshal(body, &page); err != nil {
+			return nil, fmt.Errorf("decode data API positions: %w", err)
+		}
+		positions = append(positions, page...)
+		if len(page) < pageLimit {
+			return positions, nil
+		}
+		if offset == 10000 {
+			return nil, fmt.Errorf("data API positions exceeded pagination limit")
+		}
+	}
+	return positions, nil
+}
+
 func validateLiveRedeemedStatePath(path string) (string, error) {
+	return validateLiveRuntimeStatePath(path, "redeemed state")
+}
+
+func validateLiveRuntimeStatePath(path, label string) (string, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
-		return "", fmt.Errorf("redeemed state path is required")
+		return "", fmt.Errorf("%s path is required", label)
 	}
 	absPath, err := filepath.Abs(path)
 	if err != nil {
-		return "", fmt.Errorf("resolve redeemed state path: %w", err)
+		return "", fmt.Errorf("resolve %s path: %w", label, err)
 	}
 	liveRoot, err := filepath.Abs(filepath.Join("db", "live"))
 	if err != nil {
@@ -563,13 +758,16 @@ func validateLiveRedeemedStatePath(path string) (string, error) {
 	}
 	rel, err := filepath.Rel(liveRoot, absPath)
 	if err != nil {
-		return "", fmt.Errorf("compare redeemed state path: %w", err)
+		return "", fmt.Errorf("compare %s path: %w", label, err)
 	}
 	if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
-		return "", fmt.Errorf("redeemed state path must be a file under %s", liveRoot)
+		return "", fmt.Errorf("%s path must be a file under %s", label, liveRoot)
 	}
 	if filepath.Dir(absPath) != liveRoot {
-		return "", fmt.Errorf("redeemed state path must be a direct child of %s", liveRoot)
+		return "", fmt.Errorf("%s path must be a direct child of %s", label, liveRoot)
+	}
+	if err := rejectLiveSymlinkComponents(absPath); err != nil {
+		return "", fmt.Errorf("%s path is unsafe: %w", label, err)
 	}
 	if info, statErr := os.Lstat(liveRoot); statErr == nil && info.Mode()&os.ModeSymlink != 0 {
 		return "", fmt.Errorf("live state root must not be a symlink")
@@ -577,11 +775,27 @@ func validateLiveRedeemedStatePath(path string) (string, error) {
 		return "", fmt.Errorf("inspect live state root: %w", statErr)
 	}
 	if info, statErr := os.Lstat(absPath); statErr == nil && info.Mode()&os.ModeSymlink != 0 {
-		return "", fmt.Errorf("redeemed state file must not be a symlink")
+		return "", fmt.Errorf("%s file must not be a symlink", label)
 	} else if statErr != nil && !os.IsNotExist(statErr) {
-		return "", fmt.Errorf("inspect redeemed state path: %w", statErr)
+		return "", fmt.Errorf("inspect %s path: %w", label, statErr)
 	}
 	return absPath, nil
+}
+
+func rejectLiveSymlinkComponents(path string) error {
+	for current := path; ; current = filepath.Dir(current) {
+		info, err := os.Lstat(current)
+		switch {
+		case err == nil && info.Mode()&os.ModeSymlink != 0:
+			return fmt.Errorf("%s is a symlink", current)
+		case err != nil && !os.IsNotExist(err):
+			return fmt.Errorf("inspect %s: %w", current, err)
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return nil
+		}
+	}
 }
 
 func redeemValue(p dataAPIPosition) float64 {

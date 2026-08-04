@@ -142,15 +142,15 @@ func (s *PendingStore) Size() int {
 // CloseIntent stores context for a whale-sell close prompt so the callback
 // handler can look it up by nonce and execute the close.
 type CloseIntent struct {
-	Nonce     string
-	AssetID   string
-	Market    string
-	Question  string
-	Outcome   string
+	Nonce      string
+	AssetID    string
+	Market     string
+	Question   string
+	Outcome    string
 	WhalePrice float64
-	MessageID int64
-	CreatedAt time.Time
-	ExpiresAt time.Time
+	MessageID  int64
+	CreatedAt  time.Time
+	ExpiresAt  time.Time
 }
 
 // CloseStore is a thread-safe TTL map for close prompts, keyed by nonce.

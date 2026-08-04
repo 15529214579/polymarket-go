@@ -6,6 +6,7 @@ package journal
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -27,6 +28,7 @@ var SGT = time.FixedZone("SGT", 8*3600)
 // fields decode with zero values — report.Summarize prefers NetPnLUSD when
 // non-zero and falls back to PnLUSD.
 type TradeRecord struct {
+	ExecutionID   string    `json:"execution_id,omitempty"`
 	ID            string    `json:"id"`
 	AssetID       string    `json:"asset_id"`
 	Market        string    `json:"market"`
@@ -74,7 +76,7 @@ func (j *Journal) SetPolicyVersion(version string) {
 }
 
 func New(dir string) (*Journal, error) {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("journal mkdir: %w", err)
 	}
 	return &Journal{dir: dir}, nil
@@ -103,7 +105,13 @@ func (j *Journal) Append(rec TradeRecord) error {
 	if err := j.writer.WriteByte('\n'); err != nil {
 		return err
 	}
-	return j.writer.Flush()
+	if err := j.writer.Flush(); err != nil {
+		return err
+	}
+	if err := j.f.Sync(); err != nil {
+		return fmt.Errorf("journal sync: %w", err)
+	}
+	return nil
 }
 
 func recordDay(rec TradeRecord) string {
@@ -129,9 +137,22 @@ func (j *Journal) rotateLocked(day string) error {
 		return err
 	}
 	path := filepath.Join(j.dir, "trades-"+day+".jsonl")
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return fmt.Errorf("journal open %s: %w", path, err)
+	}
+	if err := f.Chmod(0o600); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("journal secure %s: %w", path, err)
+	}
+	dirHandle, err := os.Open(j.dir)
+	if err != nil {
+		_ = f.Close()
+		return fmt.Errorf("journal open directory: %w", err)
+	}
+	if err := errors.Join(dirHandle.Sync(), dirHandle.Close()); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("journal sync directory: %w", err)
 	}
 	j.f = f
 	j.writer = bufio.NewWriter(f)
@@ -140,16 +161,23 @@ func (j *Journal) rotateLocked(day string) error {
 }
 
 func (j *Journal) closeLocked() error {
+	var errs []error
 	if j.writer != nil {
-		_ = j.writer.Flush()
+		if err := j.writer.Flush(); err != nil {
+			errs = append(errs, err)
+		}
 		j.writer = nil
 	}
 	if j.f != nil {
-		err := j.f.Close()
+		if err := j.f.Sync(); err != nil {
+			errs = append(errs, err)
+		}
+		if err := j.f.Close(); err != nil {
+			errs = append(errs, err)
+		}
 		j.f = nil
-		return err
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 // Path returns the file path for a given SGT day. Useful for the report cron.

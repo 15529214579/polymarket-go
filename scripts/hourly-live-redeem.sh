@@ -15,6 +15,7 @@ STATE_FILE="$LIVE_DIR/hourly-redeem-state.json"
 REDEEMED_FILE="$LIVE_DIR/redeemed.json"
 MAINTENANCE_BIN="$BIN_DIR/trade-maintenance"
 ACTION="${1:-run}"
+ARM_COMMIT=""
 
 if [ -L "$LIVE_DIR" ]; then
   printf 'hourly_redeem.failed reason=live_state_dir_is_symlink\n' >&2
@@ -30,8 +31,8 @@ write_state() {
   local checked_at tmp
   checked_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   tmp="$STATE_FILE.tmp.$$"
-  printf '{\n  "checked_at": "%s",\n  "status": "%s",\n  "reason": "%s",\n  "exit_code": %s,\n  "wallet": "%s",\n  "state_scope": "db/live"\n}\n' \
-    "$checked_at" "$status" "$reason" "$exit_code" "$EXPECTED_WALLET" > "$tmp"
+	printf '{\n  "checked_at": "%s",\n  "status": "%s",\n  "reason": "%s",\n  "exit_code": %s,\n  "wallet": "%s",\n  "commit": "%s",\n  "state_scope": "db/live"\n}\n' \
+	  "$checked_at" "$status" "$reason" "$exit_code" "$EXPECTED_WALLET" "$ARM_COMMIT" > "$tmp"
   chmod 600 "$tmp"
   mv "$tmp" "$STATE_FILE"
 }
@@ -104,7 +105,6 @@ fi
 
 enable_mode="$(stat -f '%Lp' "$ENABLE_FILE" 2>/dev/null || stat -c '%a' "$ENABLE_FILE" 2>/dev/null || true)"
 enable_owner="$(stat -f '%u' "$ENABLE_FILE" 2>/dev/null || stat -c '%u' "$ENABLE_FILE" 2>/dev/null || true)"
-enable_wallet="$(/bin/cat "$ENABLE_FILE")"
 if [ "$enable_mode" != "600" ]; then
   write_state "skipped" "invalid_arm_mode" 0
   printf 'hourly_redeem.skip reason=invalid_arm_mode\n'
@@ -115,10 +115,57 @@ if [ "$enable_owner" != "$(id -u)" ]; then
   printf 'hourly_redeem.skip reason=invalid_arm_owner\n'
   exit 0
 fi
+arm_fields="$(python3 - "$ENABLE_FILE" <<'PY'
+import datetime as dt
+import json
+import re
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as fh:
+        arm = json.load(fh)
+    wallet = str(arm["wallet"])
+    commit = str(arm["commit"])
+    armed = dt.datetime.fromisoformat(str(arm["armed_at"]).replace("Z", "+00:00"))
+    expires = dt.datetime.fromisoformat(str(arm["expires_at"]).replace("Z", "+00:00"))
+    now = dt.datetime.now(dt.timezone.utc)
+    if armed.tzinfo is None or expires.tzinfo is None:
+        raise ValueError("timestamps must include timezone")
+    if armed > now + dt.timedelta(minutes=5):
+        raise ValueError("armed_at is in the future")
+    if expires <= now:
+        raise ValueError("arm expired")
+    if expires - armed > dt.timedelta(hours=24):
+        raise ValueError("arm duration exceeds 24 hours")
+    if not re.fullmatch(r"[0-9a-f]{40}", commit):
+        raise ValueError("commit must be a full SHA-1")
+    print(f"{wallet}\t{commit}")
+except Exception as exc:
+    print(str(exc), file=sys.stderr)
+    raise SystemExit(1)
+PY
+)" || {
+	write_state "skipped" "invalid_arm_json" 0
+	printf 'hourly_redeem.skip reason=invalid_arm_json\n'
+	exit 0
+}
+IFS=$'\t' read -r enable_wallet ARM_COMMIT <<< "$arm_fields"
 if [ "$enable_wallet" != "$EXPECTED_WALLET" ]; then
   write_state "skipped" "wallet_binding_mismatch" 0
   printf 'hourly_redeem.skip reason=wallet_binding_mismatch\n'
   exit 0
+fi
+
+current_commit="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)"
+if [ -z "$current_commit" ] || [ "$ARM_COMMIT" != "$current_commit" ]; then
+	write_state "skipped" "commit_binding_mismatch" 0
+	printf 'hourly_redeem.skip reason=commit_binding_mismatch armed=%s current=%s\n' "$ARM_COMMIT" "$current_commit"
+	exit 0
+fi
+if [ -n "$(git -C "$ROOT" status --porcelain -- go.mod go.sum cmd internal)" ]; then
+	write_state "skipped" "reviewed_source_dirty" 0
+	printf 'hourly_redeem.skip reason=reviewed_source_dirty\n'
+	exit 0
 fi
 
 if [ -z "${BW_SESSION:-}" ]; then

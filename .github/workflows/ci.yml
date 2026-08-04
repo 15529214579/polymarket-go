@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Check formatting
+        run: |
+          files="$(gofmt -l .)"
+          if [ -n "$files" ]; then
+            printf 'Files need gofmt:\n%s\n' "$files"
+            exit 1
+          fi
+      - name: Check shell syntax
+        run: bash -n scripts/*.sh
+      - name: Check embedded Python syntax
+        run: |
+          python3 - scripts/*.sh <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          blocks = 0
+          for filename in sys.argv[1:]:
+              source = pathlib.Path(filename).read_text(encoding="utf-8")
+              for index, block in enumerate(re.findall(r"<<'PY'\n(.*?)\nPY(?:\n|$)", source, re.S), 1):
+                  compile(block, f"{filename}:PY#{index}", "exec")
+                  blocks += 1
+          print(f"validated {blocks} embedded Python blocks")
+          PY
+      - name: Vet
+        run: go vet ./...
+      - name: Test with race detector
+        run: go test -race -count=1 ./...
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.11.4

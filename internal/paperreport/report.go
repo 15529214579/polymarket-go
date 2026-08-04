@@ -1,3 +1,4 @@
+// Package paperreport summarizes simulated positions and execution records.
 package paperreport
 
 import (

@@ -204,7 +204,7 @@ func TestBuildReturnStats(t *testing.T) {
 	base := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	candles := []Candle{
 		makeCandle(base, 100, 101, 99, 100, 100),
-		makeCandle(base.Add(time.Hour), 100, 102, 100, 102, 100), // +2% → RetSurge
+		makeCandle(base.Add(time.Hour), 100, 102, 100, 102, 100),   // +2% → RetSurge
 		makeCandle(base.Add(2*time.Hour), 102, 103, 101, 103, 100), // +0.98% → RetUp
 	}
 	stats := BuildReturnStats(candles)

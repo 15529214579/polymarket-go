@@ -223,11 +223,6 @@ func buttonLabel(outcome string, sizeUSD float64, isSignal bool) string {
 	return fmt.Sprintf("🔴 %gU", sizeUSD)
 }
 
-// holdButtonLabel builds a caption for the hold-to-settlement row.
-func holdButtonLabel(sizeUSD float64) string {
-	return fmt.Sprintf("🔒 %gU", sizeUSD)
-}
-
 type outgoing struct {
 	text        string
 	tag         string

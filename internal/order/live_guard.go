@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +29,7 @@ type LiveGuardConfig struct {
 	MaxOrderUSD      float64
 	MaxSessionBuyUSD float64
 	MaxArmDuration   time.Duration
+	SessionStatePath string
 	Now              func() time.Time
 }
 
@@ -39,10 +42,17 @@ type liveArmFile struct {
 // GuardedClient serializes live submissions and re-checks the kill switch,
 // arm expiry, wallet binding, and order limits immediately before signing.
 type GuardedClient struct {
-	inner         Client
-	cfg           LiveGuardConfig
-	mu            sync.Mutex
-	sessionBuyUSD float64
+	inner          Client
+	cfg            LiveGuardConfig
+	mu             sync.Mutex
+	sessionBuyUSD  float64
+	armFingerprint string
+	stateErr       error
+}
+
+type liveSessionState struct {
+	ArmFingerprint string  `json:"arm_fingerprint"`
+	SessionBuyUSD  float64 `json:"session_buy_usd"`
 }
 
 func NewGuardedClient(inner Client, cfg LiveGuardConfig) (*GuardedClient, error) {
@@ -83,6 +93,9 @@ func normalizeLiveGuardConfig(cfg LiveGuardConfig) (LiveGuardConfig, error) {
 	if cfg.MaxArmDuration <= 0 {
 		return LiveGuardConfig{}, errors.New("order: positive live arm duration is required")
 	}
+	if strings.TrimSpace(cfg.SessionStatePath) == "" {
+		return LiveGuardConfig{}, errors.New("order: live session state path is required")
+	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
@@ -100,7 +113,12 @@ func (c *GuardedClient) Submit(ctx context.Context, in Intent) (Result, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if err := checkLiveArm(c.cfg, c.cfg.Now()); err != nil {
+	arm, err := readLiveArm(c.cfg, c.cfg.Now())
+	if err != nil {
+		return rejectedResult(err), err
+	}
+	if err := c.loadSessionLocked(arm); err != nil && in.Side == Buy {
+		err = fmt.Errorf("%w: live session state unavailable: %v", ErrLiveLimit, err)
 		return rejectedResult(err), err
 	}
 	if !finitePositive(in.SizeUSD) {
@@ -116,61 +134,189 @@ func (c *GuardedClient) Submit(ctx context.Context, in Intent) (Result, error) {
 		return rejectedResult(err), err
 	}
 
+	reservedBuyUSD := 0.0
+	if in.Side == Buy {
+		reservedBuyUSD = in.SizeUSD
+		c.sessionBuyUSD += reservedBuyUSD
+		if err := c.saveSessionLocked(); err != nil {
+			c.sessionBuyUSD -= reservedBuyUSD
+			c.stateErr = err
+			err = fmt.Errorf("%w: reserve live session BUY total: %v", ErrLiveLimit, err)
+			return rejectedResult(err), err
+		}
+	}
+
 	result, err := c.inner.Submit(ctx, in)
-	if err == nil && in.Side == Buy && result.Status == StatusFilled {
-		c.sessionBuyUSD += in.SizeUSD
+	if in.Side == Buy {
+		switch result.Status {
+		case StatusFilled:
+			filledNotional := result.FilledSize * result.AvgPrice
+			if !finitePositive(filledNotional) {
+				filledNotional = reservedBuyUSD
+			}
+			c.sessionBuyUSD += filledNotional - reservedBuyUSD
+		case StatusPending:
+			// Keep the full reservation until startup reconciliation establishes
+			// whether the unknown order filled.
+		default:
+			c.sessionBuyUSD -= reservedBuyUSD
+		}
+		if saveErr := c.saveSessionLocked(); saveErr != nil {
+			c.stateErr = saveErr
+			slog.Error("live_session_state_save_failed", "status", result.Status, "reserved_buy_usd", reservedBuyUSD, "err", saveErr)
+		}
 	}
 	return result, err
 }
 
+func (c *GuardedClient) CancelAllOpen(ctx context.Context) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := checkLiveArm(c.cfg, c.cfg.Now()); err != nil {
+		return err
+	}
+	admin, ok := c.inner.(interface{ CancelAllOpen(context.Context) error })
+	if !ok {
+		return errors.New("order: inner client does not support cancel-all")
+	}
+	return admin.CancelAllOpen(ctx)
+}
+
+func (c *GuardedClient) loadSessionLocked(arm liveArmFile) error {
+	fingerprint := strings.ToLower(strings.TrimSpace(arm.Wallet)) + "|" + arm.ArmedAt.UTC().Format(time.RFC3339Nano) + "|" + arm.ExpiresAt.UTC().Format(time.RFC3339Nano)
+	if fingerprint == c.armFingerprint {
+		return c.stateErr
+	}
+	c.armFingerprint = fingerprint
+	c.sessionBuyUSD = 0
+	c.stateErr = nil
+	info, err := os.Lstat(c.cfg.SessionStatePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		c.stateErr = err
+		return err
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
+		c.stateErr = errors.New("live session state must be a regular 0600 file")
+		return c.stateErr
+	}
+	raw, err := os.ReadFile(c.cfg.SessionStatePath)
+	if err != nil {
+		c.stateErr = err
+		return err
+	}
+	var state liveSessionState
+	if err := json.Unmarshal(raw, &state); err != nil {
+		c.stateErr = err
+		return err
+	}
+	if state.ArmFingerprint == fingerprint {
+		if state.SessionBuyUSD < 0 || math.IsNaN(state.SessionBuyUSD) || math.IsInf(state.SessionBuyUSD, 0) {
+			c.stateErr = errors.New("invalid persisted session buy total")
+			return c.stateErr
+		}
+		c.sessionBuyUSD = state.SessionBuyUSD
+	}
+	return nil
+}
+
+func (c *GuardedClient) saveSessionLocked() error {
+	state := liveSessionState{ArmFingerprint: c.armFingerprint, SessionBuyUSD: c.sessionBuyUSD}
+	raw, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(c.cfg.SessionStatePath), 0o700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(c.cfg.SessionStatePath), ".live-session-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(raw); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, c.cfg.SessionStatePath); err != nil {
+		return err
+	}
+	dirHandle, err := os.Open(filepath.Dir(c.cfg.SessionStatePath))
+	if err != nil {
+		return err
+	}
+	syncErr := dirHandle.Sync()
+	closeErr := dirHandle.Close()
+	return errors.Join(syncErr, closeErr)
+}
+
 func checkLiveArm(cfg LiveGuardConfig, now time.Time) error {
+	_, err := readLiveArm(cfg, now)
+	return err
+}
+
+func readLiveArm(cfg LiveGuardConfig, now time.Time) (liveArmFile, error) {
 	if _, err := os.Stat(cfg.DisableFile); err == nil {
-		return fmt.Errorf("%w: %s", ErrLiveDisabled, cfg.DisableFile)
+		return liveArmFile{}, fmt.Errorf("%w: %s", ErrLiveDisabled, cfg.DisableFile)
 	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("%w: cannot check disable file: %v", ErrLiveDisabled, err)
+		return liveArmFile{}, fmt.Errorf("%w: cannot check disable file: %v", ErrLiveDisabled, err)
 	}
 
 	info, err := os.Lstat(cfg.ArmFile)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Errorf("%w: %s is missing", ErrLiveNotArmed, cfg.ArmFile)
+			return liveArmFile{}, fmt.Errorf("%w: %s is missing", ErrLiveNotArmed, cfg.ArmFile)
 		}
-		return fmt.Errorf("%w: cannot inspect arm file: %v", ErrLiveNotArmed, err)
+		return liveArmFile{}, fmt.Errorf("%w: cannot inspect arm file: %v", ErrLiveNotArmed, err)
 	}
 	if !info.Mode().IsRegular() {
-		return fmt.Errorf("%w: arm file must be a regular file", ErrLiveNotArmed)
+		return liveArmFile{}, fmt.Errorf("%w: arm file must be a regular file", ErrLiveNotArmed)
 	}
 	if info.Mode().Perm()&0o077 != 0 {
-		return fmt.Errorf("%w: arm file permissions must be 0600", ErrLiveNotArmed)
+		return liveArmFile{}, fmt.Errorf("%w: arm file permissions must be 0600", ErrLiveNotArmed)
 	}
 	if info.Size() <= 0 || info.Size() > 4096 {
-		return fmt.Errorf("%w: arm file size is invalid", ErrLiveNotArmed)
+		return liveArmFile{}, fmt.Errorf("%w: arm file size is invalid", ErrLiveNotArmed)
 	}
 
 	raw, err := os.ReadFile(cfg.ArmFile)
 	if err != nil {
-		return fmt.Errorf("%w: cannot read arm file: %v", ErrLiveNotArmed, err)
+		return liveArmFile{}, fmt.Errorf("%w: cannot read arm file: %v", ErrLiveNotArmed, err)
 	}
 	var arm liveArmFile
 	if err := json.Unmarshal(raw, &arm); err != nil {
-		return fmt.Errorf("%w: invalid arm file JSON", ErrLiveNotArmed)
+		return liveArmFile{}, fmt.Errorf("%w: invalid arm file JSON", ErrLiveNotArmed)
 	}
 	if !strings.EqualFold(strings.TrimSpace(arm.Wallet), strings.TrimSpace(cfg.ExpectedWallet)) {
-		return fmt.Errorf("%w: arm file wallet does not match", ErrLiveNotArmed)
+		return liveArmFile{}, fmt.Errorf("%w: arm file wallet does not match", ErrLiveNotArmed)
 	}
 	if arm.ArmedAt.IsZero() || arm.ExpiresAt.IsZero() || !arm.ExpiresAt.After(arm.ArmedAt) {
-		return fmt.Errorf("%w: invalid arm time window", ErrLiveNotArmed)
+		return liveArmFile{}, fmt.Errorf("%w: invalid arm time window", ErrLiveNotArmed)
 	}
 	if arm.ArmedAt.After(now.Add(5 * time.Minute)) {
-		return fmt.Errorf("%w: armed_at is in the future", ErrLiveNotArmed)
+		return liveArmFile{}, fmt.Errorf("%w: armed_at is in the future", ErrLiveNotArmed)
 	}
 	if !arm.ExpiresAt.After(now) {
-		return fmt.Errorf("%w: arm file expired", ErrLiveNotArmed)
+		return liveArmFile{}, fmt.Errorf("%w: arm file expired", ErrLiveNotArmed)
 	}
 	if arm.ExpiresAt.Sub(arm.ArmedAt) > cfg.MaxArmDuration {
-		return fmt.Errorf("%w: arm window exceeds %s", ErrLiveNotArmed, cfg.MaxArmDuration)
+		return liveArmFile{}, fmt.Errorf("%w: arm window exceeds %s", ErrLiveNotArmed, cfg.MaxArmDuration)
 	}
-	return nil
+	return arm, nil
 }
 
 func rejectedResult(err error) Result {

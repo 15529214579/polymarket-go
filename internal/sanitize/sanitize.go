@@ -1,3 +1,4 @@
+// Package sanitize redacts credentials from errors and logs.
 package sanitize
 
 import "regexp"

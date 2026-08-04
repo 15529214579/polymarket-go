@@ -27,6 +27,19 @@ func (c *guardTestClient) Submit(_ context.Context, in Intent) (Result, error) {
 	}, nil
 }
 
+type guardResultClient struct {
+	result Result
+	err    error
+	calls  int
+}
+
+func (c *guardResultClient) Name() string { return "test-live-result" }
+
+func (c *guardResultClient) Submit(context.Context, Intent) (Result, error) {
+	c.calls++
+	return c.result, c.err
+}
+
 func TestGuardedClientRejectsMissingArmFile(t *testing.T) {
 	cfg, _ := testLiveGuardConfig(t)
 	inner := &guardTestClient{}
@@ -133,8 +146,105 @@ func testLiveGuardConfig(t *testing.T) (LiveGuardConfig, time.Time) {
 		MaxOrderUSD:      20,
 		MaxSessionBuyUSD: 100,
 		MaxArmDuration:   24 * time.Hour,
+		SessionStatePath: filepath.Join(dir, "session.json"),
 		Now:              func() time.Time { return now },
 	}, now
+}
+
+func TestGuardedClientRestoresSessionLimitAcrossRestart(t *testing.T) {
+	cfg, now := testLiveGuardConfig(t)
+	cfg.MaxOrderUSD = 6
+	cfg.MaxSessionBuyUSD = 10
+	writeLiveArm(t, cfg, now, 2*time.Hour, 0o600)
+
+	first, err := NewGuardedClient(&guardTestClient{}, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := first.Submit(context.Background(), testBuyIntent(6)); err != nil {
+		t.Fatal(err)
+	}
+	second, err := NewGuardedClient(&guardTestClient{}, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := second.Submit(context.Background(), testBuyIntent(5)); !errors.Is(err, ErrLiveLimit) {
+		t.Fatalf("restarted guard should preserve session total: %v", err)
+	}
+}
+
+func TestGuardedClientRollsBackTerminalNonFillReservation(t *testing.T) {
+	cfg, now := testLiveGuardConfig(t)
+	cfg.MaxOrderUSD = 10
+	cfg.MaxSessionBuyUSD = 10
+	writeLiveArm(t, cfg, now, 2*time.Hour, 0o600)
+
+	terminal := &guardResultClient{result: Result{Status: StatusExpired}}
+	first, err := NewGuardedClient(terminal, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result, err := first.Submit(context.Background(), testBuyIntent(6)); err != nil || result.Status != StatusExpired {
+		t.Fatalf("terminal result=%+v err=%v", result, err)
+	}
+
+	second, err := NewGuardedClient(&guardTestClient{}, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := second.Submit(context.Background(), testBuyIntent(10)); err != nil {
+		t.Fatalf("terminal non-fill should release reservation: %v", err)
+	}
+}
+
+func TestGuardedClientKeepsUnknownBuyReservedAcrossRestart(t *testing.T) {
+	cfg, now := testLiveGuardConfig(t)
+	cfg.MaxOrderUSD = 10
+	cfg.MaxSessionBuyUSD = 10
+	writeLiveArm(t, cfg, now, 2*time.Hour, 0o600)
+
+	unknown := &guardResultClient{
+		result: Result{Status: StatusPending},
+		err:    errors.New("network outcome unknown"),
+	}
+	first, err := NewGuardedClient(unknown, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result, err := first.Submit(context.Background(), testBuyIntent(6)); err == nil || result.Status != StatusPending {
+		t.Fatalf("pending result=%+v err=%v", result, err)
+	}
+
+	second, err := NewGuardedClient(&guardTestClient{}, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := second.Submit(context.Background(), testBuyIntent(5)); !errors.Is(err, ErrLiveLimit) {
+		t.Fatalf("unknown BUY must remain reserved after restart: %v", err)
+	}
+}
+
+func TestGuardedClientRejectsSymlinkedSessionState(t *testing.T) {
+	cfg, now := testLiveGuardConfig(t)
+	writeLiveArm(t, cfg, now, 2*time.Hour, 0o600)
+	target := filepath.Join(t.TempDir(), "session.json")
+	if err := os.WriteFile(target, []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, cfg.SessionStatePath); err != nil {
+		t.Fatal(err)
+	}
+	inner := &guardTestClient{}
+	client, err := NewGuardedClient(inner, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Submit(context.Background(), testBuyIntent(5)); !errors.Is(err, ErrLiveLimit) {
+		t.Fatalf("expected session state rejection, got %v", err)
+	}
+	if inner.calls != 0 {
+		t.Fatalf("inner calls=%d", inner.calls)
+	}
 }
 
 func writeLiveArm(t *testing.T, cfg LiveGuardConfig, now time.Time, duration time.Duration, permission os.FileMode) {

@@ -2,6 +2,7 @@ package strategy
 
 import (
 	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -406,7 +407,7 @@ func TestPositionManager_ReconcileOpenEntryFees(t *testing.T) {
 	if err := pm.SetOpenFee(p.ID, 0.02); err != nil {
 		t.Fatal(err)
 	}
-	if updated := pm.ReconcileOpenEntryFees([]ClosedAccounting{{ID: p.ID, EntryFeeUSD: 0.008}}); updated != 1 {
+	if updated := pm.ReconcileOpenEntryFees([]ClosedAccounting{{ID: p.ID, EntryTime: p.EntryTime, EntryFeeUSD: 0.008}}); updated != 1 {
 		t.Fatalf("updated=%d", updated)
 	}
 	closed, err := pm.Close(p.ID, ExitSignal{Time: now.Add(time.Minute), ExitMid: 0.6})
@@ -456,5 +457,58 @@ func TestPositionManager_ReopenAfterClose(t *testing.T) {
 	// Re-opening the same asset is fine once the previous closed.
 	if _, err := pm.Open("a", "m", tick(0.6, now.Add(2*time.Minute))); err != nil {
 		t.Fatalf("reopen: %v", err)
+	}
+}
+
+func TestPositionManagerCloseReservationIsAtomicAndRetryable(t *testing.T) {
+	pm := NewPositionManager(DefaultPositionConfig())
+	now := time.Now()
+	pos, err := pm.Open("asset", "market", tick(0.5, now))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pm.BeginClose(pos.ID, 4); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pm.BeginClose(pos.ID, 4); !errors.Is(err, ErrPositionClosing) {
+		t.Fatalf("second reservation err=%v", err)
+	}
+	pm.AbortClose(pos.ID)
+	if _, err := pm.BeginClose(pos.ID, 4); err != nil {
+		t.Fatalf("reservation after abort: %v", err)
+	}
+	tranche, err := pm.CommitClose(pos.ID, ExitSignal{Time: now.Add(time.Minute), ExitMid: 0.6})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tranche.Units != 4 || !pm.Has("asset") {
+		t.Fatalf("tranche=%+v stats=%+v", tranche, pm.Stats())
+	}
+}
+
+func TestPositionManagerCommitCloseUsesActualPartialFill(t *testing.T) {
+	pm := NewPositionManager(DefaultPositionConfig())
+	now := time.Now()
+	pos, err := pm.Open("asset", "market", tick(0.5, now))
+	if err != nil {
+		t.Fatal(err)
+	}
+	initialUnits := pos.Units
+	if _, err := pm.BeginClose(pos.ID, pos.Units); err != nil {
+		t.Fatal(err)
+	}
+	if err := pm.ApplyCloseFill(pos.ID, 3); err != nil {
+		t.Fatal(err)
+	}
+	tranche, err := pm.CommitClose(pos.ID, ExitSignal{Time: now.Add(time.Minute), ExitMid: 0.6})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tranche.Units != 3 {
+		t.Fatalf("closed units=%v", tranche.Units)
+	}
+	remaining, ok := pm.OpenByID(pos.ID)
+	if !ok || math.Abs(remaining.Units-(initialUnits-3)) > 1e-9 {
+		t.Fatalf("remaining=%+v ok=%v", remaining, ok)
 	}
 }

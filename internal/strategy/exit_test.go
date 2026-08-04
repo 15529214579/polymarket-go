@@ -31,8 +31,19 @@ func TestExit_StopLoss(t *testing.T) {
 	if sig.Reason != ExitStopLoss {
 		t.Fatalf("reason=%s want stop_loss", sig.Reason)
 	}
+	if !e.Has("A") {
+		t.Fatalf("position must remain pending until the sell is confirmed")
+	}
+	if _, fired := e.OnTick(mkTick("A", t0.Add(11*time.Second), 0.55)); fired {
+		t.Fatalf("pending close must not emit a duplicate signal")
+	}
+	e.RetryClose("A")
+	if _, fired := e.OnTick(mkTick("A", t0.Add(12*time.Second), 0.55)); !fired {
+		t.Fatalf("failed close should be retryable")
+	}
+	e.ConfirmClose("A")
 	if e.Has("A") {
-		t.Fatalf("position should be closed after exit")
+		t.Fatalf("confirmed close should remove the tracker state")
 	}
 }
 

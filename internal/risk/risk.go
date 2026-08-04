@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -295,6 +296,7 @@ type persistedState struct {
 	PeakEquity    float64     `json:"peak_equity"`
 	Blocked       bool        `json:"blocked"`
 	BlockReason   BlockReason `json:"block_reason,omitempty"`
+	BlockedAt     time.Time   `json:"blocked_at,omitempty"`
 }
 
 // SaveState writes the current risk state to a JSON file so it survives daemon restarts.
@@ -307,18 +309,51 @@ func (m *Manager) SaveState(path string) error {
 		PeakEquity:    m.peakEquity,
 		Blocked:       m.blocked,
 		BlockReason:   m.blockReason,
+		BlockedAt:     m.blockedAt,
 	}
 	m.mu.Unlock()
 	data, err := json.MarshalIndent(ps, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".risk-state-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return err
+	}
+	dirHandle, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	syncErr := dirHandle.Sync()
+	closeErr := dirHandle.Close()
+	return errors.Join(syncErr, closeErr)
 }
 
-// LoadState restores risk state from a previously saved file. Only applies
-// state for the current day (same cfg.Loc timezone). If the file is from a
-// previous day, it is ignored — fresh start.
+// LoadState restores cumulative and breaker state across every restart. Daily
+// PnL is restored only when the snapshot belongs to the current local day.
 func (m *Manager) LoadState(path string, now time.Time) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -335,11 +370,17 @@ func (m *Manager) LoadState(path string, now time.Time) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.cumulativePnL = ps.CumulativePnL
-	m.peakEquity = ps.PeakEquity
+	if ps.PeakEquity > 0 {
+		m.peakEquity = ps.PeakEquity
+	}
+	m.blocked = ps.Blocked
+	m.blockReason = ps.BlockReason
+	m.blockedAt = ps.BlockedAt
+	if m.blocked && m.blockReason == BlockNone {
+		m.blockReason = BlockManualPause
+	}
 	if ps.Day == today {
 		m.dayRealized = ps.DayRealized
-		m.blocked = ps.Blocked
-		m.blockReason = ps.BlockReason
 	}
 	return nil
 }

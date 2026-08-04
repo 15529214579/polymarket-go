@@ -3,11 +3,13 @@ package order
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestAmountsForIntentPreservesTickPrice(t *testing.T) {
@@ -111,9 +113,9 @@ func TestRefreshBalanceAllowanceUsesV2UpdateEndpoint(t *testing.T) {
 	}
 }
 
-func TestGetOrderUsesV2DataEndpoint(t *testing.T) {
+func TestGetOrderUsesCurrentOrderEndpoint(t *testing.T) {
 	client := testV2Client(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.URL.RequestURI() != "/data/order/order-1" {
+		if r.Method != http.MethodGet || r.URL.RequestURI() != "/order/order-1" {
 			t.Fatalf("request = %s %s", r.Method, r.URL.RequestURI())
 		}
 		_, _ = w.Write([]byte(`{"id":"order-1","status":"ORDER_STATUS_LIVE","size_matched":"1000000","price":"0.5"}`))
@@ -124,6 +126,49 @@ func TestGetOrderUsesV2DataEndpoint(t *testing.T) {
 	}
 	if result.ID != "order-1" || result.SizeMatched != 1 || result.AvgPrice != 0.5 {
 		t.Fatalf("unexpected result: %+v", result)
+	}
+}
+
+func TestResultForFillUsesAssociatedTradeVWAP(t *testing.T) {
+	client := testV2Client(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/trades" {
+			t.Fatalf("request = %s %s", r.Method, r.URL.RequestURI())
+		}
+		tradeID := r.URL.Query().Get("id")
+		switch tradeID {
+		case "trade-1":
+			_, _ = w.Write([]byte(`{"data":[{"id":"trade-1","size":"10000000","price":"0.40"}]}`))
+		case "trade-2":
+			_, _ = w.Write([]byte(`{"data":[{"id":"trade-2","size":"30000000","price":"0.60"}]}`))
+		default:
+			t.Fatalf("unexpected trade id %q", tradeID)
+		}
+	})
+	result := client.resultForFill(context.Background(), "order-1", Intent{
+		AssetID: "123", Market: "", Side: Buy, SizeUSD: 20, LimitPx: 0.65,
+	}, time.Now(), &OrderStatusResponse{
+		SizeMatched: 40, AvgPrice: 0.65, AssociateTrades: []string{"trade-1", "trade-2"},
+	})
+	if result.FilledSize != 40 || math.Abs(result.AvgPrice-0.55) > 1e-9 {
+		t.Fatalf("result=%+v", result)
+	}
+}
+
+func TestResultForFillDoesNotUndercountIncompleteTradeDetails(t *testing.T) {
+	client := testV2Client(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("id") == "trade-1" {
+			_, _ = w.Write([]byte(`{"data":[{"id":"trade-1","size":"10000000","price":"0.40"}]}`))
+			return
+		}
+		http.Error(w, "temporary failure", http.StatusServiceUnavailable)
+	})
+	result := client.resultForFill(context.Background(), "order-1", Intent{
+		AssetID: "123", Side: Buy, SizeUSD: 26, LimitPx: 0.65,
+	}, time.Now(), &OrderStatusResponse{
+		SizeMatched: 40, AvgPrice: 0.65, AssociateTrades: []string{"trade-1", "trade-2"},
+	})
+	if result.FilledSize != 40 || result.AvgPrice != 0.65 {
+		t.Fatalf("result=%+v", result)
 	}
 }
 
@@ -145,6 +190,44 @@ func TestCancelOrderUsesV2BodyEndpoint(t *testing.T) {
 	})
 	if err := client.CancelOrder(context.Background(), "order-1"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestCancelAndResolveKeepsPartialNonTerminalOrderPending(t *testing.T) {
+	client := testV2Client(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodDelete && r.URL.Path == "/order":
+			_, _ = w.Write([]byte(`{"canceled":["order-1"],"not_canceled":{}}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/order/order-1":
+			_, _ = w.Write([]byte(`{"id":"order-1","status":"ORDER_STATUS_LIVE","size_matched":"1000000","price":"0.5"}`))
+		default:
+			t.Fatalf("request = %s %s", r.Method, r.URL.RequestURI())
+		}
+	})
+	result, err := client.cancelAndResolve("order-1", Intent{
+		AssetID: "123", Side: Buy, SizeUSD: 5, LimitPx: 0.5, Type: FAK,
+	}, time.Now(), "test partial")
+	if err == nil || result.Status != StatusPending {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+}
+
+func TestCancelAndResolveBooksPartialOnlyAfterTerminalCancel(t *testing.T) {
+	client := testV2Client(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodDelete && r.URL.Path == "/order":
+			_, _ = w.Write([]byte(`{"canceled":["order-1"],"not_canceled":{}}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/order/order-1":
+			_, _ = w.Write([]byte(`{"id":"order-1","status":"ORDER_STATUS_CANCELED","size_matched":"1000000","price":"0.5"}`))
+		default:
+			t.Fatalf("request = %s %s", r.Method, r.URL.RequestURI())
+		}
+	})
+	result, err := client.cancelAndResolve("order-1", Intent{
+		AssetID: "123", Side: Buy, SizeUSD: 5, LimitPx: 0.5, Type: FAK,
+	}, time.Now(), "test partial")
+	if err != nil || result.Status != StatusFilled || result.FilledSize != 1 {
+		t.Fatalf("result=%+v err=%v", result, err)
 	}
 }
 

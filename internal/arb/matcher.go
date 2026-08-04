@@ -30,19 +30,6 @@ var nonSportsBlacklist = []string{
 	"assassination", "impeach", "resign",
 }
 
-// --- Sports keywords ---
-
-var sportsKeywords = []string{
-	"vs", "nba", "nfl", "nhl", "mlb", "epl", "premier league", "la liga",
-	"bundesliga", "serie a", "ligue 1", "champions league", "laliga",
-	"world cup", "super bowl", "stanley cup", "march madness",
-	"basketball", "football", "soccer", "baseball", "hockey",
-	"tennis", "golf", "boxing", "ufc", "mma",
-	"lol", "dota", "valorant", "esport", "worlds",
-	"lck", "lpl", "lec", "lcs", "msi", "vct",
-	"cs2", "csgo", "bellator", "ncaa",
-}
-
 var polySportsKeywords = []string{
 	"nba", "nfl", "nhl", "mlb", "world cup", "fifa", "champion", "finals",
 	"qualify", "super bowl", "stanley cup", "premier league", "epl",
@@ -256,13 +243,13 @@ var sportToPolyKeywords = map[string][]string{
 	"americanfootball_nfl":      {"nfl"},
 
 	// Outright/futures
-	"basketball_nba_championship_winner":    {"nba", "nba finals"},
+	"basketball_nba_championship_winner":     {"nba", "nba finals"},
 	"americanfootball_nfl_super_bowl_winner": {"nfl", "super bowl"},
-	"icehockey_nhl_championship_winner":     {"nhl", "stanley cup"},
-	"soccer_fifa_world_cup_winner":          {"world cup", "fifa"},
-	"baseball_mlb_world_series_winner":      {"mlb", "world series"},
-	"golf_masters_tournament_winner":        {"masters"},
-	"golf_pga_championship_winner":          {"pga"},
+	"icehockey_nhl_championship_winner":      {"nhl", "stanley cup"},
+	"soccer_fifa_world_cup_winner":           {"world cup", "fifa"},
+	"baseball_mlb_world_series_winner":       {"mlb", "world series"},
+	"golf_masters_tournament_winner":         {"masters"},
+	"golf_pga_championship_winner":           {"pga"},
 
 	// Esports
 	"esports_lol":      {"lol", "league of legends", "lck", "lpl", "lec", "worlds"},
@@ -288,4 +275,3 @@ func PriorityBoost(sport, title string) int {
 	}
 	return 1
 }
-

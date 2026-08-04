@@ -7,12 +7,6 @@ import (
 	"time"
 )
 
-// DailySummary is the aggregate over one SGT day's TradeRecords. Built by
-// Summarize; rendered by FormatTelegram for the cron-pushed message.
-//
-// RealizedPnLUSD is net of fees when any record carries NetPnLUSD / fee
-// fields (Phase 7.b ladder); older records with zero fee fields contribute
-// gross PnL (net == gross in that case).
 // SourceStats holds stats for one source (auto or manual).
 type SourceStats struct {
 	Count       int
@@ -28,6 +22,10 @@ type SourceStats struct {
 	ExitReasons map[string]int
 }
 
+// DailySummary is the aggregate over one SGT day's TradeRecords. Built by
+// Summarize; rendered by FormatTelegram for the cron-pushed message.
+// RealizedPnLUSD is net of fees when records carry fee fields; older records
+// with zero fee fields contribute gross PnL.
 type DailySummary struct {
 	Day string
 
@@ -159,7 +157,7 @@ func Summarize(day string, trades []TradeRecord) DailySummary {
 	finalizeSource(&s.Manual, manualHeld)
 	if s.Trades > 0 {
 		s.AvgPnLUSD = s.RealizedPnLUSD / float64(s.Trades)
-		s.AvgHeldSec = autoHeld / s.Trades
+		s.AvgHeldSec = tradableHeld / s.Trades
 		decided := s.Wins + s.Losses
 		if decided > 0 {
 			s.WinRate = float64(s.Wins) / float64(decided)

@@ -138,7 +138,9 @@ func printBetSummary(ctx context.Context, db *sql.DB) error {
 
 func printPricingEfficiency(ctx context.Context, db *sql.DB) error {
 	var count int
-	db.QueryRowContext(ctx, "SELECT COUNT(*) FROM updown_prices").Scan(&count)
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM updown_prices").Scan(&count); err != nil {
+		return fmt.Errorf("count price snapshots: %w", err)
+	}
 	if count == 0 {
 		fmt.Println("\n── PM Pricing Efficiency ──")
 		fmt.Println("  No price data yet (updown_prices table empty)")
@@ -166,7 +168,9 @@ func printPricingEfficiency(ctx context.Context, db *sql.DB) error {
 	if rows.Next() {
 		var n int
 		var avgUp, avgDown, avgSpread, avgDev, minUp, minDown, maxDev float64
-		rows.Scan(&n, &avgUp, &avgDown, &avgSpread, &avgDev, &minUp, &minDown, &maxDev)
+		if err := rows.Scan(&n, &avgUp, &avgDown, &avgSpread, &avgDev, &minUp, &minDown, &maxDev); err != nil {
+			return fmt.Errorf("scan pricing summary: %w", err)
+		}
 
 		fmt.Printf("  Avg Up price:      %.4f\n", avgUp)
 		fmt.Printf("  Avg Down price:    %.4f\n", avgDown)
@@ -203,7 +207,9 @@ func printPricingEfficiency(ctx context.Context, db *sql.DB) error {
 		for distRows.Next() {
 			var bucket string
 			var n int
-			distRows.Scan(&bucket, &n)
+			if err := distRows.Scan(&bucket, &n); err != nil {
+				return fmt.Errorf("scan pricing distribution: %w", err)
+			}
 			pct := float64(n) / float64(count) * 100
 			bar := ""
 			barLen := int(math.Round(pct / 2))
@@ -212,6 +218,12 @@ func printPricingEfficiency(ctx context.Context, db *sql.DB) error {
 			}
 			fmt.Printf("  %-10s %6d %5.1f%% %s\n", bucket, n, pct, bar)
 		}
+		if err := distRows.Err(); err != nil {
+			return fmt.Errorf("iterate pricing distribution: %w", err)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate pricing summary: %w", err)
 	}
 
 	return nil

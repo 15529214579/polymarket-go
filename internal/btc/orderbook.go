@@ -23,9 +23,9 @@ type OrderbookDepth struct {
 }
 
 type MarketDepth struct {
-	Depths     []OrderbookDepth
-	AvgScore   float64
-	MinScore   float64
+	Depths   []OrderbookDepth
+	AvgScore float64
+	MinScore float64
 }
 
 type clobOrder struct {

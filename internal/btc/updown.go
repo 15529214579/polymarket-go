@@ -408,11 +408,23 @@ func logPnLSummary(ctx context.Context, db *sql.DB) {
 	var totalPnL float64
 	var pending int
 
-	db.QueryRowContext(ctx, "SELECT COUNT(*) FROM updown_bets").Scan(&totalBets)
-	db.QueryRowContext(ctx, "SELECT COUNT(*) FROM updown_bets WHERE actual_direction IS NOT NULL").Scan(&resolved)
-	db.QueryRowContext(ctx, "SELECT COUNT(*) FROM updown_bets WHERE actual_direction IS NULL").Scan(&pending)
-	db.QueryRowContext(ctx, "SELECT COUNT(*) FROM updown_bets WHERE pnl > 0").Scan(&wins)
-	db.QueryRowContext(ctx, "SELECT COALESCE(SUM(pnl), 0) FROM updown_bets WHERE pnl IS NOT NULL").Scan(&totalPnL)
+	queries := []struct {
+		name  string
+		query string
+		dest  any
+	}{
+		{"total_bets", "SELECT COUNT(*) FROM updown_bets", &totalBets},
+		{"resolved", "SELECT COUNT(*) FROM updown_bets WHERE actual_direction IS NOT NULL", &resolved},
+		{"pending", "SELECT COUNT(*) FROM updown_bets WHERE actual_direction IS NULL", &pending},
+		{"wins", "SELECT COUNT(*) FROM updown_bets WHERE pnl > 0", &wins},
+		{"total_pnl", "SELECT COALESCE(SUM(pnl), 0) FROM updown_bets WHERE pnl IS NOT NULL", &totalPnL},
+	}
+	for _, q := range queries {
+		if err := db.QueryRowContext(ctx, q.query).Scan(q.dest); err != nil {
+			slog.Warn("updown.pnl_summary_query_fail", "metric", q.name, "err", err)
+			return
+		}
+	}
 
 	wr := 0.0
 	if resolved > 0 {
@@ -420,7 +432,10 @@ func logPnLSummary(ctx context.Context, db *sql.DB) {
 	}
 
 	var priceSnapshots int
-	db.QueryRowContext(ctx, "SELECT COUNT(*) FROM updown_prices").Scan(&priceSnapshots)
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM updown_prices").Scan(&priceSnapshots); err != nil {
+		slog.Warn("updown.pnl_summary_query_fail", "metric", "price_snapshots", "err", err)
+		return
+	}
 
 	slog.Info("updown.pnl_summary",
 		"total_bets", totalBets,

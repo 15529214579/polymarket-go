@@ -25,14 +25,14 @@ type DailyMarket struct {
 }
 
 type DailySignal struct {
-	Market     DailyMarket
-	Spot       float64
-	ModelProb  float64
-	PMPrice    float64
-	Edge       float64 // ModelProb - PMPrice (positive = buy Yes)
-	Side       string  // "YES" or "NO"
-	HoursLeft  float64
-	AnnualVol  float64
+	Market    DailyMarket
+	Spot      float64
+	ModelProb float64
+	PMPrice   float64
+	Edge      float64 // ModelProb - PMPrice (positive = buy Yes)
+	Side      string  // "YES" or "NO"
+	HoursLeft float64
+	AnnualVol float64
 }
 
 var reBTCDaily = regexp.MustCompile(`^bitcoin-above-(\d+)k?-on-`)
@@ -54,12 +54,12 @@ func FetchDailyBTCMarkets(ctx context.Context) ([]DailyMarket, error) {
 	}
 
 	var raw []struct {
-		Slug         string `json:"slug"`
-		Question     string `json:"question"`
-		EndDate      string `json:"endDate"`
+		Slug          string `json:"slug"`
+		Question      string `json:"question"`
+		EndDate       string `json:"endDate"`
 		OutcomePrices string `json:"outcomePrices"`
-		ConditionID  string `json:"conditionId"`
-		ClobTokenIDs string `json:"clobTokenIds"`
+		ConditionID   string `json:"conditionId"`
+		ClobTokenIDs  string `json:"clobTokenIds"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
 		return nil, fmt.Errorf("decode: %w", err)

@@ -7,13 +7,16 @@ package whale
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -21,6 +24,8 @@ import (
 )
 
 const dataAPI = "https://data-api.polymarket.com"
+
+const maxActivityPages = 11 // offsets 0..5000 at 500 rows per page
 
 // WalletEntry describes one tracked whale.
 type WalletEntry struct {
@@ -35,6 +40,8 @@ type Config struct {
 	Wallets      []WalletEntry
 	PollInterval time.Duration
 	ReplayWindow time.Duration
+	StatePath    string
+	MaxPages     int
 
 	// Legacy single-wallet fields (used when Wallets is empty).
 	Wallet     string
@@ -47,6 +54,7 @@ func DefaultConfig() Config {
 		MinSizeUSD:   1000,
 		PollInterval: 30 * time.Second,
 		ReplayWindow: 0,
+		MaxPages:     maxActivityPages,
 	}
 }
 
@@ -73,6 +81,7 @@ type trade struct {
 	Asset           string  `json:"asset"`
 	ConditionID     string  `json:"conditionId"`
 	Size            float64 `json:"size"`
+	USDCSize        float64 `json:"usdcSize"`
 	Price           float64 `json:"price"`
 	Timestamp       int64   `json:"timestamp"`
 	Title           string  `json:"title"`
@@ -85,6 +94,9 @@ type trade struct {
 }
 
 func (t *trade) notionalUSD() float64 {
+	if t.USDCSize > 0 {
+		return t.USDCSize
+	}
 	return t.Size * t.Price
 }
 
@@ -130,23 +142,31 @@ type Tracker struct {
 	alert  AlertFunc
 	logger *slog.Logger
 
-	states map[string]*walletState // keyed by wallet address
+	states    map[string]*walletState // keyed by wallet address
+	persistMu sync.Mutex
 }
 
 func NewTracker(cfg Config, alert AlertFunc) *Tracker {
+	if cfg.MaxPages <= 0 || cfg.MaxPages > maxActivityPages {
+		cfg.MaxPages = maxActivityPages
+	}
 	states := make(map[string]*walletState)
 	for _, w := range cfg.ResolvedWallets() {
 		states[strings.ToLower(w.Address)] = &walletState{
 			lastSeen: make(map[string]struct{}),
 		}
 	}
-	return &Tracker{
+	tracker := &Tracker{
 		cfg:    cfg,
 		http:   &http.Client{Timeout: 15 * time.Second},
 		alert:  alert,
 		logger: slog.Default(),
 		states: states,
 	}
+	if err := tracker.loadState(); err != nil {
+		tracker.logger.Warn("whale_state_load_fail", "path", cfg.StatePath, "err", err)
+	}
+	return tracker
 }
 
 func (t *Tracker) Run(ctx context.Context) error {
@@ -166,8 +186,16 @@ func (t *Tracker) Run(ctx context.Context) error {
 
 	// Seed all wallets.
 	for _, w := range wallets {
+		seedFloor := time.Now()
+		if t.cfg.ReplayWindow > 0 {
+			seedFloor = seedFloor.Add(-t.cfg.ReplayWindow)
+		}
 		if err := t.seed(ctx, w); err != nil {
 			t.logger.Warn("whale_seed_fail", "wallet", w.Label, "err", err.Error())
+			t.advanceFloor(w.Address, seedFloor.Unix())
+			if persistErr := t.persistState(); persistErr != nil {
+				t.logger.Warn("whale_state_save_fail", "wallet", w.Label, "err", persistErr)
+			}
 		}
 	}
 
@@ -215,21 +243,39 @@ func (t *Tracker) Run(ctx context.Context) error {
 }
 
 func (t *Tracker) seed(ctx context.Context, w WalletEntry) error {
-	trades, err := t.fetchTrades(ctx, w.Address)
+	st := t.states[strings.ToLower(w.Address)]
+	st.mu.Lock()
+	persistedTS := st.lastTS
+	st.mu.Unlock()
+	if persistedTS > 0 {
+		return t.poll(ctx, w)
+	}
+
+	seedFloor := time.Now()
+	since := int64(0)
+	maxPages := -1 // latest page is enough when startup replay is disabled
+	if t.cfg.ReplayWindow > 0 {
+		seedFloor = seedFloor.Add(-t.cfg.ReplayWindow)
+		since = seedFloor.Unix()
+		maxPages = t.cfg.MaxPages
+	}
+	trades, err := t.fetchTrades(ctx, w.Address, since, maxPages)
 	if err != nil {
 		return err
 	}
 	if len(trades) == 0 {
-		return nil
+		t.advanceFloor(w.Address, seedFloor.Unix())
+		return t.persistState()
 	}
 	var maxTS int64
 	seen := make(map[string]struct{})
 	for _, tr := range trades {
 		if tr.Timestamp > maxTS {
 			maxTS = tr.Timestamp
+			seen = make(map[string]struct{})
 		}
-		if tr.TransactionHash != "" {
-			seen[tr.TransactionHash] = struct{}{}
+		if tr.Timestamp == maxTS {
+			seen[tradeKey(&tr)] = struct{}{}
 		}
 	}
 	replayed := 0
@@ -248,17 +294,144 @@ func (t *Tracker) seed(ctx context.Context, w WalletEntry) error {
 			}
 		}
 	}
-	st := t.states[strings.ToLower(w.Address)]
 	st.mu.Lock()
 	st.lastTS = maxTS
 	st.lastSeen = seen
 	st.mu.Unlock()
+	if err := t.persistState(); err != nil {
+		return err
+	}
 	t.logger.Info("whale_seed_done", "wallet", w.Label, "trades_seen", len(trades), "last_ts", maxTS, "replayed", replayed, "replay_window", t.cfg.ReplayWindow.String())
 	return nil
 }
 
+type persistedWalletState struct {
+	LastTS   int64    `json:"last_ts"`
+	LastSeen []string `json:"last_seen,omitempty"`
+}
+
+func (t *Tracker) loadState() error {
+	if strings.TrimSpace(t.cfg.StatePath) == "" {
+		return nil
+	}
+	raw, err := os.ReadFile(t.cfg.StatePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	var saved map[string]persistedWalletState
+	if err := json.Unmarshal(raw, &saved); err != nil {
+		return err
+	}
+	for address, state := range saved {
+		st := t.states[strings.ToLower(address)]
+		if st == nil {
+			continue
+		}
+		st.lastTS = state.LastTS
+		st.lastSeen = make(map[string]struct{}, len(state.LastSeen))
+		for _, key := range state.LastSeen {
+			st.lastSeen[key] = struct{}{}
+		}
+	}
+	return nil
+}
+
+func (t *Tracker) persistState() error {
+	if strings.TrimSpace(t.cfg.StatePath) == "" {
+		return nil
+	}
+	t.persistMu.Lock()
+	defer t.persistMu.Unlock()
+	saved := make(map[string]persistedWalletState, len(t.states))
+	for address, st := range t.states {
+		st.mu.Lock()
+		state := persistedWalletState{LastTS: st.lastTS, LastSeen: make([]string, 0, len(st.lastSeen))}
+		for key := range st.lastSeen {
+			state.LastSeen = append(state.LastSeen, key)
+		}
+		st.mu.Unlock()
+		sort.Strings(state.LastSeen)
+		saved[address] = state
+	}
+	raw, err := json.MarshalIndent(saved, "", "  ")
+	if err != nil {
+		return err
+	}
+	dir := filepath.Dir(t.cfg.StatePath)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, ".whale-watermarks-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(raw); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, t.cfg.StatePath); err != nil {
+		return err
+	}
+	dirHandle, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	syncErr := dirHandle.Sync()
+	closeErr := dirHandle.Close()
+	return errors.Join(syncErr, closeErr)
+}
+
+func (t *Tracker) advanceFloor(wallet string, timestamp int64) {
+	st := t.states[strings.ToLower(wallet)]
+	if st == nil {
+		return
+	}
+	st.mu.Lock()
+	if timestamp > st.lastTS {
+		st.lastTS = timestamp
+		st.lastSeen = make(map[string]struct{})
+	}
+	st.mu.Unlock()
+}
+
+func cloneSeen(source map[string]struct{}) map[string]struct{} {
+	clone := make(map[string]struct{}, len(source))
+	for key := range source {
+		clone[key] = struct{}{}
+	}
+	return clone
+}
+
+func tradeKey(tr *trade) string {
+	payload := fmt.Sprintf("%s\x00%s\x00%s\x00%.12g\x00%.12g\x00%d",
+		strings.ToLower(tr.TransactionHash), tr.Asset, strings.ToUpper(tr.Side), tr.Size, tr.Price, tr.Timestamp)
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(payload)))
+}
+
 func (t *Tracker) poll(ctx context.Context, w WalletEntry) error {
-	trades, err := t.fetchTrades(ctx, w.Address)
+	st := t.states[strings.ToLower(w.Address)]
+	st.mu.Lock()
+	lastTS := st.lastTS
+	lastSeen := cloneSeen(st.lastSeen)
+	st.mu.Unlock()
+
+	trades, err := t.fetchTrades(ctx, w.Address, lastTS, t.cfg.MaxPages)
 	if err != nil {
 		return err
 	}
@@ -270,12 +443,6 @@ func (t *Tracker) poll(ctx context.Context, w WalletEntry) error {
 		return trades[i].Timestamp < trades[j].Timestamp
 	})
 
-	st := t.states[strings.ToLower(w.Address)]
-	st.mu.Lock()
-	lastTS := st.lastTS
-	lastSeen := st.lastSeen
-	st.mu.Unlock()
-
 	var newTS int64
 	newSeen := make(map[string]struct{})
 
@@ -285,7 +452,7 @@ func (t *Tracker) poll(ctx context.Context, w WalletEntry) error {
 			continue
 		}
 		if tr.Timestamp == lastTS {
-			if _, dup := lastSeen[tr.TransactionHash]; dup {
+			if _, dup := lastSeen[tradeKey(tr)]; dup {
 				continue
 			}
 		}
@@ -294,8 +461,8 @@ func (t *Tracker) poll(ctx context.Context, w WalletEntry) error {
 			newTS = tr.Timestamp
 			newSeen = make(map[string]struct{})
 		}
-		if tr.Timestamp == newTS && tr.TransactionHash != "" {
-			newSeen[tr.TransactionHash] = struct{}{}
+		if tr.Timestamp == newTS {
+			newSeen[tradeKey(tr)] = struct{}{}
 		}
 
 		t.emitTradeAlert(ctx, w, tr)
@@ -312,6 +479,9 @@ func (t *Tracker) poll(ctx context.Context, w WalletEntry) error {
 			}
 		}
 		st.mu.Unlock()
+		if err := t.persistState(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -369,7 +539,9 @@ func (t *Tracker) emitTradeAlert(ctx context.Context, w WalletEntry, tr *trade) 
 		t.logger.Warn("whale_position_fetch_fail", "wallet", w.Label, "err", err.Error())
 	}
 
-	t.alert(ev)
+	if t.alert != nil {
+		t.alert(ev)
+	}
 
 	t.logger.Info("whale_trade_detected",
 		"wallet", w.Label,
@@ -382,32 +554,64 @@ func (t *Tracker) emitTradeAlert(ctx context.Context, w WalletEntry, tr *trade) 
 	return true
 }
 
-func (t *Tracker) fetchTrades(ctx context.Context, wallet string) ([]trade, error) {
-	q := url.Values{}
-	q.Set("user", wallet)
-	q.Set("limit", "50")
-
-	reqURL := dataAPI + "/activity?" + q.Encode()
-	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
-	if err != nil {
-		return nil, err
+func (t *Tracker) fetchTrades(ctx context.Context, wallet string, since int64, maxPages int) ([]trade, error) {
+	const pageLimit = 500
+	allowTruncated := maxPages < 0
+	sortDirection := "ASC"
+	if allowTruncated {
+		maxPages = -maxPages
+		sortDirection = "DESC"
 	}
-	resp, err := t.http.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("data-api GET /activity: %w", err)
+	if maxPages <= 0 || maxPages > maxActivityPages {
+		maxPages = maxActivityPages
 	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("data-api %d: %s", resp.StatusCode, truncate(string(body), 200))
-	}
-
 	var trades []trade
-	if err := json.Unmarshal(body, &trades); err != nil {
-		return nil, fmt.Errorf("data-api decode: %w (raw: %s)", err, truncate(string(body), 200))
+	for page := 0; page < maxPages; page++ {
+		offset := page * pageLimit
+		q := url.Values{}
+		q.Set("user", wallet)
+		q.Set("type", "TRADE")
+		q.Set("sortBy", "TIMESTAMP")
+		q.Set("sortDirection", sortDirection)
+		q.Set("limit", fmt.Sprint(pageLimit))
+		q.Set("offset", fmt.Sprint(offset))
+		if since > 0 {
+			q.Set("start", fmt.Sprint(since))
+		}
+
+		reqURL := dataAPI + "/activity?" + q.Encode()
+		req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := t.http.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("data-api GET /activity: %w", err)
+		}
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+		closeErr := resp.Body.Close()
+		if readErr != nil || closeErr != nil {
+			return nil, errors.Join(readErr, closeErr)
+		}
+		if resp.StatusCode >= 400 {
+			return nil, fmt.Errorf("data-api %d: %s", resp.StatusCode, truncate(string(body), 200))
+		}
+
+		var pageTrades []trade
+		if err := json.Unmarshal(body, &pageTrades); err != nil {
+			return nil, fmt.Errorf("data-api decode: %w (raw: %s)", err, truncate(string(body), 200))
+		}
+		trades = append(trades, pageTrades...)
+		if len(pageTrades) < pageLimit {
+			return trades, nil
+		}
+	}
+	if len(trades) == maxPages*pageLimit && !allowTruncated {
+		t.logger.Warn("data_api_activity_window_partial",
+			"wallet", wallet,
+			"since", since,
+			"rows", len(trades),
+			"next_poll", "resume from newest processed timestamp")
 	}
 	return trades, nil
 }
@@ -429,33 +633,49 @@ type Position struct {
 // FetchPositions returns all positions for the given wallet, optionally
 // filtered to a single asset (pass "" to get all).
 func (t *Tracker) FetchPositions(ctx context.Context, wallet, assetID string) ([]Position, error) {
-	q := url.Values{}
-	q.Set("user", wallet)
-	q.Set("sizeThreshold", "0.1")
-	q.Set("limit", "100")
-	if assetID != "" {
-		q.Set("asset", assetID)
-	}
-	reqURL := dataAPI + "/positions?" + q.Encode()
-	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := t.http.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("data-api GET /positions: %w", err)
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("data-api %d: %s", resp.StatusCode, truncate(string(body), 200))
-	}
+	const pageLimit = 500
 	var positions []Position
-	if err := json.Unmarshal(body, &positions); err != nil {
-		return nil, fmt.Errorf("data-api decode positions: %w (raw: %s)", err, truncate(string(body), 200))
+	for offset := 0; offset <= 10000; offset += pageLimit {
+		q := url.Values{}
+		q.Set("user", wallet)
+		q.Set("sizeThreshold", "0.1")
+		q.Set("limit", fmt.Sprint(pageLimit))
+		q.Set("offset", fmt.Sprint(offset))
+		reqURL := dataAPI + "/positions?" + q.Encode()
+		req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := t.http.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("data-api GET /positions: %w", err)
+		}
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+		closeErr := resp.Body.Close()
+		if readErr != nil || closeErr != nil {
+			return nil, errors.Join(readErr, closeErr)
+		}
+		if resp.StatusCode >= 400 {
+			return nil, fmt.Errorf("data-api %d: %s", resp.StatusCode, truncate(string(body), 200))
+		}
+		var page []Position
+		if err := json.Unmarshal(body, &page); err != nil {
+			return nil, fmt.Errorf("data-api decode positions: %w (raw: %s)", err, truncate(string(body), 200))
+		}
+		for _, position := range page {
+			if assetID == "" || position.Asset == assetID {
+				positions = append(positions, position)
+			}
+		}
+		if assetID != "" && len(positions) > 0 {
+			return positions, nil
+		}
+		if len(page) < pageLimit {
+			return positions, nil
+		}
+		if offset == 10000 {
+			return nil, errors.New("data-api positions exceeded pagination limit")
+		}
 	}
 	return positions, nil
 }

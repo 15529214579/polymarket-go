@@ -1,8 +1,15 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/15529214579/polymarket-go/internal/order"
 )
 
 func TestValidateOperationFlagsRejectsMixedMaintenance(t *testing.T) {
@@ -76,5 +83,69 @@ func TestRunRedeemAllRejectsPaperStatePath(t *testing.T) {
 	err := runRedeemAll(nil, projectWalletAddress, "db/redeemed.json")
 	if err == nil || !strings.Contains(err.Error(), "under") {
 		t.Fatalf("expected live-state isolation error, got %v", err)
+	}
+}
+
+func TestValidateLiveRuntimeStatePathRejectsCrossModeAndNestedPaths(t *testing.T) {
+	for _, path := range []string{"db/paper/orders.sqlite", "db/live/nested/orders.sqlite"} {
+		if _, err := validateLiveRuntimeStatePath(path, "execution ledger"); err == nil {
+			t.Fatalf("expected path %q to be rejected", path)
+		}
+	}
+}
+
+func TestValidateLiveRuntimeStatePathRejectsSymlinkedParent(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	target := filepath.Join(dir, "target")
+	if err := os.MkdirAll(filepath.Join(target, "live"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(dir, "db")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := validateLiveRuntimeStatePath("db/live/orders.sqlite", "execution ledger"); err == nil {
+		t.Fatal("expected symlinked parent rejection")
+	}
+}
+
+func TestApplyRecoveredTradeFillsPersistsOriginalFillTime(t *testing.T) {
+	ledger, err := order.OpenExecutionLedger(filepath.Join(t.TempDir(), "orders.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ledger.Close()
+	client, err := order.NewLedgerClient(order.NewPaperClient(0), ledger, "live")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := client.Submit(context.Background(), order.Intent{
+		AssetID: "asset-1", Side: order.Buy, SizeUSD: 20, LimitPx: 0.5, Type: order.FAK,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "buy_times.json")
+	if err := applyRecoveredTradeFills(ledger, path); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var data map[string]string
+	if err := json.Unmarshal(raw, &data); err != nil {
+		t.Fatal(err)
+	}
+	got, err := time.Parse(time.RFC3339Nano, data["asset-1"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Equal(result.FilledAt) {
+		t.Fatalf("buy time=%s fill time=%s", got, result.FilledAt)
+	}
+	records, err := ledger.UnappliedFills("live")
+	if err != nil || len(records) != 0 {
+		t.Fatalf("unapplied=%+v err=%v", records, err)
 	}
 }
