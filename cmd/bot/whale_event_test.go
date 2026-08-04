@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/15529214579/polymarket-go/internal/journal"
 	"github.com/15529214579/polymarket-go/internal/whale"
 )
 
@@ -198,6 +199,48 @@ func TestPaperCollectionCannotAffectLive(t *testing.T) {
 	}
 	if paperCollectionEnabled(true, "whale", false) {
 		t.Fatal("broad collection must be limited to copytrade mode")
+	}
+}
+
+func TestPaperPromotedOnlyCannotAffectLive(t *testing.T) {
+	if !paperPromotedOnlyEnabled(true, "copytrade", false) {
+		t.Fatal("promoted-only gate should be enabled for paper copytrade")
+	}
+	if paperPromotedOnlyEnabled(true, "copytrade", true) {
+		t.Fatal("promoted-only gate must be disabled for live trading")
+	}
+	if paperPromotedOnlyEnabled(true, "whale", false) {
+		t.Fatal("promoted-only gate must be limited to copytrade mode")
+	}
+	if !paperWalletPromoted(walletFileMeta{List: "paper_promoted"}) {
+		t.Fatal("paper_promoted wallet should pass the local promotion gate")
+	}
+	if paperWalletPromoted(walletFileMeta{List: "core"}) {
+		t.Fatal("global backtest tiers must not bypass the local promotion gate")
+	}
+	if !paperPromotionAutoAllowed(walletFileMeta{List: "paper_promoted"}, true, false) {
+		t.Fatal("local paper promotion should override global paper follow_action")
+	}
+	if paperPromotionAutoAllowed(walletFileMeta{List: "paper_promoted"}, true, true) {
+		t.Fatal("local paper promotion must never override a live follow_action")
+	}
+}
+
+func TestDurableRiskResultsExcludeResearchAndManual(t *testing.T) {
+	now := time.Now()
+	records := []journal.TradeRecord{
+		{Mode: "paper", SignalSource: "copytrade_wallet:0x1", NetPnLUSD: -2, ExitTime: now},
+		{Mode: "paper", SignalSource: "copytrade_collect_wallet:0x2", NetPnLUSD: -100, ExitTime: now},
+		{Mode: "paper", SignalSource: "manual", NetPnLUSD: 50, ExitTime: now},
+		{Mode: "live", SignalSource: "copytrade_wallet:0x3", NetPnLUSD: 40, ExitTime: now},
+		{Mode: "", SignalSource: "auto", PnLUSD: 3, ExitTime: now},
+	}
+	results := durableRiskResults(records, "paper")
+	if len(results) != 2 {
+		t.Fatalf("eligible risk records=%d, want 2", len(results))
+	}
+	if total := results[0].PnLUSD + results[1].PnLUSD; total != 1 {
+		t.Fatalf("eligible risk pnl=%v, want 1", total)
 	}
 }
 

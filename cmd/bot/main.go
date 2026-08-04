@@ -93,6 +93,7 @@ func main() {
 	walletTiersFile := flag.String("wallet_tiers", "", "path to copytrade_backtest_results.json for tiered sizing (A=$20, B=$10, C/D=default)")
 	minTier := flag.String("min_tier", "", "minimum wallet tier for copytrade (A=only A, B=A+B, C=A+B+C, empty=all)")
 	paperCollectBroad := flag.Bool("paper_collect_broad", false, "paper only: collect otherwise-filtered wallet and market samples without extra push alerts")
+	paperPromotedOnly := flag.Bool("paper_promoted_only", false, "paper only: count only locally promoted wallets as tradable; collect all others as research")
 	whaleWallet := flag.String("whale_wallet", "", "(legacy) single target wallet address (hex 0x…)")
 	whaleProfile := flag.String("whale_profile", "", "(legacy) whale's Polymarket profile URL")
 	whaleMinUSD := flag.Float64("whale_min_usd", 1000, "(legacy) minimum notional USD to trigger alert")
@@ -287,7 +288,7 @@ func main() {
 			MaxSessionBuyUSD: *liveMaxSessionBuyUSD,
 			MaxArmDuration:   *liveMaxArmDuration,
 		}
-		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *takerFeeRate, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *exitPollInterval, *eventPostStartHold, *timeoutReentryCooldown, *lotteryEnabled, lottCfg, injCfg, whaleCfg, *confirmDelay, btcCfg, updownCfg, p10, *liveTrading, liveGuardCfg, *fadeMode, *walletsFile, *copytradeSize, *walletTiersFile, *initialCapital, *minTier, *paperCollectBroad, *positionsStatePath, *riskStatePath, *buyTimesStatePath, *posMaxTotalOpenUSD, *posMaxOpenPositions, *posMaxPerMarketUSD, *posMaxPerEventUSD, *footballScoreMaxEventUSD); err != nil && ctx.Err() == nil {
+		if err := runDetect(ctx, *maxMarkets, *windowSec, *slippageBp, *feeBp, *takerFeeRate, *largeFillUSD, *signalMode, *exitMode, *journalDir, *tickPathDir, *minEntry, *maxEntry, ladderCfg, *exitPollInterval, *eventPostStartHold, *timeoutReentryCooldown, *lotteryEnabled, lottCfg, injCfg, whaleCfg, *confirmDelay, btcCfg, updownCfg, p10, *liveTrading, liveGuardCfg, *fadeMode, *walletsFile, *copytradeSize, *walletTiersFile, *initialCapital, *minTier, *paperCollectBroad, *paperPromotedOnly, *positionsStatePath, *riskStatePath, *buyTimesStatePath, *posMaxTotalOpenUSD, *posMaxOpenPositions, *posMaxPerMarketUSD, *posMaxPerEventUSD, *footballScoreMaxEventUSD); err != nil && ctx.Err() == nil {
 			slog.Error("detect failed", "err", err)
 			os.Exit(1)
 		}
@@ -575,6 +576,50 @@ func paperCollectionEnabled(requested bool, signalMode string, liveTrading bool)
 	return requested && signalMode == "copytrade" && !liveTrading
 }
 
+func paperPromotedOnlyEnabled(requested bool, signalMode string, liveTrading bool) bool {
+	return requested && signalMode == "copytrade" && !liveTrading
+}
+
+func paperWalletPromoted(meta walletFileMeta) bool {
+	return meta.List == "paper_promoted"
+}
+
+func paperPromotionAutoAllowed(meta walletFileMeta, promotedOnly, liveTrading bool) bool {
+	return promotedOnly && !liveTrading && paperWalletPromoted(meta)
+}
+
+func riskEligibleSignalSource(source string) bool {
+	source = strings.ToLower(strings.TrimSpace(source))
+	return source != "manual" && !strings.HasPrefix(source, "copytrade_collect")
+}
+
+func tradeRecordNetPnL(record journal.TradeRecord) float64 {
+	if record.NetPnLUSD == 0 && record.EntryFeeUSD == 0 && record.ExitFeeUSD == 0 {
+		return record.PnLUSD
+	}
+	return record.NetPnLUSD
+}
+
+func durableRiskResults(records []journal.TradeRecord, mode string) []risk.RealizedResult {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	results := make([]risk.RealizedResult, 0, len(records))
+	for _, record := range records {
+		recordMode := strings.ToLower(strings.TrimSpace(record.Mode))
+		if recordMode != "" && recordMode != mode {
+			continue
+		}
+		if !riskEligibleSignalSource(record.SignalSource) {
+			continue
+		}
+		at := record.ExitTime
+		if at.IsZero() {
+			at = record.EntryTime
+		}
+		results = append(results, risk.RealizedResult{PnLUSD: tradeRecordNetPnL(record), At: at})
+	}
+	return results
+}
+
 func copytradeTierAllowed(tier, minTier string) bool {
 	tier = strings.ToUpper(strings.TrimSpace(tier))
 	switch strings.ToUpper(strings.TrimSpace(minTier)) {
@@ -679,7 +724,7 @@ func selectCopytradeHoldPolicy(text string, footballScore, paper bool, defaultMa
 	}
 }
 
-func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, takerFeeRate, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, exitPollInterval, eventPostStartHold, timeoutReentryCooldown time.Duration, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, injCfg injury.Config, whaleCfg whale.Config, confirmDelay time.Duration, btcCfg btc.StrategyConfig, updownCfg btc.UpDownConfig, p10 phase10Config, liveTrading bool, liveGuardCfg order.LiveGuardConfig, fadeMode bool, walletsFile string, copytradeSize float64, walletTiersFile string, initialCapital float64, minTierFilter string, paperCollectBroad bool, positionsStatePath, riskStatePath, buyTimesStatePath string, posMaxTotalOpenUSD float64, posMaxOpenPositions int, posMaxPerMarketUSD, posMaxPerEventUSD, footballScoreMaxEventUSD float64) error {
+func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, takerFeeRate, largeFillUSD float64, signalMode, exitMode, journalDir, tickPathDir string, minEntry, maxEntry float64, ladderCfg strategy.LadderConfig, exitPollInterval, eventPostStartHold, timeoutReentryCooldown time.Duration, lotteryEnabled bool, lotteryCfg strategy.LotteryConfig, injCfg injury.Config, whaleCfg whale.Config, confirmDelay time.Duration, btcCfg btc.StrategyConfig, updownCfg btc.UpDownConfig, p10 phase10Config, liveTrading bool, liveGuardCfg order.LiveGuardConfig, fadeMode bool, walletsFile string, copytradeSize float64, walletTiersFile string, initialCapital float64, minTierFilter string, paperCollectBroad, paperPromotedOnly bool, positionsStatePath, riskStatePath, buyTimesStatePath string, posMaxTotalOpenUSD float64, posMaxOpenPositions int, posMaxPerMarketUSD, posMaxPerEventUSD, footballScoreMaxEventUSD float64) error {
 	ctx, cancelRun := context.WithCancel(ctx)
 	defer cancelRun()
 	if signalMode != "auto" && signalMode != "prompt" && signalMode != "whale" && signalMode != "copytrade" {
@@ -724,9 +769,12 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 			slog.Warn("copytrade_esports_invalid_hold", "value", raw, "err", err)
 		}
 	}
+	paperCollectBroad = paperCollectionEnabled(paperCollectBroad, signalMode, liveTrading)
+	paperPromotedOnly = paperPromotedOnlyEnabled(paperPromotedOnly, signalMode, liveTrading)
 	if signalMode == "copytrade" {
 		slog.Info("copytrade_collection_config",
 			"broad", paperCollectBroad,
+			"promoted_only", paperPromotedOnly,
 			"core_min_tier", minTierFilter,
 			"live", liveTrading,
 		)
@@ -821,7 +869,11 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 		return copytradeTierForMarket(walletTiers[key], walletFileMetas[key], footballScore)
 	}
 	copytradeAutoAllowed := func(wallet string, footballScore bool) (bool, string) {
-		meta := walletMetas[strings.ToLower(wallet)]
+		key := strings.ToLower(wallet)
+		if paperPromotionAutoAllowed(walletFileMetas[key], paperPromotedOnly, liveTrading) {
+			return true, "paper_promoted"
+		}
+		meta := walletMetas[key]
 		tier := copytradeTier(wallet, footballScore)
 		return copytradeAutoAllowedForMarket(meta.FollowAction, liveTrading, os.Getenv("COPYTRADE_PAPER_FOLLOW_PROMPT") == "1", paperFollowFootballScore, footballScore, tier)
 	}
@@ -1319,10 +1371,6 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 	if initialCapital > 0 {
 		riskCfg.StartingBankrollUSD = initialCapital
 	}
-	if paperCollectBroad {
-		riskCfg.DailyLossPct = 1
-		riskCfg.MaxDrawdownPct = 1
-	}
 	riskCfg.FeedConnected = ws.Connected
 	rm := risk.New(riskCfg, time.Now())
 	if riskStatePath == "" {
@@ -1342,18 +1390,36 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 	} else if statErr != nil && !os.IsNotExist(statErr) {
 		return fmt.Errorf("inspect risk state: %w", statErr)
 	}
-	if err := rm.LoadState(riskStatePath, time.Now()); err != nil {
+	riskNow := time.Now()
+	if err := rm.LoadState(riskStatePath, riskNow); err != nil {
 		if liveTrading {
 			return fmt.Errorf("load live risk state: %w", err)
 		}
 		slog.Warn("risk.load_state_failed", "err", err)
-	} else {
+	}
+	if liveTrading {
 		st := rm.State()
 		slog.Info("risk.state_loaded",
 			"day", st.Day,
 			"day_pnl", st.DayRealizedPnL,
 			"cumulative_pnl", st.CumulativePnL,
 			"blocked", st.Blocked,
+			"block_reason", st.BlockReason,
+		)
+	} else {
+		riskResults := durableRiskResults(persistedTrades, tradeMode)
+		rm.RebuildRealized(riskResults, riskNow)
+		if err := rm.SaveState(riskStatePath); err != nil {
+			return fmt.Errorf("persist reconciled risk state: %w", err)
+		}
+		st := rm.State()
+		slog.Info("risk.state_reconciled",
+			"records", len(riskResults),
+			"day", st.Day,
+			"day_pnl", st.DayRealizedPnL,
+			"cumulative_pnl", st.CumulativePnL,
+			"blocked", st.Blocked,
+			"block_reason", st.BlockReason,
 		)
 	}
 	markExecutionApplied := func(result order.Result) {
@@ -1546,7 +1612,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 				if err := savePositionsDurable(); err != nil {
 					return fmt.Errorf("persist recovered SELL %s: %w", record.ID, err)
 				}
-				if recoveredEntrySource("", closed) != "manual" {
+				if riskEligibleSignalSource(recoveredEntrySource("", closed)) {
 					rm.OnClose(closed.NetPnLUSD, closed.ExitTime)
 					if err := rm.SaveState(riskStatePath); err != nil {
 						return fmt.Errorf("persist recovered SELL %s risk: %w", record.ID, err)
@@ -1973,7 +2039,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 						netPnL := closed.NetPnLUSD
 						stats := pm.Stats()
 						posSource, _ := src.Peek(closed.ID)
-						if posSource != "manual" {
+						if riskEligibleSignalSource(posSource) {
 							if tripped := rm.OnClose(netPnL, sig.Time); tripped {
 								rst := rm.State()
 								slog.Error("risk_trip",
@@ -2180,7 +2246,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 						netPnL := closedTranche.NetPnLUSD
 						stats := pm.Stats()
 						ladderSource, _ := src.Peek(p.ID)
-						if ladderSource != "manual" {
+						if riskEligibleSignalSource(ladderSource) {
 							if tripped := rm.OnClose(netPnL, ex.Time); tripped {
 								rst := rm.State()
 								slog.Error("risk_trip",
@@ -3323,6 +3389,17 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 				switch side {
 				case "BUY":
 					collectionOnly := false
+					walletKey := strings.ToLower(ev.Wallet)
+					if paperPromotedOnly && !paperWalletPromoted(walletFileMetas[walletKey]) {
+						if paperCollectBroad {
+							collectionOnly = true
+							slog.Info("copytrade_collection_gate_bypassed", "gate", "paper_promotion", "wallet", ev.Label, "market", ev.Question)
+						} else {
+							appendWhaleTrade(ev, "skip", "paper_not_promoted")
+							slog.Info("copytrade_paper_promotion_filtered", "wallet", ev.Label, "market", ev.Question)
+							return
+						}
+					}
 					wTier := copytradeTier(ev.Wallet, footballScore)
 					if !copytradeTierAllowed(wTier, minTierFilter) {
 						if paperCollectBroad {
@@ -3415,10 +3492,12 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 							return
 						}
 					}
-					if err := rm.AllowOpen(time.Now()); err != nil {
-						appendWhaleTrade(ev, "skip", "risk_blocked:"+err.Error())
-						slog.Info("copytrade_blocked", "reason", err.Error(), "wallet", ev.Label, "market", ev.Question)
-						return
+					if !collectionOnly {
+						if err := rm.AllowOpen(time.Now()); err != nil {
+							appendWhaleTrade(ev, "skip", "risk_blocked:"+err.Error())
+							slog.Info("copytrade_blocked", "reason", err.Error(), "wallet", ev.Label, "market", ev.Question)
+							return
+						}
 					}
 					tick := feed.Tick{Mid: ev.Price, Time: time.Now()}
 					sizeUSD := copytradeMarketSize(copytradeForWallet(ev.Wallet), footballScore, paperFollowFootballScore, paperFootballScoreSize)
@@ -3706,16 +3785,18 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 						} else {
 							source, openOID = src.Peek(closedPos.ID)
 						}
-						if tripped := rm.OnClose(netPnL, now); tripped {
-							rst := rm.State()
-							slog.Error("risk_trip",
-								"reason", string(rst.BlockReason),
-								"day_pnl_usd", rst.DayRealizedPnL,
-								"cap_usd", rst.DayLossCapUSD,
-							)
-						}
-						if err := rm.SaveState(riskStatePath); err != nil {
-							slog.Warn("risk_save_err", "err", err)
+						if riskEligibleSignalSource(source) {
+							if tripped := rm.OnClose(netPnL, now); tripped {
+								rst := rm.State()
+								slog.Error("risk_trip",
+									"reason", string(rst.BlockReason),
+									"day_pnl_usd", rst.DayRealizedPnL,
+									"cap_usd", rst.DayLossCapUSD,
+								)
+							}
+							if err := rm.SaveState(riskStatePath); err != nil {
+								slog.Warn("risk_save_err", "err", err)
+							}
 						}
 						if jerr := jrn.Append(journal.TradeRecord{
 							ExecutionID:  res.ExecutionID,
@@ -4560,7 +4641,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 							entryFeeShare := closed.EntryFeeUSD
 							netPnL := closed.NetPnLUSD
 							flatSource, _ := src.Peek(closed.ID)
-							if flatSource != "manual" {
+							if riskEligibleSignalSource(flatSource) {
 								rm.OnClose(netPnL, now)
 								if err := rm.SaveState(riskStatePath); err != nil {
 									slog.Warn("risk_save_err", "err", err)
@@ -4761,7 +4842,7 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 					netPnL := closed.NetPnLUSD
 					stats := pm.Stats()
 					settleSource, _ := src.Peek(closed.ID)
-					if settleSource != "manual" {
+					if riskEligibleSignalSource(settleSource) {
 						if tripped := rm.OnClose(netPnL, now); tripped {
 							rst := rm.State()
 							slog.Error("risk_trip",
@@ -5821,7 +5902,7 @@ func (h *buyHandler) OnClose(ctx context.Context, nonce string, messageID int64)
 		closedCount++
 		stats := h.pm.Stats()
 		closeSource, _ := h.src.Peek(closed.ID)
-		if closeSource != "manual" {
+		if riskEligibleSignalSource(closeSource) {
 			if tripped := h.rm.OnClose(netPnL, now); tripped {
 				rst := h.rm.State()
 				h.notifier.RiskTrip(notify.RiskTripEvent{

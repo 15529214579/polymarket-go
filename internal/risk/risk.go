@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 )
@@ -88,6 +89,12 @@ type State struct {
 	LastFeedAt      time.Time
 	FeedSilentFor   time.Duration
 	SingleLossFlags int // count of trades whose loss exceeded MaxSingleLossUSD today
+}
+
+// RealizedResult is one durable close used to rebuild financial risk state.
+type RealizedResult struct {
+	PnLUSD float64
+	At     time.Time
 }
 
 // Manager is concurrent-safe. Fields mutated under mu.
@@ -175,6 +182,63 @@ func (m *Manager) OnClose(pnlUSD float64, at time.Time) (trippedNow bool) {
 		}
 	}
 	return false
+}
+
+// RebuildRealized replaces financial counters from the durable trade journal.
+// Operational pauses and feed-silence blocks remain in force; daily-loss and
+// drawdown blocks are recomputed from the supplied PnL history.
+func (m *Manager) RebuildRealized(results []RealizedResult, now time.Time) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	ordered := append([]RealizedResult(nil), results...)
+	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].At.Before(ordered[j].At) })
+	day := now.In(m.cfg.Loc).Format("2006-01-02")
+	preserveOperationalBlock := m.blocked && (m.blockReason == BlockManualPause || m.blockReason == BlockFeedSilence)
+
+	m.day = day
+	m.dayRealized = 0
+	m.cumulativePnL = 0
+	m.peakEquity = m.cfg.StartingBankrollUSD
+	m.singleLossFlags = 0
+	for _, result := range ordered {
+		at := result.At
+		if at.IsZero() {
+			at = now
+		}
+		m.cumulativePnL += result.PnLUSD
+		if at.In(m.cfg.Loc).Format("2006-01-02") == day {
+			m.dayRealized += result.PnLUSD
+			if result.PnLUSD < -m.cfg.MaxSingleLossUSD {
+				m.singleLossFlags++
+			}
+		}
+		equity := m.cfg.StartingBankrollUSD + m.cumulativePnL
+		if equity > m.peakEquity {
+			m.peakEquity = equity
+		}
+	}
+
+	if preserveOperationalBlock {
+		return
+	}
+	m.blocked = false
+	m.blockReason = BlockNone
+	m.blockedAt = time.Time{}
+	if m.dayRealized <= -m.dailyCapAbs() {
+		m.blocked = true
+		m.blockReason = BlockDailyLoss
+		m.blockedAt = now
+		return
+	}
+	if m.cfg.MaxDrawdownPct > 0 {
+		equity := m.cfg.StartingBankrollUSD + m.cumulativePnL
+		if m.peakEquity-equity > m.cfg.StartingBankrollUSD*m.cfg.MaxDrawdownPct {
+			m.blocked = true
+			m.blockReason = BlockDrawdown
+			m.blockedAt = now
+		}
+	}
 }
 
 // OnFeedHeartbeat is called whenever a book/trade event arrives. Keeps the

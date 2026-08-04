@@ -397,3 +397,38 @@ func TestLoadState_MissingFile(t *testing.T) {
 	}
 	_ = os.TempDir() // suppress unused import
 }
+
+func TestRebuildRealizedRecomputesFinancialState(t *testing.T) {
+	loc := time.FixedZone("SGT", 8*60*60)
+	now := time.Date(2026, 8, 4, 12, 0, 0, 0, loc)
+	cfg := DefaultConfig()
+	cfg.Loc = loc
+	cfg.StartingBankrollUSD = 100
+	cfg.DailyLossPct = 0.15
+	cfg.MaxDrawdownPct = 0.50
+	m := New(cfg, now)
+	m.OnClose(-50, now)
+
+	m.RebuildRealized([]RealizedResult{
+		{PnLUSD: 20, At: now.Add(-24 * time.Hour)},
+		{PnLUSD: -5, At: now.Add(-time.Hour)},
+	}, now)
+	state := m.State()
+	if state.CumulativePnL != 15 || state.DayRealizedPnL != -5 {
+		t.Fatalf("rebuilt pnl cumulative=%v day=%v, want 15/-5", state.CumulativePnL, state.DayRealizedPnL)
+	}
+	if state.Blocked {
+		t.Fatalf("stale financial block survived rebuild: %+v", state)
+	}
+}
+
+func TestRebuildRealizedPreservesOperationalPause(t *testing.T) {
+	now := time.Now()
+	m := New(DefaultConfig(), now)
+	m.Pause(now)
+	m.RebuildRealized([]RealizedResult{{PnLUSD: 100, At: now}}, now)
+	state := m.State()
+	if !state.Blocked || state.BlockReason != BlockManualPause {
+		t.Fatalf("manual pause not preserved: %+v", state)
+	}
+}
