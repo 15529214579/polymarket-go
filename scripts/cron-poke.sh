@@ -26,32 +26,6 @@ if [ "$hour" -lt 8 ]; then quiet=1; fi
   echo
 } >> "$log" 2>&1
 
-# Day-1+ paper sanity: keep the detect daemon alive across reboots/crashes.
-# Restart if dead + push a telegram alert so boss knows about downtime.
-bot_status=$("$ROOT/scripts/bot-daemon.sh" status 2>&1 | head -1 || true)
-bot_was_down=0
-if echo "$bot_status" | grep -q 'NOT RUNNING'; then
-  bot_was_down=1
-  echo "[bot] not running, restarting" >> "$log"
-  RESTART_REASON=cron-poke "$ROOT/scripts/bot-daemon.sh" start >> "$log" 2>&1 || true
-  # Push immediate telegram alert (bypass cooldown) unless quiet window
-  if [ "${quiet:-0}" = "0" ] && [ -f "$ROOT/.env.local" ]; then
-    set -a; . "$ROOT/.env.local"; set +a
-    if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
-      restart_msg="🔄 polymarket-go daemon 挂了，已自动重启
-检测时间: ${now_local}
-重启结果: $("$ROOT/scripts/bot-daemon.sh" status 2>&1 | head -1 || echo 'unknown')
-
-—— 5号 cron-poke 自动告警"
-      curl -s --max-time 10 -X POST \
-        "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-        --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
-        --data-urlencode "text=${restart_msg}" \
-        --data-urlencode "disable_notification=false" >/dev/null 2>&1 || true
-    fi
-  fi
-fi
-
 # 提炼状态（从刚跑完的 heartbeat 重跑一次拿原始值 — 比解析日志稳）
 out=$("$ROOT/scripts/heartbeat.sh" 2>/dev/null)
 build_fail=$(echo "$out" | grep -c 'go build: FAIL' || true)
@@ -84,20 +58,6 @@ fi
 # Keep tracking ticks_no_progress for state visibility, but do not page on a
 # stale commit alone. This repo can run unattended while paper-trading.
 
-# Check daemon status for state.json
-bot_running=0
-bot_pid=""
-bot_check=$("$ROOT/scripts/bot-daemon.sh" status 2>&1 | head -1 || true)
-if echo "$bot_check" | grep -q 'RUNNING'; then
-  bot_running=1
-  bot_pid=$(echo "$bot_check" | sed -n 's/.*pid=\([0-9]*\).*/\1/p')
-fi
-
-# Add daemon-down alert if bot died and wasn't restarted successfully
-if [ "$bot_was_down" = "1" ] && [ "$bot_running" = "0" ] && [ -z "$alert" ]; then
-  alert="daemon-restart-failed"
-fi
-
 cat > "$ROOT/state.json" <<EOF
 {
   "last_heartbeat": "${now_iso}",
@@ -108,14 +68,13 @@ cat > "$ROOT/state.json" <<EOF
   "ticks_no_progress": ${ticks_no_progress},
   "quiet_window": ${quiet},
   "alert": "${alert}",
-  "daemon_running": ${bot_running},
-  "daemon_pid": "${bot_pid}"
+  "legacy_paper_archived": true
 }
 EOF
 
 # ── P10 日志异常自动扫描（每 20min cron-poke 触发） ──
 anomaly_log="$ROOT/logs/anomaly-${day}.log"
-daemon_log="$ROOT/logs/legacy-paper.log"
+daemon_log="$ROOT/logs/smartmoney-paper.log"
 if [ -f "$daemon_log" ]; then
   cutoff=$(date -v-20M '+%Y-%m-%dT%H:%M' 2>/dev/null || date -d '20 minutes ago' '+%Y-%m-%dT%H:%M' 2>/dev/null || echo "")
   if [ -n "$cutoff" ]; then
