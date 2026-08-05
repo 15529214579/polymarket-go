@@ -1,13 +1,13 @@
 # Smart Money Daily
 
-**Generated:** 2026-08-04 13:16:03 +08
+**Generated:** 2026-08-05 00:17:15 +08
 
 ## Pipeline
 
 - Status: learning
 - Reason: evaluated signals 0 below 10
 - Action: keep current push running and collect more signals
-- Log: `/Users/murphyma/work/polymarket-go/logs/smartmoney-daily-2026-08-04.log`
+- Log: `/Users/murphyma/work/polymarket-go/logs/smartmoney-daily-2026-08-05.log`
 - Discovery report: `/Users/murphyma/work/polymarket-go/reports/strategy_iteration.md`
 - Strategy report: `/Users/murphyma/work/polymarket-go/reports/strategy_lab.md`
 - Sports tape report: `/Users/murphyma/work/polymarket-go/reports/sports_tape.md`
@@ -36,7 +36,7 @@
 - Scout after count: 2
 - Target after count: 10
 - Flow after count: 0
-- Tape after count: 1
+- Tape after count: 0
 - Tape observe count: 0
 - Tape probation count: 0
 - Tape candidate count: 0
@@ -44,31 +44,31 @@
 - Tape edge-hot count: 3
 - Tape reversal count: 8
 - Consensus research count: 8
-- Push before count: 48
-- Push after count: 43
+- Push before count: 45
+- Push after count: 42
 - Quarantine count: 3
-- Review-noise exclude count: 375
+- Review-noise exclude count: 378
 - Edge snapshots: 1282
 - Sports tape alert sent: 5
 - Sports tape alert logged: 5
 - Sports tape shadow alert logged: 7
 - Sports consensus event history: 4
-- Sports consensus watch event history: 3
+- Sports consensus watch event history: 4
 - Sports alert eligible now: 0
 - Sports alert accumulation bursts: 0
 - Sports alert consensus bursts: 0
 - Selected core wallets: 11
-- Core list changed: no
+- Core list changed: yes
 - Push list changed: yes
 - Restart needed: no
 - Restart status: restarted screen polymarket-whale-push
 
 ## Backtest Filter
 
-- Closed copy trades: 231
-- Copy ROI: 126.8%
-- Copy PnL: $+3449.38
-- Copy win rate: 80.5%
+- Closed copy trades: 233
+- Copy ROI: 127.3%
+- Copy PnL: $+3500.11
+- Copy win rate: 80.7%
 - Worst included CopyROI: 108.4%
 - Params: tier>=B bot<30 copyT>=8 copyROI>=100 copyPnL>=25 copyWin>=60 closedROI>=0 smart>=70
 

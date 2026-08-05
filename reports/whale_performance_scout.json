@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-04T13:15:56+08:00",
+  "generated_at": "2026-08-05T00:17:08+08:00",
   "log_path": "/Users/murphyma/work/polymarket-go/db/journal/whale_trades.jsonl",
   "wallets_path": "/Users/murphyma/work/polymarket-go/wallets.strategy-scout.txt",
   "report_path": "/Users/murphyma/work/polymarket-go/reports/whale_performance_scout.md",
@@ -16,7 +16,7 @@
     "target": 500,
     "watch": 500
   },
-  "since": "2026-08-04T05:08:10Z",
+  "since": "2026-08-04T15:32:07Z",
   "repeat_cooldown": "3m0s",
   "repeat_min_notional": 5000,
   "raw_buys": 0,
