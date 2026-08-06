@@ -1,8 +1,8 @@
 # Sports Alert Candidates
 
-**Generated:** 2026-08-05 00:10 +08
+**Generated:** 2026-08-06 00:10 +08
 
-- Recent BUY rows inspected: 13
+- Recent BUY rows inspected: 1
 - Diagnostic window: 6h0m0s
 - Alert window: 10m0s
 - Consensus alert window: 15m0s
@@ -131,16 +131,4 @@
 
 | Status | Mode | Wallet | List | Tier | Bot | Notional | Age | Reason | Market |
 |---|---|---|---|---|---:|---:|---:|---|---|
-| blocked | OBSERVE | `0x51be...12c2` | - | - | 0.0 | $2000 | 3m | observe wallet unscored | Dota 2: Team Falcons vs Team Liquid - Game 1 Winner |
-| blocked | OBSERVE | `0x1b1f...d6d5` | tape | C | 43.5 | $2000 | 7m | bot 43.5 > 35.0 | Dota 2: Team Falcons vs Team Liquid - Game 1 Winner |
-| blocked | OBSERVE | `0x0e24...7014` | - | B | 29.0 | $1500 | 7m | 1h edge -72.59pp over 1 samples | Dota 2: Team Falcons vs Team Liquid - Game 1 Winner |
-| blocked | OBSERVE | `0x733d...1ae7` | - | - | 0.0 | $1116 | 3m | observe wallet unscored | LoL: Hanwha Life Esports vs Gen.G (BO3) - LCK Round 3-4 Legend Group |
-| blocked | OBSERVE | `0x0c99...0c88` | - | - | 0.0 | $1020 | 7m | observe wallet unscored | Dota 2: Team Falcons vs Team Liquid - Game 1 Winner |
-| blocked | OBSERVE | `0x3a01...c89e` | - | - | 0.0 | $932 | 1m | observe wallet unscored | Dota 2: Yakult Brothers vs Rune Eaters - Game 2 Winner |
-| blocked | OBSERVE | `0x3a01...c89e` | - | - | 0.0 | $827 | 2m | observe wallet unscored | Dota 2: Team Falcons vs Team Liquid - Game 1 Winner |
-| blocked | OBSERVE | `0x0e99...f34a` | - | - | 0.0 | $777 | 7m | observe wallet unscored | Dota 2: Yakult Brothers vs Rune Eaters - Game 2 Winner |
-| blocked | REVERSAL-RISK | `0xe907...cff6` | tape_reversal | BOT | 80.8 | $762 | 2m | reversal risk disabled | Dota 2: Yakult Brothers vs Rune Eaters - Game 2 Winner |
-| blocked | OBSERVE | `0xcf0a...320a` | - | - | 0.0 | $720 | 9m | observe wallet unscored | Dota 2: Yakult Brothers vs Rune Eaters - Game 2 Winner |
-| blocked | OBSERVE | `0xd1a8...6427` | - | - | 0.0 | $688 | 4m | observe wallet unscored | Dota 2: Yakult Brothers vs Rune Eaters - Game 2 Winner |
-| blocked | OBSERVE | `0x266e...90f3` | - | - | 0.0 | $639 | 9m | observe wallet unscored | Dota 2: Yakult Brothers vs Rune Eaters - Game 2 Winner |
-| blocked | OBSERVE | `0x1f6a...599a` | - | - | 0.0 | $559 | 9m | observe wallet unscored | Dota 2: Yakult Brothers vs Rune Eaters - Game 2 Winner |
+| blocked | OBSERVE | `0x51c7...98aa` | - | - | 0.0 | $3000 | 6m | observe wallet unscored | Dota 2: Team Falcons vs Team Liquid (BO5) - 1win Essence Playoffs |

@@ -1,12 +1,1 @@
-0x51bef5ceb733fc728d3fb55e64600d4896cc12c2 # source=sports_tape list=- tier=- buys=1 buyNotional=$2000 maxBuy=$2000 targetCopyROI=0.0% targetCopyT=0 bot=0.0
-0x1b1fb7a20d76fa09cd8c47bf020bd4d107c7d6d5 # source=sports_tape list=tape tier=C buys=1 buyNotional=$2000 maxBuy=$2000 targetCopyROI=46.9% targetCopyT=27 bot=43.5
-0x3a014247fddae4ed22efebf940785900c81fc89e # source=sports_tape list=- tier=- buys=2 buyNotional=$1760 maxBuy=$932 targetCopyROI=0.0% targetCopyT=0 bot=0.0
-0x0e24a2181c154220234c27c7b063789dd9b97014 # source=sports_tape list=- tier=B buys=1 buyNotional=$1500 maxBuy=$1500 targetCopyROI=42.7% targetCopyT=39 bot=29.0
-0x733d3dbeafe1b9017082223b41f8d72ac82d1ae7 # source=sports_tape list=- tier=- buys=1 buyNotional=$1116 maxBuy=$1116 targetCopyROI=0.0% targetCopyT=0 bot=0.0
-0x0c99d9f172fc4c25fd2aa92f9fc272da5f020c88 # source=sports_tape list=- tier=- buys=1 buyNotional=$1020 maxBuy=$1020 targetCopyROI=0.0% targetCopyT=0 bot=0.0
-0x0e9997f635af58bdca7e8b89faebcbe99aecf34a # source=sports_tape list=- tier=- buys=1 buyNotional=$777 maxBuy=$777 targetCopyROI=0.0% targetCopyT=0 bot=0.0
-0xe9076a87c5ed90ef16e6fe6529c943baeca0cff6 # source=sports_tape list=tape_reversal tier=BOT buys=1 buyNotional=$762 maxBuy=$762 targetCopyROI=-25.2% targetCopyT=12 bot=80.8
-0xcf0aca0d7a395202aec661c3666be9cc098e320a # source=sports_tape list=- tier=- buys=1 buyNotional=$720 maxBuy=$720 targetCopyROI=0.0% targetCopyT=0 bot=0.0
-0xd1a850ad821b49e585edb0af3f2c7e6cb07a6427 # source=sports_tape list=- tier=- buys=1 buyNotional=$688 maxBuy=$688 targetCopyROI=0.0% targetCopyT=0 bot=0.0
-0x266e7483eabd29a91a125f6a8800f0f5457390f3 # source=sports_tape list=- tier=- buys=1 buyNotional=$639 maxBuy=$639 targetCopyROI=0.0% targetCopyT=0 bot=0.0
-0x1f6a9e0125e5d332d93a42f615f2e7b96ef0599a # source=sports_tape list=- tier=- buys=1 buyNotional=$559 maxBuy=$559 targetCopyROI=0.0% targetCopyT=0 bot=0.0
+0x51c7d30511ed096b39a9392bad97e0dc76c298aa # source=sports_tape list=- tier=- buys=1 buyNotional=$3000 maxBuy=$3000 targetCopyROI=0.0% targetCopyT=0 bot=0.0
