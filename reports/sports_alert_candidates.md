@@ -1,8 +1,8 @@
 # Sports Alert Candidates
 
-**Generated:** 2026-08-06 00:10 +08
+**Generated:** 2026-08-07 00:10 +08
 
-- Recent BUY rows inspected: 1
+- Recent BUY rows inspected: 0
 - Diagnostic window: 6h0m0s
 - Alert window: 10m0s
 - Consensus alert window: 15m0s
@@ -131,4 +131,4 @@
 
 | Status | Mode | Wallet | List | Tier | Bot | Notional | Age | Reason | Market |
 |---|---|---|---|---|---:|---:|---:|---|---|
-| blocked | OBSERVE | `0x51c7...98aa` | - | - | 0.0 | $3000 | 6m | observe wallet unscored | Dota 2: Team Falcons vs Team Liquid (BO5) - 1win Essence Playoffs |
+| none |  |  |  |  | 0.0 | $0 |  |  |  |
