@@ -1,6 +1,6 @@
 # Sports Alert Candidates
 
-**Generated:** 2026-08-08 00:10 +08
+**Generated:** 2026-08-09 00:10 +08
 
 - Recent BUY rows inspected: 0
 - Diagnostic window: 6h0m0s
