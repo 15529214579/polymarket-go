@@ -1,6 +1,6 @@
 # Smartmoney Paper Wallet Policy
 
-Generated: 2026-08-09T22:57:22+08:00
+Generated: 2026-08-10T23:31:16+08:00
 
 - Rule: at least 10 independent wallet-market samples; promote at net >= +5.00U, ROI >= +2.00%, win rate >= 45.0%, and trimmed net >= +1.00U
 - Robustness: best sample <= 60.0% of net; two-sided markets <= 0; demote at net <= -5.00U

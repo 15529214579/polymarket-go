@@ -1,8 +1,8 @@
 # Sports Alert Candidates
 
-**Generated:** 2026-08-09 00:10 +08
+**Generated:** 2026-08-10 00:10 +08
 
-- Recent BUY rows inspected: 0
+- Recent BUY rows inspected: 2
 - Diagnostic window: 6h0m0s
 - Alert window: 10m0s
 - Consensus alert window: 15m0s
@@ -131,4 +131,5 @@
 
 | Status | Mode | Wallet | List | Tier | Bot | Notional | Age | Reason | Market |
 |---|---|---|---|---|---:|---:|---:|---|---|
-| none |  |  |  |  | 0.0 | $0 |  |  |  |
+| blocked | OBSERVE | `0xc3e5...519d` | - | - | 0.0 | $1184 | 3m | observe wallet unscored | Dota 2: Spirit Academy vs Level UP - Game 1 Winner |
+| blocked | OBSERVE | `0x8dc5...c07d` | - | - | 0.0 | $556 | 11m | observe wallet unscored | Dota 2: Ilbirs eSports vs Rune Eaters - Game 1 Winner |

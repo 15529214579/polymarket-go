@@ -1,17 +1,17 @@
 # Smartmoney Paper PnL
 
-Generated: 2026-08-09T00:17:24+08:00
+Generated: 2026-08-10T00:17:09+08:00
 
 - Tradable realized net PnL: **-202.59U** (459 positions)
-- Broad collection realized net PnL: -718.47U (670 positions; research only)
-- Combined observed realized net PnL: -921.06U
-- Gross PnL: -392.97U
-- Fees: 528.09U (entry 336.45U / exit 191.64U)
-- Closed positions: 1129 (1177 journal rows)
+- Broad collection realized net PnL: -722.18U (672 positions; research only)
+- Combined observed realized net PnL: -924.77U
+- Gross PnL: -395.22U
+- Fees: 529.55U (entry 337.16U / exit 192.39U)
+- Closed positions: 1131 (1179 journal rows)
 - Open: 9 positions / 180.00U exposure / 4.97U remaining entry fees
 - Conservative open PnL: -184.97U (open value marked to zero)
-- Conservative total PnL: **-1106.03U**
-- Tradable conservative total: **-202.59U**; broad collection conservative total: -903.44U
+- Conservative total PnL: **-1109.74U**
+- Tradable conservative total: **-202.59U**; broad collection conservative total: -907.15U
 
 ## By Policy
 
@@ -24,14 +24,14 @@ Generated: 2026-08-09T00:17:24+08:00
 | smartmoney-2026-08-02-collect-v2 | 570 | 600 | 11400.00 | +769.48 | 402.36 | +367.12 | 298/272/0 |
 | smartmoney-2026-08-03-p0p1-v3 | 151 | 151 | 3020.00 | -1119.39 | 77.73 | -1197.12 | 52/99/0 |
 | smartmoney-2026-08-04-promoted-v4 | 16 | 16 | 320.00 | -162.11 | 8.14 | -170.26 | 4/12/0 |
-| smartmoney-2026-08-04-risk-v5 | 24 | 30 | 480.00 | -18.41 | 18.81 | -37.22 | 9/15/0 |
+| smartmoney-2026-08-04-risk-v5 | 26 | 32 | 520.00 | -20.66 | 20.27 | -40.93 | 9/17/0 |
 
 ## By Stake
 
 | Cohort | Positions | Rows | Capital | Gross | Fees | Net | W/L/F |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | 10U | 7 | 7 | 70.00 | +1.25 | 0.00 | +1.25 | 2/5/0 |
-| 20U+ | 791 | 830 | 15820.00 | -439.24 | 527.69 | -966.93 | 378/413/0 |
+| 20U+ | 793 | 832 | 15860.00 | -441.50 | 529.15 | -970.64 | 378/415/0 |
 | 5U | 331 | 340 | 1655.00 | +45.03 | 0.40 | +44.62 | 120/97/114 |
 
 ## By Strategy
@@ -39,7 +39,7 @@ Generated: 2026-08-09T00:17:24+08:00
 | Cohort | Positions | Rows | Capital | Gross | Fees | Net | W/L/F |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | copytrade | 340 | 352 | 3535.00 | -107.52 | 75.18 | -182.70 | 169/171/0 |
-| copytrade_collect | 669 | 705 | 13380.00 | -246.90 | 450.68 | -697.58 | 328/341/0 |
+| copytrade_collect | 671 | 707 | 13420.00 | -249.15 | 452.14 | -701.29 | 328/343/0 |
 | football_score | 1 | 1 | 20.00 | -20.00 | 0.94 | -20.94 | 0/1/0 |
 | football_score_collect | 1 | 1 | 20.00 | -20.00 | 0.89 | -20.89 | 0/1/0 |
 | legacy_auto | 118 | 118 | 590.00 | +1.45 | 0.40 | +1.05 | 3/1/114 |
@@ -48,7 +48,7 @@ Generated: 2026-08-09T00:17:24+08:00
 
 | Cohort | Positions | Rows | Capital | Gross | Fees | Net | W/L/F |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| fee-aware | 795 | 834 | 15840.00 | -437.80 | 528.09 | -965.89 | 381/414/0 |
+| fee-aware | 797 | 836 | 15880.00 | -440.05 | 529.55 | -969.60 | 381/416/0 |
 | legacy-no-cost | 334 | 343 | 1705.00 | +44.82 | 0.00 | +44.82 | 119/101/114 |
 
 ## By Signal Source
@@ -106,6 +106,7 @@ Generated: 2026-08-09T00:17:24+08:00
 | copytrade_collect_wallet:0xcbb5623096b78505a26524e642c5c9066e585ed9 | 2 | 2 | 40.00 | -0.40 | 2.59 | -2.98 | 0/2/0 |
 | copytrade_collect_wallet:0x4a3f86ed9ce6b3dac5b66e2d5478a6bf38cc4333 | 1 | 1 | 20.00 | -2.48 | 0.95 | -3.44 | 0/1/0 |
 | copytrade_wallet:0xf1771327cccb5cda15e0eaa3c56755bbf3655f6a | 1 | 1 | 20.00 | -2.25 | 1.37 | -3.61 | 0/1/0 |
+| copytrade_collect_wallet:0x684baa57c338c2549aec0aa3f034f695d72a8409 | 2 | 2 | 40.00 | -2.25 | 1.46 | -3.71 | 0/2/0 |
 | copytrade_collect_wallet:0x6f3e7f25baa7d2d49e15e2d2957ff3dec62cbcf8 | 3 | 3 | 60.00 | -1.79 | 2.98 | -4.77 | 0/3/0 |
 | copytrade_collect_wallet:0x3f3aa7005f8006bfcc367d43a25cde25509fe8fd | 18 | 18 | 360.00 | +10.84 | 16.33 | -5.49 | 8/10/0 |
 | copytrade_collect_wallet:0x272d83eacf863ace931e0860a7d35c2f9820bc2f | 3 | 4 | 60.00 | -5.06 | 2.89 | -7.95 | 1/2/0 |
