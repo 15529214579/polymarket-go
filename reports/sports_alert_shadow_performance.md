@@ -1,6 +1,6 @@
 # Sports Alert Performance
 
-**Generated:** 2026-08-10 00:10 +08
+**Generated:** 2026-08-11 00:10 +08
 
 - Alert log: `/Users/murphyma/work/polymarket-go/db/strategy_iteration/sports_tape_shadow_alerts.jsonl`
 - Extra alert log: `/Users/murphyma/work/polymarket-go/db/strategy_iteration/sports_tape_alerts.jsonl`

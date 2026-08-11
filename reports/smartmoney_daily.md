@@ -1,13 +1,13 @@
 # Smart Money Daily
 
-**Generated:** 2026-08-10 00:17:12 +08
+**Generated:** 2026-08-11 00:17:00 +08
 
 ## Pipeline
 
 - Status: learning
 - Reason: evaluated signals 0 below 10
 - Action: keep current push running and collect more signals
-- Log: `/Users/murphyma/work/polymarket-go/logs/smartmoney-daily-2026-08-10.log`
+- Log: `/Users/murphyma/work/polymarket-go/logs/smartmoney-daily-2026-08-11.log`
 - Discovery report: `/Users/murphyma/work/polymarket-go/reports/strategy_iteration.md`
 - Strategy report: `/Users/murphyma/work/polymarket-go/reports/strategy_lab.md`
 - Sports tape report: `/Users/murphyma/work/polymarket-go/reports/sports_tape.md`
@@ -44,10 +44,10 @@
 - Tape edge-hot count: 3
 - Tape reversal count: 8
 - Consensus research count: 8
-- Push before count: 43
-- Push after count: 41
+- Push before count: 44
+- Push after count: 42
 - Quarantine count: 3
-- Review-noise exclude count: 392
+- Review-noise exclude count: 394
 - Edge snapshots: 1282
 - Sports tape alert sent: 5
 - Sports tape alert logged: 5
@@ -65,11 +65,11 @@
 
 ## Backtest Filter
 
-- Closed copy trades: 245
-- Copy ROI: 121.1%
-- Copy PnL: $+3487.43
-- Copy win rate: 80.0%
-- Worst included CopyROI: 101.7%
+- Closed copy trades: 246
+- Copy ROI: 120.9%
+- Copy PnL: $+3494.53
+- Copy win rate: 80.1%
+- Worst included CopyROI: 101.4%
 - Params: tier>=B bot<30 copyT>=8 copyROI>=100 copyPnL>=25 copyWin>=60 closedROI>=0 smart>=70
 
 ## Live Core Performance
