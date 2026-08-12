@@ -114,20 +114,20 @@ type ClosedAccounting struct {
 }
 
 var (
-	ErrMaxPositions      = errors.New("max concurrent positions reached")
-	ErrMaxExposure       = errors.New("max total exposure reached")
-	ErrMaxPerMarket      = errors.New("max per-market exposure reached")
-	ErrMaxPerEvent       = errors.New("max per-event exposure reached")
-	ErrDuplicatePosition = errors.New("duplicate open position")
-	ErrInvalidEntry      = errors.New("invalid entry mid")
-	ErrPositionNotFound  = errors.New("no open position for id/asset")
-	ErrPositionClosing   = errors.New("position already has a close in progress")
+	ErrMaxPositions       = errors.New("max concurrent positions reached")
+	ErrMaxExposure        = errors.New("max total exposure reached")
+	ErrMaxPerMarket       = errors.New("max per-market exposure reached")
+	ErrMaxPerEvent        = errors.New("max per-event exposure reached")
+	ErrDuplicatePosition  = errors.New("duplicate open position")
+	ErrMarketSideConflict = errors.New("opposite market outcome already open")
+	ErrInvalidEntry       = errors.New("invalid entry mid")
+	ErrPositionNotFound   = errors.New("no open position for id/asset")
+	ErrPositionClosing    = errors.New("position already has a close in progress")
 )
 
 // PositionManager is the single source of truth for open/closed positions.
-// Stacking remains available for research collection. Tradable callers can
-// provide a dedupe key, which is checked atomically with scope-local exposure
-// caps so duplicate wallet signals cannot race into the core book.
+// Callers can provide a dedupe key, which is checked atomically with
+// scope-local exposure caps.
 type PositionManager struct {
 	cfg      PositionConfig
 	mu       sync.Mutex
@@ -191,6 +191,17 @@ func (pm *PositionManager) OpenSizedForEvent(assetID, market, eventKey string, e
 // one exposure scope. Collection positions therefore cannot consume tradable
 // capacity, while both books retain the configured safety limits.
 func (pm *PositionManager) OpenSizedForEventScoped(assetID, market, eventKey string, entry feed.Tick, sizeUSD, maxEventUSD float64, scope, dedupeKey string) (*Position, error) {
+	return pm.openSizedForEventScoped(assetID, market, eventKey, entry, sizeUSD, maxEventUSD, scope, dedupeKey, false)
+}
+
+// OpenSizedForEventScopedGuarded also rejects an opposite outcome already
+// open in the same market and scope. Copytrade uses this atomic guard while
+// football score baskets remain possible because each score is a condition.
+func (pm *PositionManager) OpenSizedForEventScopedGuarded(assetID, market, eventKey string, entry feed.Tick, sizeUSD, maxEventUSD float64, scope, dedupeKey string) (*Position, error) {
+	return pm.openSizedForEventScoped(assetID, market, eventKey, entry, sizeUSD, maxEventUSD, scope, dedupeKey, true)
+}
+
+func (pm *PositionManager) openSizedForEventScoped(assetID, market, eventKey string, entry feed.Tick, sizeUSD, maxEventUSD float64, scope, dedupeKey string, rejectMarketConflict bool) (*Position, error) {
 	if entry.Mid <= 0 || entry.Mid >= 1 {
 		return nil, fmt.Errorf("%w: mid=%v", ErrInvalidEntry, entry.Mid)
 	}
@@ -206,6 +217,15 @@ func (pm *PositionManager) OpenSizedForEventScoped(assetID, market, eventKey str
 		for _, existing := range pm.open {
 			if positionExposureScope(existing) == scope && strings.EqualFold(existing.DedupeKey, dedupeKey) {
 				return nil, fmt.Errorf("%w: scope=%s key=%s", ErrDuplicatePosition, scope, dedupeKey)
+			}
+		}
+	}
+	if rejectMarketConflict && market != "" && assetID != "" {
+		for _, existing := range pm.byMarket[market] {
+			if positionExposureScope(existing) == scope && !strings.EqualFold(existing.AssetID, assetID) {
+				return nil, fmt.Errorf("%w: scope=%s market=%s existing_asset=%s new_asset=%s",
+					ErrMarketSideConflict, scope, market[:min(len(market), 12)],
+					existing.AssetID[:min(len(existing.AssetID), 12)], assetID[:min(len(assetID), 12)])
 			}
 		}
 	}
@@ -1061,7 +1081,7 @@ func (pm *PositionManager) LoadState(path string) error {
 		// reconciles any submitted order before new closes are allowed.
 		p.ClosingUnits = 0
 		p.ExposureScope = positionExposureScope(p)
-		if p.DedupeKey == "" && p.ExposureScope == ExposureScopeTradable {
+		if p.DedupeKey == "" {
 			p.DedupeKey = persistedCopytradeDedupeKey(p)
 		}
 		if strings.TrimSpace(p.PolicyVersion) == "" {
@@ -1087,7 +1107,12 @@ func persistedCopytradeDedupeKey(p *Position) string {
 		return ""
 	}
 	source := strings.ToLower(strings.TrimSpace(p.SignalSource))
-	for _, prefix := range []string{"copytrade_wallet:", "copytrade_football_score_wallet:"} {
+	for _, prefix := range []string{
+		"copytrade_wallet:",
+		"copytrade_football_score_wallet:",
+		"copytrade_collect_wallet:",
+		"copytrade_collect_football_score_wallet:",
+	} {
 		if !strings.HasPrefix(source, prefix) {
 			continue
 		}

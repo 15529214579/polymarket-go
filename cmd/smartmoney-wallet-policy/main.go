@@ -28,6 +28,9 @@ func main() {
 	maxBestSampleShare := flag.Float64("max_best_sample_share", 60, "maximum percentage of total net PnL contributed by the best sample")
 	maxTwoSidedMarkets := flag.Int("max_two_sided_markets", 0, "maximum markets where a wallet traded multiple outcomes")
 	demoteMaxNet := flag.Float64("demote_max_net", -5, "maximum net PnL in U before demotion")
+	emergencyMinSamples := flag.Int("emergency_min_samples", 2, "minimum independent samples for severe-loss demotion")
+	emergencyMaxNet := flag.Float64("emergency_max_net", -20, "maximum net PnL in U for severe-loss demotion")
+	emergencyMaxROI := flag.Float64("emergency_max_roi", -20, "maximum ROI percentage for severe-loss demotion")
 	flag.Parse()
 
 	trades, err := journal.ReadAll(*journalDir)
@@ -47,6 +50,9 @@ func main() {
 		MaxBestSampleShare:   *maxBestSampleShare,
 		MaxTwoSidedMarkets:   *maxTwoSidedMarkets,
 		DemoteMaxNet:         *demoteMaxNet,
+		EmergencyMinSamples:  *emergencyMinSamples,
+		EmergencyMaxNet:      *emergencyMaxNet,
+		EmergencyMaxROI:      *emergencyMaxROI,
 	})
 
 	body, err := json.MarshalIndent(report, "", "  ")
@@ -110,6 +116,7 @@ func formatMarkdown(report paperreport.WalletPolicyReport) string {
 	fmt.Fprintf(&b, "# Smartmoney Paper Wallet Policy\n\nGenerated: %s\n\n", report.GeneratedAt.Format("2006-01-02T15:04:05Z07:00"))
 	fmt.Fprintf(&b, "- Rule: at least %d independent wallet-market samples; promote at net >= %+.2fU, ROI >= %+.2f%%, win rate >= %.1f%%, and trimmed net >= %+.2fU\n", report.Config.MinPositions, report.Config.PromoteMinNet, report.Config.PromoteMinROI, report.Config.PromoteMinWinRate, report.Config.PromoteMinTrimmedNet)
 	fmt.Fprintf(&b, "- Robustness: best sample <= %.1f%% of net; two-sided markets <= %d; demote at net <= %+.2fU\n", report.Config.MaxBestSampleShare, report.Config.MaxTwoSidedMarkets, report.Config.DemoteMaxNet)
+	fmt.Fprintf(&b, "- Emergency demotion: >= %d samples with net <= %+.2fU and ROI <= %+.1f%%\n", report.Config.EmergencyMinSamples, report.Config.EmergencyMaxNet, report.Config.EmergencyMaxROI)
 	fmt.Fprintf(&b, "- Decisions: %d promoted / %d demoted / %d unresolved\n\n", report.Promoted, report.Demoted, report.Unresolved)
 	b.WriteString("| Decision | Wallet | Samples | Positions | Capital | Fees | Net | Trimmed | ROI | Win | Two-sided | Max/sample | Reason |\n")
 	b.WriteString("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|\n")

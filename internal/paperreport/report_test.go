@@ -129,6 +129,20 @@ func TestAnalyzeWalletPolicyCountsIndependentWalletMarketSamples(t *testing.T) {
 	}
 }
 
+func TestAnalyzeWalletPolicyEmergencyDemotesSevereSmallSampleLoss(t *testing.T) {
+	wallet := "0x7777777777777777777777777777777777777777"
+	entry := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)
+	trades := []journal.TradeRecord{
+		{ID: "loss-a", Market: "market-a", EntryTime: entry, SizeUSD: 20, NetPnLUSD: -11, SignalSource: "copytrade_collect_wallet:" + wallet},
+		{ID: "loss-b", Market: "market-b", EntryTime: entry.Add(time.Hour), SizeUSD: 20, NetPnLUSD: -10, SignalSource: "copytrade_collect_wallet:" + wallet},
+	}
+	report := AnalyzeWalletPolicy(trades, nil, WalletPolicyConfig{})
+	row := findWallet(report.Wallets, wallet)
+	if row.Decision != "demote" || report.Demoted != 1 {
+		t.Fatalf("severe small-sample wallet=%+v report=%+v", row, report)
+	}
+}
+
 func TestAnalyzeWalletPolicyKeepsOutlierDependentWalletOutOfCore(t *testing.T) {
 	wallet := "0x4444444444444444444444444444444444444444"
 	entry := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)

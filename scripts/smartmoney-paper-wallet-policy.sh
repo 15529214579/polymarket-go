@@ -21,4 +21,7 @@ exec "$ROOT/bin/smartmoney-wallet-policy" \
   -promote_min_trimmed_net "${SMARTMONEY_PAPER_WALLET_PROMOTE_MIN_TRIMMED_NET:-1}" \
   -max_best_sample_share "${SMARTMONEY_PAPER_WALLET_MAX_BEST_SAMPLE_SHARE:-60}" \
   -max_two_sided_markets "${SMARTMONEY_PAPER_WALLET_MAX_TWO_SIDED_MARKETS:-0}" \
-  -demote_max_net "${SMARTMONEY_PAPER_WALLET_DEMOTE_MAX_NET:--5}" "$@"
+  -demote_max_net "${SMARTMONEY_PAPER_WALLET_DEMOTE_MAX_NET:--5}" \
+  -emergency_min_samples "${SMARTMONEY_PAPER_WALLET_EMERGENCY_MIN_SAMPLES:-2}" \
+  -emergency_max_net "${SMARTMONEY_PAPER_WALLET_EMERGENCY_MAX_NET:--20}" \
+  -emergency_max_roi "${SMARTMONEY_PAPER_WALLET_EMERGENCY_MAX_ROI:--20}" "$@"

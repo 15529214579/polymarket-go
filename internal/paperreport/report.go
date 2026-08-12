@@ -65,6 +65,9 @@ type WalletPolicyConfig struct {
 	MaxBestSampleShare   float64 `json:"max_best_sample_share_pct"`
 	MaxTwoSidedMarkets   int     `json:"max_two_sided_markets"`
 	DemoteMaxNet         float64 `json:"demote_max_net_usd"`
+	EmergencyMinSamples  int     `json:"emergency_min_samples"`
+	EmergencyMaxNet      float64 `json:"emergency_max_net_usd"`
+	EmergencyMaxROI      float64 `json:"emergency_max_roi_pct"`
 }
 
 type WalletPerformance struct {
@@ -245,6 +248,15 @@ func AnalyzeWalletPolicy(trades []journal.TradeRecord, aliases map[string]string
 	if cfg.DemoteMaxNet == 0 {
 		cfg.DemoteMaxNet = -5
 	}
+	if cfg.EmergencyMinSamples <= 0 {
+		cfg.EmergencyMinSamples = 2
+	}
+	if cfg.EmergencyMaxNet == 0 {
+		cfg.EmergencyMaxNet = -20
+	}
+	if cfg.EmergencyMaxROI == 0 {
+		cfg.EmergencyMaxROI = -20
+	}
 
 	result := WalletPolicyReport{GeneratedAt: time.Now(), Config: cfg}
 	byWallet := map[string]*WalletPerformance{}
@@ -344,6 +356,10 @@ func AnalyzeWalletPolicy(trades []journal.TradeRecord, aliases map[string]string
 			row.Decision = "unresolved"
 			row.Reason = "full wallet address unavailable"
 			result.Unresolved++
+		case row.IndependentSamples >= cfg.EmergencyMinSamples && row.NetPnL <= cfg.EmergencyMaxNet && row.ROI <= cfg.EmergencyMaxROI:
+			row.Decision = "demote"
+			row.Reason = fmt.Sprintf("emergency: %d samples, net %+.2fU, ROI %+.2f%%", row.IndependentSamples, row.NetPnL, row.ROI)
+			result.Demoted++
 		case row.IndependentSamples < cfg.MinPositions:
 			row.Decision = "collect"
 			row.Reason = fmt.Sprintf("%d/%d independent wallet-market samples", row.IndependentSamples, cfg.MinPositions)

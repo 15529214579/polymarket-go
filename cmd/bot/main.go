@@ -3567,9 +3567,8 @@ func runDetect(ctx context.Context, topN, windowSec int, slippageBp, feeBp, take
 					dedupeKey := copytradeCoreDedupeKey(ev)
 					if collectionOnly {
 						exposureScope = strategy.ExposureScopeCollection
-						dedupeKey = ""
 					}
-					pos, err := pm.OpenSizedForEventScoped(ev.AssetID, ev.ConditionID, eventKey, tick, sizeUSD, eventCap, exposureScope, dedupeKey)
+					pos, err := pm.OpenSizedForEventScopedGuarded(ev.AssetID, ev.ConditionID, eventKey, tick, sizeUSD, eventCap, exposureScope, dedupeKey)
 					if err != nil {
 						appendWhaleTrade(ev, "skip", "open_rejected:"+err.Error())
 						slog.Warn("copytrade_open_rejected", "wallet", ev.Label, "asset", short(ev.AssetID), "err", err.Error())

@@ -208,6 +208,26 @@ func TestPositionManager_TradableDedupeIsAtomicAndScopeLocal(t *testing.T) {
 	}
 }
 
+func TestPositionManager_GuardedOpenDedupesCollectionAndRejectsOppositeSide(t *testing.T) {
+	cfg := DefaultPositionConfig()
+	cfg.MaxPerMarketUSD = 100
+	pm := NewPositionManager(cfg)
+	now := time.Now()
+	key := "wallet|market|yes"
+	if _, err := pm.OpenSizedForEventScopedGuarded("yes", "market", "event", tick(0.5, now), 20, 0, ExposureScopeCollection, key); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pm.OpenSizedForEventScopedGuarded("yes", "market", "event", tick(0.5, now), 20, 0, ExposureScopeCollection, key); !errors.Is(err, ErrDuplicatePosition) {
+		t.Fatalf("duplicate collection open=%v", err)
+	}
+	if _, err := pm.OpenSizedForEventScopedGuarded("no", "market", "event", tick(0.5, now), 20, 0, ExposureScopeCollection, "other|market|no"); !errors.Is(err, ErrMarketSideConflict) {
+		t.Fatalf("opposite collection open=%v", err)
+	}
+	if _, err := pm.OpenSizedForEventScopedGuarded("no", "market", "event", tick(0.5, now), 20, 0, ExposureScopeTradable, "other|market|no"); err != nil {
+		t.Fatalf("conflict must remain scope-local: %v", err)
+	}
+}
+
 func TestPositionManager_FreezesPolicyAndMigratesLegacyOpen(t *testing.T) {
 	cfg := DefaultPositionConfig()
 	cfg.PolicyVersion = "policy-v5"
@@ -249,6 +269,23 @@ func TestPositionManager_RestoresCoreDedupeKeyFromLegacySource(t *testing.T) {
 	want := wallet + "|condition|token"
 	if got := pm.Snapshot()[0].DedupeKey; got != want {
 		t.Fatalf("restored dedupe key=%q want=%q", got, want)
+	}
+}
+
+func TestPositionManager_RestoresCollectionDedupeKeyFromLegacySource(t *testing.T) {
+	wallet := "0x2222222222222222222222222222222222222222"
+	path := t.TempDir() + "/positions.json"
+	legacy := []byte(`{"next_id":1,"open":[{"ID":"p1","AssetID":"TOKEN","Market":"CONDITION","SizeUSD":20,"Units":40,"InitUnits":40,"EntryMid":0.5,"EntryTime":"2026-08-01T00:00:00Z","Status":"open","Source":"copytrade_collect","SignalSource":"copytrade_collect_wallet:` + wallet + `"}],"closed":[]}`)
+	if err := os.WriteFile(path, legacy, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	pm := NewPositionManager(DefaultPositionConfig())
+	if err := pm.LoadState(path); err != nil {
+		t.Fatal(err)
+	}
+	want := wallet + "|condition|token"
+	if got := pm.Snapshot()[0].DedupeKey; got != want {
+		t.Fatalf("restored collection dedupe key=%q want=%q", got, want)
 	}
 }
 
