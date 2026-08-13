@@ -1,8 +1,8 @@
 # Sports Alert Candidates
 
-**Generated:** 2026-08-12 00:10 +08
+**Generated:** 2026-08-13 00:10 +08
 
-- Recent BUY rows inspected: 1
+- Recent BUY rows inspected: 2
 - Diagnostic window: 6h0m0s
 - Alert window: 10m0s
 - Consensus alert window: 15m0s
@@ -131,4 +131,5 @@
 
 | Status | Mode | Wallet | List | Tier | Bot | Notional | Age | Reason | Market |
 |---|---|---|---|---|---:|---:|---:|---|---|
-| blocked | OBSERVE | `0x3752...2f08` | - | - | 0.0 | $923 | 14m | observe wallet unscored | Dota 2: Yellow Submarine vs Zero Tenacity - Game 1 Winner |
+| blocked | OBSERVE | `0xdc3f...5e0d` | - | - | 0.0 | $935 | 11m | observe wallet unscored | Dota 2: Natus Vincere vs Level UP - Game 3 Winner |
+| blocked | OBSERVE | `0xa35c...a113` | - | - | 0.0 | $555 | 11m | observe wallet unscored | Dota 2: Natus Vincere vs Level UP - Game 3 Winner |
