@@ -1,1 +1,1 @@
-0x6ac5bb06a9eb05641fd5e82640268b92f3ab4b6e # list=scout tier=C smart=100.00 bot=43.59 copyROI=96.4% copyPnL=$+713.21 copyT=11 copyWin=90.9% avgNotional=$691 sources=existing,holder,leaderboard_profit_30d,leaderboard_profit_7d
+0x65c18d740c8246af3353741c0b32e4b6da552988 # list=scout tier=C smart=100.00 bot=44.54 copyROI=0.0% copyPnL=$+0.00 copyT=0 copyWin=0.0% avgNotional=$533 sources=existing,holder,leaderboard_profit_7d
