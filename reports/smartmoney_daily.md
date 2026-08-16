@@ -1,13 +1,13 @@
 # Smart Money Daily
 
-**Generated:** 2026-08-15 00:16:29 +08
+**Generated:** 2026-08-16 00:17:31 +08
 
 ## Pipeline
 
 - Status: learning
 - Reason: evaluated signals 0 below 10
 - Action: keep current push running and collect more signals
-- Log: `/Users/murphyma/work/polymarket-go/logs/smartmoney-daily-2026-08-15.log`
+- Log: `/Users/murphyma/work/polymarket-go/logs/smartmoney-daily-2026-08-16.log`
 - Discovery report: `/Users/murphyma/work/polymarket-go/reports/strategy_iteration.md`
 - Strategy report: `/Users/murphyma/work/polymarket-go/reports/strategy_lab.md`
 - Sports tape report: `/Users/murphyma/work/polymarket-go/reports/sports_tape.md`
@@ -29,25 +29,25 @@
 
 ## Wallet Lists
 
-- Core before count: 11
-- Core after count: 11
+- Core before count: 14
+- Core after count: 14
 - Watch after count: 20
 - Sports after count: 10
 - Scout after count: 0
 - Target after count: 10
 - Flow after count: 0
 - Tape after count: 0
-- Tape observe count: 0
+- Tape observe count: 1
 - Tape probation count: 0
 - Tape candidate count: 0
 - Tape follow-ready count: 0
-- Tape edge-hot count: 3
+- Tape edge-hot count: 2
 - Tape reversal count: 8
 - Consensus research count: 8
-- Push before count: 46
-- Push after count: 43
+- Push before count: 48
+- Push after count: 46
 - Quarantine count: 3
-- Review-noise exclude count: 400
+- Review-noise exclude count: 404
 - Edge snapshots: 1282
 - Sports tape alert sent: 5
 - Sports tape alert logged: 5
@@ -57,19 +57,19 @@
 - Sports alert eligible now: 0
 - Sports alert accumulation bursts: 0
 - Sports alert consensus bursts: 0
-- Selected core wallets: 11
-- Core list changed: no
+- Selected core wallets: 14
+- Core list changed: yes
 - Push list changed: yes
 - Restart needed: no
 - Restart status: restarted screen polymarket-whale-push
 
 ## Backtest Filter
 
-- Closed copy trades: 258
-- Copy ROI: 116.8%
-- Copy PnL: $+3444.76
-- Copy win rate: 84.1%
-- Worst included CopyROI: 102.5%
+- Closed copy trades: 295
+- Copy ROI: 116.1%
+- Copy PnL: $+3947.33
+- Copy win rate: 83.7%
+- Worst included CopyROI: 101.3%
 - Params: tier>=B bot<30 copyT>=8 copyROI>=100 copyPnL>=25 copyWin>=60 closedROI>=0 smart>=70
 
 ## Live Core Performance
