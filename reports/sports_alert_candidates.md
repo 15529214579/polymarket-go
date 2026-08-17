@@ -1,8 +1,8 @@
 # Sports Alert Candidates
 
-**Generated:** 2026-08-16 00:10 +08
+**Generated:** 2026-08-17 00:10 +08
 
-- Recent BUY rows inspected: 1
+- Recent BUY rows inspected: 0
 - Diagnostic window: 6h0m0s
 - Alert window: 10m0s
 - Consensus alert window: 15m0s
@@ -131,4 +131,4 @@
 
 | Status | Mode | Wallet | List | Tier | Bot | Notional | Age | Reason | Market |
 |---|---|---|---|---|---:|---:|---:|---|---|
-| blocked | OBSERVE | `0x8002...8b6c` | - | - | 0.0 | $8003 | 13m | observe wallet unscored | New York Liberty vs. Connecticut Sun |
+| none |  |  |  |  | 0.0 | $0 |  |  |  |
