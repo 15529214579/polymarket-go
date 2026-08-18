@@ -1,6 +1,6 @@
 # Smartmoney Paper Wallet Policy
 
-Generated: 2026-08-17T23:46:17+08:00
+Generated: 2026-08-18T23:24:24+08:00
 
 - Rule: at least 10 independent wallet-market samples; promote at net >= +5.00U, ROI >= +2.00%, win rate >= 45.0%, and trimmed net >= +1.00U
 - Robustness: best sample <= 60.0% of net; two-sided markets <= 0; demote at net <= -5.00U
@@ -55,8 +55,8 @@ Generated: 2026-08-17T23:46:17+08:00
 | collect | 0x877fdb546da48353fd712056495f66e31dad8f3b | 1 | 2 | 40.00 | 0.57 | -8.10 | +0.00 | -20.26% | 0.0% | 0 | 2 | 1/10 independent wallet-market samples |
 | collect | 0xd8fa447d6f61fa6774906974b75e54cead7c581f | 1 | 1 | 20.00 | 0.45 | -8.19 | +0.00 | -40.97% | 0.0% | 0 | 1 | 1/10 independent wallet-market samples |
 | collect | 0x5b1da62d04a662da31839a482092288ca7b03721 | 4 | 5 | 100.00 | 4.06 | -12.57 | -43.33 | -12.57% | 50.0% | 0 | 2 | 4/10 independent wallet-market samples |
-| collect | 0x684baa57c338c2549aec0aa3f034f695d72a8409 | 4 | 8 | 160.00 | 6.34 | -15.43 | -19.05 | -9.64% | 50.0% | 0 | 3 | 4/10 independent wallet-market samples |
 | demote | 0x29295021c598f1ec3efb894e69820f9691521dd0 | 27 | 62 | 1240.00 | 32.98 | -17.02 | -74.71 | -1.37% | 40.7% | 11 | 4 | net -17.02U <= -5.00U |
+| collect | 0x684baa57c338c2549aec0aa3f034f695d72a8409 | 5 | 9 | 180.00 | 6.93 | -17.06 | -20.68 | -9.48% | 40.0% | 0 | 3 | 5/10 independent wallet-market samples |
 | collect | 0x2a99dac44bf1d44dd74f16b145df840ae66a51bb | 6 | 6 | 120.00 | 3.33 | -18.95 | -26.90 | -15.79% | 33.3% | 0 | 1 | 6/10 independent wallet-market samples |
 | collect | 0x7203d27522b0144113c36d25485c557c9185795a | 1 | 1 | 20.00 | 0.53 | -19.75 | +0.00 | -98.74% | 0.0% | 0 | 1 | 1/10 independent wallet-market samples |
 | collect | 0x91b9f775af98ffe3a9612feb1fdbcf04bfc8889f | 1 | 1 | 20.00 | 0.51 | -20.51 | +0.00 | -102.54% | 0.0% | 0 | 1 | 1/10 independent wallet-market samples |

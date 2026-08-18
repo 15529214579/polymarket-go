@@ -1,6 +1,6 @@
 # Smartmoney Paper PnL
 
-Generated: 2026-08-17T00:17:37+08:00
+Generated: 2026-08-18T00:18:00+08:00
 
 - Tradable realized net PnL: **-202.59U** (459 positions)
 - Broad collection realized net PnL: -837.36U (732 positions; research only)
