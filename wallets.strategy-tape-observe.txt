@@ -1,0 +1,1 @@
+0x88d17ad6bf91ca0935f6e70b37ebe3db92b618da # list=tape_observe status=reject-bot tier=BOT bot=64.7 maxBuy=$5000 buyNotional=$5000 buys=1 copyROI=67.8% copyT=37 risks=bot_like_flow,burst_trading,open_copy_exposure,opposite_side_same_market

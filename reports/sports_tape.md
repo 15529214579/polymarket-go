@@ -1,6 +1,6 @@
 # Sports Whale Tape
 
-**Generated:** 2026-08-19 00:10 +08
+**Generated:** 2026-08-21 00:10 +08
 
 - Target categories: basketball,soccer,esports
 - Min notional: $500
@@ -13,12 +13,12 @@
 
 | Wallet | List | Tier | Buys | BuyNotional | MaxBuy | Mkts | Cat | Smart | Bot | TargetCopyROI | TargetCopyT |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `0xb9ab...f282` | - | - | 1 | $1500 | $1500 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
-| `0x183f...85e3` | - | - | 1 | $750 | $750 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
+| `0x88d1...18da` | - | - | 1 | $5000 | $5000 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
+| `0x2de2...11a9` | - | - | 1 | $1000 | $1000 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
 
 ## Largest Trades
 
 | Time | Wallet | List | Side | Notional | Price | Outcome | Category | Market |
 |---|---|---|---|---:|---:|---|---|---|
-| 08-19 00:00 | `0xb9ab...f282` | - | BUY | $1500 | 0.500 | Dplus KIA | esports | LoL: Dplus KIA vs Hanwha Life Esports (BO3) - LCK Round 3-4 Legend ... |
-| 08-18 23:59 | `0x183f...85e3` | - | BUY | $750 | 0.500 | Dplus KIA | esports | LoL: Dplus KIA vs Hanwha Life Esports (BO3) - LCK Round 3-4 Legend ... |
+| 08-21 00:05 | `0x88d1...18da` | - | BUY | $5000 | 0.414 | Nigma Galaxy | esports | Dota 2: Nigma Galaxy vs Team Falcons (BO3) - The International Play... |
+| 08-21 00:01 | `0x2de2...11a9` | - | BUY | $1000 | 0.600 | Team Falcons | esports | Dota 2: Nigma Galaxy vs Team Falcons (BO3) - The International Play... |

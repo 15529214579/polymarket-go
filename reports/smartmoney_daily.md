@@ -1,13 +1,13 @@
 # Smart Money Daily
 
-**Generated:** 2026-08-20 00:20:00 +08
+**Generated:** 2026-08-21 00:18:10 +08
 
 ## Pipeline
 
 - Status: learning
 - Reason: evaluated signals 0 below 10
 - Action: keep current push running and collect more signals
-- Log: `/Users/murphyma/work/polymarket-go/logs/smartmoney-daily-2026-08-20.log`
+- Log: `/Users/murphyma/work/polymarket-go/logs/smartmoney-daily-2026-08-21.log`
 - Discovery report: `/Users/murphyma/work/polymarket-go/reports/strategy_iteration.md`
 - Strategy report: `/Users/murphyma/work/polymarket-go/reports/strategy_lab.md`
 - Sports tape report: `/Users/murphyma/work/polymarket-go/reports/sports_tape.md`
@@ -29,23 +29,23 @@
 
 ## Wallet Lists
 
-- Core before count: 15
-- Core after count: 23
+- Core before count: 21
+- Core after count: 21
 - Watch after count: 20
 - Sports after count: 10
-- Scout after count: 3
+- Scout after count: 4
 - Target after count: 10
 - Flow after count: 0
 - Tape after count: 0
-- Tape observe count: 0
+- Tape observe count: 1
 - Tape probation count: 0
 - Tape candidate count: 0
 - Tape follow-ready count: 0
-- Tape edge-hot count: 2
+- Tape edge-hot count: 1
 - Tape reversal count: 8
 - Consensus research count: 8
-- Push before count: 53
-- Push after count: 59
+- Push before count: 56
+- Push after count: 53
 - Quarantine count: 3
 - Review-noise exclude count: 410
 - Edge snapshots: 1282
@@ -57,7 +57,7 @@
 - Sports alert eligible now: 0
 - Sports alert accumulation bursts: 0
 - Sports alert consensus bursts: 0
-- Selected core wallets: 23
+- Selected core wallets: 21
 - Core list changed: yes
 - Push list changed: yes
 - Restart needed: no
@@ -65,12 +65,12 @@
 
 ## Backtest Filter
 
-- Closed copy trades: 519
-- Copy ROI: 96.4%
-- Copy PnL: $+5957.56
-- Copy win rate: 84.2%
+- Closed copy trades: 443
+- Copy ROI: 92.1%
+- Copy PnL: $+4790.28
+- Copy win rate: 85.3%
 - Worst included CopyROI: 44.4%
-- Params: tier>=B bot<30 copyT>=8 copyROI>=40 copyPnL>=25 copyWin>=60 closedROI>=10 smart>=70
+- Params: tier>=B bot<30 copyT>=8 copyROI>=40 copyPnL>=25 copyWin>=60 closedROI>=20 smart>=70
 
 ## Live Core Performance
 

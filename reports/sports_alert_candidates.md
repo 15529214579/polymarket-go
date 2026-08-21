@@ -1,8 +1,8 @@
 # Sports Alert Candidates
 
-**Generated:** 2026-08-20 00:10 +08
+**Generated:** 2026-08-21 00:10 +08
 
-- Recent BUY rows inspected: 0
+- Recent BUY rows inspected: 2
 - Diagnostic window: 6h0m0s
 - Alert window: 10m0s
 - Consensus alert window: 15m0s
@@ -131,4 +131,5 @@
 
 | Status | Mode | Wallet | List | Tier | Bot | Notional | Age | Reason | Market |
 |---|---|---|---|---|---:|---:|---:|---|---|
-| none |  |  |  |  | 0.0 | $0 |  |  |  |
+| blocked | OBSERVE | `0x88d1...18da` | - | - | 0.0 | $5000 | 5m | observe wallet unscored | Dota 2: Nigma Galaxy vs Team Falcons (BO3) - The International Playoffs |
+| blocked | OBSERVE | `0x2de2...11a9` | - | - | 0.0 | $1000 | 9m | observe wallet unscored | Dota 2: Nigma Galaxy vs Team Falcons (BO3) - The International Playoffs |
