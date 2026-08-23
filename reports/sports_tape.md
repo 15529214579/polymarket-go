@@ -1,29 +1,26 @@
 # Sports Whale Tape
 
-**Generated:** 2026-08-22 00:10 +08
+**Generated:** 2026-08-23 00:10 +08
 
 - Target categories: basketball,soccer,esports
 - Min notional: $500
 - Retain window: 6h0m0s
 - Retained prior trades: 0
-- Trades: 5
-- Wallets: 4
+- Trades: 4
+- Wallets: 2
 
 ## Top Wallets
 
 | Wallet | List | Tier | Buys | BuyNotional | MaxBuy | Mkts | Cat | Smart | Bot | TargetCopyROI | TargetCopyT |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `0xf1ef...8cd6` | - | - | 1 | $5600 | $5600 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
-| `0xec54...e8c1` | - | - | 2 | $1692 | $852 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
-| `0x0c7b...6e9d` | - | - | 1 | $600 | $600 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
-| `0xd47c...39b5` | - | - | 0 | $0 | $0 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
+| `0x34dd...fd83` | - | - | 3 | $465978 | $375861 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
+| `0x2dab...55da` | - | - | 1 | $1450 | $1450 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
 
 ## Largest Trades
 
 | Time | Wallet | List | Side | Notional | Price | Outcome | Category | Market |
 |---|---|---|---|---:|---:|---|---|---|
-| 08-22 00:05 | `0xf1ef...8cd6` | - | BUY | $5600 | 0.350 | Team Yandex | esports | Dota 2: Team Yandex vs Nigma Galaxy (BO3) - The International Playoffs |
-| 08-22 00:03 | `0xd47c...39b5` | - | SELL | $1546 | 0.650 | Nigma Galaxy | esports | Dota 2: Team Yandex vs Nigma Galaxy (BO3) - The International Playoffs |
-| 08-22 00:06 | `0xec54...e8c1` | - | BUY | $852 | 0.350 | Team Yandex | esports | Dota 2: Team Yandex vs Nigma Galaxy (BO3) - The International Playoffs |
-| 08-22 00:08 | `0xec54...e8c1` | - | BUY | $840 | 0.350 | Team Yandex | esports | Dota 2: Team Yandex vs Nigma Galaxy (BO3) - The International Playoffs |
-| 08-22 00:02 | `0x0c7b...6e9d` | - | BUY | $600 | 0.580 | Team Yandex | esports | Dota 2: Team Yandex vs Nigma Galaxy - Game 2 Winner |
+| 08-23 00:04 | `0x34dd...fd83` | - | BUY | $375861 | 0.470 | Yes | soccer | Will Brentford FC win on 2026-08-22? |
+| 08-23 00:02 | `0x34dd...fd83` | - | BUY | $60924 | 0.460 | Yes | soccer | Will Brentford FC win on 2026-08-22? |
+| 08-23 00:06 | `0x34dd...fd83` | - | BUY | $29192 | 0.470 | Yes | soccer | Will Brentford FC win on 2026-08-22? |
+| 08-23 00:00 | `0x2dab...55da` | - | BUY | $1450 | 0.290 | Yes | soccer | Will Tottenham Hotspur FC win on 2026-08-22? |

@@ -1,13 +1,13 @@
 # Smart Money Daily
 
-**Generated:** 2026-08-22 00:42:40 +08
+**Generated:** 2026-08-23 00:19:27 +08
 
 ## Pipeline
 
 - Status: learning
 - Reason: evaluated signals 0 below 10
 - Action: keep current push running and collect more signals
-- Log: `/Users/murphyma/work/polymarket-go/logs/smartmoney-daily-2026-08-22.log`
+- Log: `/Users/murphyma/work/polymarket-go/logs/smartmoney-daily-2026-08-23.log`
 - Discovery report: `/Users/murphyma/work/polymarket-go/reports/strategy_iteration.md`
 - Strategy report: `/Users/murphyma/work/polymarket-go/reports/strategy_lab.md`
 - Sports tape report: `/Users/murphyma/work/polymarket-go/reports/sports_tape.md`
@@ -30,7 +30,7 @@
 ## Wallet Lists
 
 - Core before count: 11
-- Core after count: 12
+- Core after count: 10
 - Watch after count: 20
 - Sports after count: 10
 - Scout after count: 1
@@ -45,19 +45,19 @@
 - Tape reversal count: 8
 - Consensus research count: 8
 - Push before count: 47
-- Push after count: 45
+- Push after count: 43
 - Quarantine count: 3
-- Review-noise exclude count: 413
+- Review-noise exclude count: 415
 - Edge snapshots: 1282
 - Sports tape alert sent: 5
 - Sports tape alert logged: 5
 - Sports tape shadow alert logged: 7
 - Sports consensus event history: 4
 - Sports consensus watch event history: 4
-- Sports alert eligible now: 0
+- Sports alert eligible now: 3
 - Sports alert accumulation bursts: 0
 - Sports alert consensus bursts: 0
-- Selected core wallets: 12
+- Selected core wallets: 10
 - Core list changed: yes
 - Push list changed: yes
 - Restart needed: no
@@ -65,12 +65,12 @@
 
 ## Backtest Filter
 
-- Closed copy trades: 213
-- Copy ROI: 128.6%
-- Copy PnL: $+3048.31
-- Copy win rate: 85.9%
+- Closed copy trades: 176
+- Copy ROI: 126.6%
+- Copy PnL: $+2417.61
+- Copy win rate: 88.1%
 - Worst included CopyROI: 104.0%
-- Params: tier>=B bot<30 copyT>=8 copyROI>=100 copyPnL>=25 copyWin>=60 closedROI>=0 smart>=70
+- Params: tier>=B bot<30 copyT>=8 copyROI>=100 copyPnL>=25 copyWin>=80 closedROI>=0 smart>=70
 
 ## Live Core Performance
 

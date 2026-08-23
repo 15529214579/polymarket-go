@@ -1,13 +1,13 @@
 # Sports Alert Candidates
 
-**Generated:** 2026-08-22 00:10 +08
+**Generated:** 2026-08-23 00:10 +08
 
 - Recent BUY rows inspected: 4
 - Diagnostic window: 6h0m0s
 - Alert window: 10m0s
 - Consensus alert window: 15m0s
-- Currently alertable unsent rows: 0
-- Eligible unsent rows in diagnostic window: 0
+- Currently alertable unsent rows: 3
+- Eligible unsent rows in diagnostic window: 3
 - Already sent rows in window: 0
 - Positive-edge required modes: CANDIDATE,PROBATION
 - Observe min notional: $3000
@@ -131,7 +131,7 @@
 
 | Status | Mode | Wallet | List | Tier | Bot | Notional | Age | Reason | Market |
 |---|---|---|---|---|---:|---:|---:|---|---|
-| blocked | OBSERVE | `0xf1ef...8cd6` | - | - | 0.0 | $5600 | 5m | observe wallet unscored | Dota 2: Team Yandex vs Nigma Galaxy (BO3) - The International Playoffs |
-| blocked | OBSERVE | `0xec54...e8c1` | - | - | 0.0 | $852 | 3m | observe wallet unscored | Dota 2: Team Yandex vs Nigma Galaxy (BO3) - The International Playoffs |
-| blocked | OBSERVE | `0xec54...e8c1` | - | - | 0.0 | $840 | 2m | observe wallet unscored | Dota 2: Team Yandex vs Nigma Galaxy (BO3) - The International Playoffs |
-| blocked | OBSERVE | `0x0c7b...6e9d` | - | - | 0.0 | $600 | 8m | observe wallet unscored | Dota 2: Team Yandex vs Nigma Galaxy - Game 2 Winner |
+| eligible | OBSERVE | `0x34dd...fd83` | - | - | 0.0 | $375861 | 6m | insider-scout huge whale | Will Brentford FC win on 2026-08-22? |
+| eligible | OBSERVE | `0x34dd...fd83` | - | - | 0.0 | $60924 | 8m | insider-scout huge whale | Will Brentford FC win on 2026-08-22? |
+| eligible | OBSERVE | `0x34dd...fd83` | - | - | 0.0 | $29192 | 4m | insider-scout huge whale | Will Brentford FC win on 2026-08-22? |
+| blocked | OBSERVE | `0x2dab...55da` | - | - | 0.0 | $1450 | 10m | observe wallet unscored | Will Tottenham Hotspur FC win on 2026-08-22? |

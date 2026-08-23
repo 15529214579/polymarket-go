@@ -1,1 +1,1 @@
-0xf1ef8705e9f63c790c6fffd6329aea7011718cd6 # list=tape_observe status=reject-bot tier=D bot=59.1 maxBuy=$5600 buyNotional=$5600 buys=1 copyROI=50.6% copyT=22 risks=bot_like_flow,burst_trading,open_copy_exposure,opposite_side_same_market
+0x34dd4a4b70eaf79a17878f7938263c801d4dfd83 # list=tape_observe status=reject-flow tier=C bot=37.5 maxBuy=$375861 buyNotional=$465978 buys=3 copyROI=116.0% copyT=1 risks=burst_trading,fixed_price

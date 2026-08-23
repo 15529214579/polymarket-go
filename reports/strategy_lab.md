@@ -1,28 +1,28 @@
 # Strategy Lab Report
 
-**Generated:** 2026-08-22 23:20 +08
+**Generated:** 2026-08-23 23:02 +08
 
 - Scores: `/Users/murphyma/work/polymarket-go/db/strategy_iteration/wallet_scores.json`
-- Exclude wallets: `/Users/murphyma/work/polymarket-go/db/strategy_iteration/wallets.strategy-exclude.txt` (416)
-- Valid strategies found: 72
-- Candidate layers: 11 core + 20 watch + 10 sports + 1 scout + 10 target + 0 flow + 0 tape
+- Exclude wallets: `/Users/murphyma/work/polymarket-go/db/strategy_iteration/wallets.strategy-exclude.txt` (418)
+- Valid strategies found: 54
+- Candidate layers: 13 core + 20 watch + 10 sports + 1 scout + 10 target + 0 flow + 0 tape
 - Push wallets after live-edge blocks: 47 total
-- Live-edge blocked push wallets: 5
+- Live-edge blocked push wallets: 7
 - Leaderboard scout push enabled: true
 - Tape probation wallets: 0 observation-only
 - Tape edge-hot wallets: 1 observation-only
 
 ## Selected Core Strategy
 
-- Wallets: 11
-- Aggregate closed copy trades: 185
-- Aggregate copy ROI: 128.7%
-- Aggregate copy PnL: $+2716.37
-- Aggregate copy win rate: 87.6%
-- Median wallet CopyROI: 124.0%
-- Worst included wallet CopyROI: 104.0%
-- Open copy cost / closed copy capital: 5.38x
-- Params: tier>=B bot<30 copyT>=8 copyROI>=100 copyPnL>=25 copyWin>=60 closedROI>=0 smart>=70
+- Wallets: 13
+- Aggregate closed copy trades: 282
+- Aggregate copy ROI: 102.9%
+- Aggregate copy PnL: $+3395.61
+- Aggregate copy win rate: 88.7%
+- Median wallet CopyROI: 115.4%
+- Worst included wallet CopyROI: 65.3%
+- Open copy cost / closed copy capital: 3.39x
+- Params: tier>=B bot<30 copyT>=8 copyROI>=60 copyPnL>=25 copyWin>=60 closedROI>=0 smart>=70
 
 ## Core Wallets
 
@@ -30,47 +30,49 @@
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
 | `0x162d...8944` | A | 24.89 | 3 | 1% | 104.0% | $+332.66 | 31 | 90.3% | 46.5% |
 | `0x2952...f50d` | A | 23.78 | 77 | 59% | 108.9% | $+326.79 | 22 | 86.4% | 24.0% |
-| `0x5be9...ef2b` | A | 23.57 | 69 | 66% | 143.1% | $+271.82 | 19 | 100.0% | 43.5% |
+| `0x5be9...ef2b` | A | 24.02 | 73 | 65% | 137.2% | $+288.21 | 21 | 100.0% | 45.6% |
 | `0x84cd...7565` | A | 23.84 | 121 | 83% | 115.4% | $+184.60 | 13 | 84.6% | 41.8% |
 | `0x90e0...21a2` | A | 22.22 | 53 | 98% | 143.1% | $+171.66 | 12 | 91.7% | 35.3% |
-| `0xa451...449e` | A | 24.48 | 32 | 55% | 108.4% | $+130.13 | 12 | 83.3% | 28.4% |
-| `0x44c4...09cb` | B | 26.40 | 115 | 62% | 133.3% | $+479.87 | 35 | 82.9% | 55.3% |
-| `0x0a7c...8964` | B | 27.22 | 991 | 85% | 180.8% | $+234.98 | 8 | 87.5% | 56.8% |
-| `0x6f16...5fe7` | B | 25.16 | 41 | 65% | 192.8% | $+231.31 | 12 | 83.3% | 35.6% |
+| `0x6f16...5fe7` | A | 23.16 | 38 | 67% | 161.6% | $+161.64 | 10 | 80.0% | 35.6% |
+| `0x7fcf...80ac` | A | 10.77 | 18 | 34% | 99.5% | $+109.51 | 8 | 75.0% | 36.5% |
+| `0x18c2...529a` | B | 27.87 | 913 | 80% | 72.1% | $+619.78 | 63 | 92.1% | 46.2% |
+| `0x44c4...09cb` | B | 26.34 | 116 | 62% | 133.3% | $+479.87 | 35 | 82.9% | 55.3% |
 | `0x2b17...d36d` | B | 25.40 | 417 | 73% | 119.9% | $+203.76 | 10 | 70.0% | 53.7% |
-| `0x819d...6e9c` | B | 27.31 | 26 | 26% | 124.0% | $+148.79 | 11 | 100.0% | 46.7% |
+| `0x092b...614e` | B | 25.29 | 150 | 97% | 97.5% | $+185.35 | 18 | 83.3% | 61.6% |
+| `0x21cc...54bc` | B | 28.66 | 170 | 99% | 65.3% | $+182.99 | 28 | 92.9% | 32.1% |
+| `0x819d...6e9c` | B | 27.31 | 26 | 26% | 124.0% | $+148.79 | 11 | 100.0% | 46.6% |
 
 ## Active Watchlist
 
 - Wallets: 20
-- Aggregate closed copy trades: 603
-- Aggregate copy ROI: 119.7%
-- Aggregate copy PnL: $+8788.86
-- Aggregate copy win rate: 86.4%
-- Worst included CopyROI: 45.0%
+- Aggregate closed copy trades: 533
+- Aggregate copy ROI: 99.9%
+- Aggregate copy PnL: $+6643.49
+- Aggregate copy win rate: 82.6%
+- Worst included CopyROI: 44.4%
 
 | Wallet | Tier | Smart | Bot | WatchScore | TargetT | Target% | CopyROI | CopyPnL | CopyT | CopyWin | AvgNotional | Sources |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| `0x9c03...522d` | B | 100.0 | 33.2 | 1204.7 | 190 | 65% | 244.1% | $+1439.94 | 57 | 96.5% | $756 | existing |
 | `0x4362...9e47` | B | 100.0 | 34.9 | 844.4 | 137 | 47% | 172.5% | $+724.43 | 41 | 92.7% | $1329 | existing |
-| `0x3c2b...825e` | B | 100.0 | 34.1 | 829.7 | 554 | 96% | 150.4% | $+1127.82 | 66 | 95.5% | $299 | existing,holder |
-| `0x3b5a...87ef` | B | 100.0 | 32.3 | 777.7 | 56 | 29% | 150.8% | $+874.55 | 43 | 69.8% | $516 | existing |
-| `0x888b...5d1a` | B | 100.0 | 34.9 | 730.6 | 37 | 31% | 146.5% | $+541.93 | 33 | 90.9% | $3106 | existing |
+| `0x3c2b...825e` | B | 100.0 | 33.9 | 803.6 | 563 | 96% | 143.3% | $+1117.96 | 68 | 92.7% | $313 | existing,holder |
+| `0x3b5a...87ef` | B | 100.0 | 33.1 | 782.3 | 59 | 29% | 150.7% | $+904.09 | 45 | 68.9% | $502 | existing |
 | `0x5b1d...3721` | B | 100.0 | 34.6 | 662.9 | 49 | 96% | 196.7% | $+236.02 | 9 | 88.9% | $6758 | existing |
 | `0x54fc...76eb` | B | 100.0 | 30.7 | 646.9 | 51 | 88% | 210.5% | $+252.56 | 7 | 71.4% | $828 | existing |
-| `0x0d66...ff1d` | B | 100.0 | 34.2 | 588.3 | 117 | 98% | 106.1% | $+519.73 | 32 | 87.5% | $839 | existing,holder |
+| `0x0d66...ff1d` | B | 100.0 | 34.2 | 585.3 | 117 | 98% | 106.1% | $+519.73 | 32 | 87.5% | $839 | existing |
 | `0x760f...326a` | B | 100.0 | 30.7 | 563.3 | 15 | 14% | 121.1% | $+290.65 | 20 | 85.0% | $5102 | existing |
 | `0x17fe...b0ca` | B | 100.0 | 33.5 | 562.4 | 118 | 100% | 110.2% | $+275.50 | 24 | 83.3% | $571 | existing |
-| `0x9caf...94dc` | B | 100.0 | 32.1 | 562.0 | 70 | 57% | 103.7% | $+300.79 | 28 | 96.4% | $2918 | existing |
 | `0x73e2...46ec` | A | 100.0 | 5.2 | 554.3 | 16 | 26% | 129.2% | $+142.10 | 11 | 90.9% | $2834 | existing |
 | `0x586a...be99` | B | 100.0 | 35.0 | 532.6 | 49 | 84% | 129.7% | $+194.50 | 12 | 83.3% | $1689 | existing |
-| `0x18c2...529a` | B | 100.0 | 27.8 | 495.1 | 917 | 80% | 70.9% | $+595.82 | 62 | 91.9% | $303 | existing |
-| `0x092b...614e` | B | 100.0 | 25.4 | 494.3 | 149 | 97% | 97.5% | $+185.35 | 18 | 83.3% | $1033 | existing |
+| `0xe760...f2f9` | B | 100.0 | 30.6 | 503.2 | 137 | 100% | 69.1% | $+400.80 | 40 | 87.5% | $5431 | existing,leaderboard_profit_7d |
 | `0x2d44...4bae` | A | 100.0 | 14.9 | 462.8 | 15 | 35% | 117.9% | $+94.33 | 7 | 71.4% | $946 | existing |
-| `0x7fcf...80ac` | A | 100.0 | 10.8 | 443.2 | 18 | 34% | 99.5% | $+109.51 | 8 | 75.0% | $1826 | existing |
-| `0x578e...c3c0` | B | 100.0 | 31.6 | 431.0 | 48 | 30% | 57.0% | $+267.89 | 45 | 80.0% | $1331 | existing |
+| `0x578e...c3c0` | B | 100.0 | 31.6 | 430.8 | 48 | 30% | 57.0% | $+267.89 | 45 | 80.0% | $1326 | existing |
 | `0x7124...f0b5` | A | 98.7 | 22.5 | 429.9 | 49 | 79% | 100.3% | $+160.57 | 8 | 62.5% | $7903 | existing |
-| `0x0e24...7014` | B | 100.0 | 30.7 | 415.2 | 222 | 98% | 45.0% | $+454.87 | 72 | 77.8% | $1180 | existing,holder |
+| `0x0e24...7014` | B | 100.0 | 31.3 | 421.1 | 233 | 98% | 46.5% | $+492.83 | 77 | 77.9% | $1186 | existing |
+| `0x68cb...6f57` | A | 100.0 | 20.9 | 402.4 | 72 | 60% | 50.5% | $+207.07 | 34 | 64.7% | $547 | existing |
+| `0x66ef...a836` | B | 100.0 | 18.0 | 392.6 | 32 | 97% | 122.4% | $+48.97 | 3 | 100.0% | $943 | existing |
+| `0x95c1...94d7` | B | 100.0 | 27.3 | 386.9 | 56 | 50% | 44.4% | $+159.96 | 34 | 94.1% | $1068 | existing |
+| `0x8bd3...f69a` | B | 100.0 | 25.2 | 386.9 | 20 | 32% | 67.1% | $+107.43 | 11 | 72.7% | $5314 | existing |
+| `0x2c63...0ca5` | A | 100.0 | 17.4 | 383.6 | 25 | 96% | 92.2% | $+46.10 | 5 | 80.0% | $1330 | existing |
 
 ## Sports Positive Copy
 
@@ -79,16 +81,16 @@
 
 | Wallet | Tier | Smart | Bot | SportsScore | TargetT | TargetLarge | Target% | TargetCopyROI | TargetCopyPnL | TargetCopyT | TargetCopyWin | CopyROI | Sources | Risks |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|
-| `0x17e2...d472` | B | 100.0 | 31.9 | 1034.5 | 384 | 293 | 38% | 183.1% | $+1684.64 | 87 | 97.7% | 183.2% | existing,holder | open_copy_exposure,opposite_side_same_market |
-| `0x6e32...ab65` | B | 100.0 | 34.6 | 670.6 | 774 | 284 | 62% | 132.1% | $+1188.59 | 34 | 100.0% | 129.2% | existing,holder | burst_trading,open_copy_exposure |
-| `0x5135...7217` | B | 100.0 | 33.8 | 583.1 | 1373 | 378 | 100% | 106.9% | $+1090.68 | 36 | 100.0% | 106.9% | existing,holder | burst_trading,open_copy_exposure |
-| `0x4cb0...57e0` | B | 100.0 | 34.0 | 517.7 | 627 | 272 | 93% | 108.5% | $+271.29 | 21 | 100.0% | 107.7% | existing,holder | burst_trading,open_copy_exposure |
-| `0x4b59...3aa6` | B | 100.0 | 32.8 | 490.6 | 1186 | 288 | 100% | 104.3% | $+792.39 | 16 | 100.0% | 104.3% | existing,holder | burst_trading,open_copy_exposure |
-| `0x21cc...54bc` | B | 100.0 | 28.7 | 424.6 | 170 | 82 | 99% | 65.3% | $+182.99 | 28 | 92.9% | 65.3% | existing | opposite_side_same_market |
-| `0x59a8...eb4e` | B | 100.0 | 33.2 | 405.6 | 127 | 72 | 28% | 75.4% | $+150.82 | 18 | 72.2% | 86.2% | existing | open_copy_exposure,opposite_side_same_market |
+| `0x17e2...d472` | B | 100.0 | 31.7 | 1043.5 | 388 | 299 | 38% | 181.5% | $+1814.84 | 94 | 97.9% | 180.8% | existing | opposite_side_same_market |
+| `0x6e32...ab65` | B | 100.0 | 34.9 | 668.6 | 689 | 244 | 54% | 139.3% | $+1072.32 | 28 | 100.0% | 133.0% | existing | burst_trading,open_copy_exposure |
+| `0x5135...7217` | B | 100.0 | 34.4 | 608.7 | 1365 | 362 | 100% | 109.2% | $+1310.34 | 40 | 100.0% | 109.2% | existing | burst_trading,open_copy_exposure |
+| `0x4cb0...57e0` | B | 100.0 | 33.9 | 545.1 | 632 | 277 | 93% | 110.9% | $+321.63 | 25 | 100.0% | 110.1% | existing,holder | burst_trading,open_copy_exposure |
+| `0x4b59...3aa6` | B | 100.0 | 33.0 | 512.0 | 1190 | 292 | 100% | 108.7% | $+891.57 | 17 | 100.0% | 108.7% | existing,holder | burst_trading,open_copy_exposure |
+| `0xf3ce...a57a` | B | 100.0 | 34.5 | 467.8 | 1161 | 1109 | 100% | 62.6% | $+1051.00 | 84 | 92.9% | 62.6% | existing,leaderboard_profit_7d | burst_trading,open_copy_exposure,opposite_side_same_market |
+| `0x59a8...eb4e` | B | 100.0 | 33.0 | 406.0 | 127 | 72 | 29% | 75.4% | $+150.82 | 18 | 72.2% | 86.7% | existing | open_copy_exposure,opposite_side_same_market |
 | `0x0931...e78e` | B | 100.0 | 25.8 | 379.6 | 125 | 71 | 69% | 71.2% | $+106.79 | 15 | 73.3% | 59.4% | existing | open_copy_exposure,opposite_side_same_market |
-| `0x68cb...6f57` | A | 100.0 | 20.9 | 375.8 | 72 | 58 | 60% | 54.0% | $+156.56 | 22 | 63.6% | 50.5% | existing | opposite_side_same_market |
-| `0x272d...bc2f` | B | 100.0 | 28.8 | 364.4 | 565 | 301 | 56% | 64.8% | $+123.12 | 17 | 82.3% | 57.3% | existing | open_copy_exposure,opposite_side_same_market |
+| `0x272d...bc2f` | B | 100.0 | 28.8 | 370.4 | 577 | 306 | 56% | 64.7% | $+135.77 | 19 | 79.0% | 57.7% | existing | open_copy_exposure,opposite_side_same_market |
+| `0x119e...cb14` | B | 100.0 | 31.5 | 346.9 | 31 | 26 | 91% | 84.4% | $+92.81 | 5 | 100.0% | 84.4% | existing | opposite_side_same_market |
 
 ## Leaderboard Scout
 
@@ -97,7 +99,7 @@
 
 | Wallet | Tier | Smart | Bot | ScoutScore | TargetT | Target% | CopyROI | CopyT | Large | AvgNotional | Sources | Risks |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|
-| `0x65c1...2988` | C | 100.0 | 36.2 | 231.9 | 1357 | 96% | 395.0% | 1 | 404 | $609 | existing,leaderboard_profit_30d,leaderboard_profit_7d | burst_trading,open_copy_exposure |
+| `0x65c1...2988` | C | 100.0 | 36.2 | 229.1 | 1367 | 97% | 395.0% | 1 | 383 | $539 | existing,leaderboard_profit_30d,leaderboard_profit_7d | burst_trading,open_copy_exposure |
 
 ## Target Category Scout
 
@@ -106,12 +108,12 @@
 
 | Wallet | Tier | Smart | Bot | TargetScore | TargetT | TargetLarge | Target% | TargetCopyROI | TargetCopyT | CopyROI | CopyT | AvgNotional | Sources | Risks |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|
-| `0x3724...69b5` | A | 100.0 | 24.9 | 279.7 | 882 | 636 | 96% | 10.2% | 10 | 9.4% | 11 | $503 | existing | open_copy_exposure,opposite_side_same_market |
+| `0x3724...69b5` | A | 100.0 | 24.9 | 288.1 | 938 | 679 | 96% | 10.2% | 10 | 9.4% | 11 | $505 | existing,holder | open_copy_exposure,opposite_side_same_market |
+| `0x682c...ef07` | C | 100.0 | 35.6 | 220.4 | 799 | 367 | 92% | 24.7% | 22 | 21.3% | 26 | $137 | existing,holder | open_copy_exposure,opposite_side_same_market |
 | `0x54f0...7725` | A | 100.0 | 24.4 | 219.7 | 287 | 175 | 83% | 10.9% | 50 | 11.0% | 59 | $628 | existing | opposite_side_same_market |
-| `0x682c...ef07` | C | 100.0 | 35.5 | 219.0 | 771 | 356 | 92% | 28.6% | 21 | 24.5% | 25 | $137 | existing,holder | open_copy_exposure,opposite_side_same_market |
-| `0x257a...b42a` | C | 100.0 | 38.5 | 215.1 | 612 | 378 | 89% | 29.1% | 86 | 27.6% | 93 | $233 | existing | open_copy_exposure,opposite_side_same_market |
-| `0xd052...563d` | B | 100.0 | 35.0 | 211.6 | 305 | 265 | 70% | 17.4% | 76 | 22.4% | 95 | $1086 | existing,holder | open_copy_exposure,opposite_side_same_market |
-| `0xadfa...324e` | C | 100.0 | 41.4 | 208.9 | 1111 | 347 | 82% | 121.7% | 23 | 126.8% | 28 | $392 | existing,holder | burst_trading,open_copy_exposure |
+| `0x257a...b42a` | C | 100.0 | 38.5 | 218.8 | 616 | 382 | 89% | 29.1% | 86 | 27.6% | 93 | $236 | existing,holder | open_copy_exposure,opposite_side_same_market |
+| `0x07b1...6dfc` | C | 100.0 | 41.1 | 209.8 | 1351 | 319 | 94% | 108.0% | 28 | 106.9% | 31 | $400 | existing | burst_trading,open_copy_exposure,opposite_side_same_market |
+| `0xadfa...324e` | C | 100.0 | 40.4 | 206.3 | 1052 | 331 | 77% | 110.0% | 20 | 117.6% | 25 | $387 | existing,holder | burst_trading,open_copy_exposure |
 | `0x42f1...f53f` | B | 100.0 | 27.9 | 203.3 | 97 | 73 | 86% | 46.4% | 24 | 39.4% | 26 | $671 | existing | open_copy_exposure,opposite_side_same_market |
 | `0x13c8...a814` | B | 100.0 | 32.8 | 201.2 | 422 | 232 | 75% | 39.0% | 50 | 34.8% | 62 | $270 | existing | open_copy_exposure,opposite_side_same_market |
 | `0x2248...bc0e` | B | 100.0 | 29.7 | 200.8 | 151 | 115 | 84% | 26.8% | 13 | 26.8% | 13 | $403 | existing | open_copy_exposure,opposite_side_same_market |
@@ -158,16 +160,18 @@ No sports-tape wallets qualified for probation edge observation.
 
 ## Live Edge Blocked Push Wallets
 
-- Wallets: 5
+- Wallets: 7
 - Rule: wallets remain in research layers, but are removed from Telegram push when measured 15m/1h edge breaches the live block gate.
 
 | Wallet | Tier | Smart | Bot | Reason | CopyROI | CopyT | Sources | Risks |
 |---|---|---:|---:|---|---:|---:|---|---|
 | `0x7124...f0b5` | A | 98.7 | 22.5 | 15m edge -1.22pp over 2 samples | 100.3% | 8 | existing | open_copy_exposure,opposite_side_same_market |
-| `0x44c4...09cb` | B | 100.0 | 26.4 | 1h edge -15.87pp over 1 samples | 133.3% | 35 | existing | open_copy_exposure,opposite_side_same_market |
+| `0x44c4...09cb` | B | 100.0 | 26.3 | 1h edge -15.87pp over 1 samples | 133.3% | 35 | existing,holder | open_copy_exposure,opposite_side_same_market |
 | `0x5b1d...3721` | B | 100.0 | 34.6 | 1h edge -17.38pp over 1 samples | 196.7% | 9 | existing | open_copy_exposure,opposite_side_same_market |
-| `0x18c2...529a` | B | 100.0 | 27.8 | 1h edge -52.95pp over 1 samples | 70.9% | 62 | existing | open_copy_exposure,opposite_side_same_market |
-| `0x0e24...7014` | B | 100.0 | 30.7 | 1h edge -72.59pp over 1 samples | 45.0% | 72 | existing,holder | opposite_side_same_market |
+| `0x119e...cb14` | B | 100.0 | 31.5 | 1h edge -36.88pp over 1 samples | 84.4% | 5 | existing | opposite_side_same_market |
+| `0xf3ce...a57a` | B | 100.0 | 34.5 | 1h edge -47.28pp over 1 samples | 62.6% | 84 | existing,leaderboard_profit_7d | burst_trading,open_copy_exposure,opposite_side_same_market |
+| `0x18c2...529a` | B | 100.0 | 27.9 | 1h edge -52.95pp over 1 samples | 72.1% | 63 | existing | open_copy_exposure,opposite_side_same_market |
+| `0x0e24...7014` | B | 100.0 | 31.3 | 1h edge -72.59pp over 1 samples | 46.5% | 77 | existing | opposite_side_same_market |
 
 ## Direct Sports Tape Gate Review
 
@@ -175,7 +179,7 @@ No sports-tape wallets qualified for probation edge observation.
 
 | Wallet | Status | EdgeBlock | Tier | Bot | MaxBuy | BuyNotional | Buys | CopyROI | CopyT | Risks |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---|
-| `0xf1ef...8cd6` | reject-bot | - | D | 59.1 | $5600 | $5600 | 1 | 50.6% | 22 | bot_like_flow,burst_trading,open_copy_exposure,opposite_side_same_market |
+| `0x34dd...fd83` | reject-flow | - | C | 37.5 | $375861 | $465978 | 3 | 116.0% | 1 | burst_trading,fixed_price |
 
 ## Sports Tape Candidate Review
 
@@ -184,21 +188,21 @@ No sports-tape wallets qualified for probation edge observation.
 
 | Wallet | Status | EdgeBlock | Tier | Smart | Bot | TapeScore | TargetT | TargetLarge | Target% | TargetCopyROI | TargetCopyT | CopyROI | CopyT | Sources | Risks |
 |---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|
-| `0xf1ef...8cd6` | reject | - | D | 100.0 | 59.1 | 139.1 | 125 | 54 | 9% | 46.4% | 6 | 50.6% | 22 | existing,holder,sports_tape | bot_like_flow,burst_trading,open_copy_exposure,opposite_side_same_market |
+| `0x34dd...fd83` | watch | - | C | 92.9 | 37.5 | 154.0 | 57 | 27 | 100% | 116.0% | 1 | 116.0% | 1 | existing,leaderboard_profit_30d,leaderboard_profit_7d,sports_tape | burst_trading,fixed_price |
 
 ## Top Strategies
 
 | Rank | Wallets | CopyT | CopyROI | CopyPnL | CopyWin | MedianROI | WorstROI | Open/Cap | Params |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| 1 | 11 | 185 | 128.7% | $+2716.37 | 87.6% | 124.0% | 104.0% | 5.38x | tier>=B bot<30 copyT>=8 copyROI>=100 copyPnL>=25 copyWin>=60 closedROI>=0 smart>=70 |
-| 2 | 10 | 175 | 129.5% | $+2512.61 | 88.6% | 128.6% | 104.0% | 4.29x | tier>=B bot<30 copyT>=8 copyROI>=100 copyPnL>=25 copyWin>=80 closedROI>=0 smart>=70 |
-| 3 | 15 | 301 | 107.4% | $+3790.04 | 88.4% | 115.4% | 65.3% | 4.61x | tier>=B bot<30 copyT>=8 copyROI>=60 copyPnL>=100 copyWin>=60 closedROI>=0 smart>=70 |
-| 4 | 16 | 310 | 105.7% | $+3869.58 | 88.4% | 112.2% | 61.2% | 4.48x | tier>=B bot<30 copyT>=8 copyROI>=60 copyPnL>=25 copyWin>=60 closedROI>=0 smart>=70 |
-| 5 | 19 | 380 | 96.2% | $+4241.40 | 87.9% | 108.4% | 44.4% | 4.93x | tier>=B bot<30 copyT>=8 copyROI>=40 copyPnL>=25 copyWin>=70 closedROI>=10 smart>=70 |
-| 6 | 10 | 177 | 125.3% | $+2481.39 | 87.6% | 121.9% | 104.0% | 3.28x | tier>=B bot<30 copyT>=10 copyROI>=100 copyPnL>=25 copyWin>=60 closedROI>=0 smart>=70 |
-| 7 | 19 | 391 | 95.0% | $+4295.02 | 88.2% | 108.4% | 44.4% | 4.61x | tier>=B bot<30 copyT>=8 copyROI>=10 copyPnL>=50 copyWin>=70 closedROI>=0 smart>=70 |
-| 8 | 20 | 400 | 94.0% | $+4334.96 | 88.2% | 106.2% | 44.4% | 4.71x | tier>=B bot<30 copyT>=8 copyROI>=40 copyPnL>=25 copyWin>=70 closedROI>=0 smart>=70 |
-| 9 | 18 | 371 | 97.3% | $+4201.46 | 87.9% | 108.7% | 44.4% | 4.82x | tier>=B bot<30 copyT>=8 copyROI>=10 copyPnL>=50 copyWin>=70 closedROI>=10 smart>=70 |
-| 10 | 20 | 400 | 94.0% | $+4408.38 | 86.2% | 106.2% | 44.4% | 4.58x | tier>=B bot<30 copyT>=8 copyROI>=40 copyPnL>=50 copyWin>=60 closedROI>=10 smart>=70 |
-| 11 | 21 | 409 | 93.1% | $+4448.32 | 86.3% | 104.0% | 44.4% | 4.68x | tier>=B bot<30 copyT>=8 copyROI>=40 copyPnL>=25 copyWin>=60 closedROI>=10 smart>=70 |
-| 12 | 20 | 397 | 93.5% | $+4284.20 | 87.4% | 106.2% | 25.2% | 4.76x | tier>=B bot<30 copyT>=8 copyROI>=10 copyPnL>=25 copyWin>=70 closedROI>=10 smart>=70 |
+| 1 | 13 | 282 | 102.9% | $+3395.61 | 88.7% | 115.4% | 65.3% | 3.39x | tier>=B bot<30 copyT>=8 copyROI>=60 copyPnL>=25 copyWin>=60 closedROI>=0 smart>=70 |
+| 2 | 12 | 274 | 103.0% | $+3286.10 | 89.1% | 117.6% | 65.3% | 3.42x | tier>=B bot<30 copyT>=10 copyROI>=60 copyPnL>=25 copyWin>=60 closedROI>=0 smart>=70 |
+| 3 | 16 | 356 | 92.7% | $+3827.58 | 87.9% | 106.4% | 44.4% | 3.80x | tier>=B bot<30 copyT>=8 copyROI>=10 copyPnL>=50 copyWin>=70 closedROI>=0 smart>=70 |
+| 4 | 15 | 345 | 94.0% | $+3740.14 | 87.8% | 108.9% | 44.4% | 3.92x | tier>=B bot<30 copyT>=8 copyROI>=10 copyPnL>=100 copyWin>=70 closedROI>=0 smart>=70 |
+| 5 | 17 | 365 | 91.6% | $+3867.52 | 87.9% | 104.0% | 44.4% | 3.93x | tier>=B bot<30 copyT>=8 copyROI>=40 copyPnL>=25 copyWin>=70 closedROI>=0 smart>=70 |
+| 6 | 16 | 365 | 92.2% | $+3864.96 | 86.6% | 106.4% | 44.4% | 3.87x | tier>=B bot<30 copyT>=8 copyROI>=40 copyPnL>=100 copyWin>=60 closedROI>=10 smart>=70 |
+| 7 | 18 | 385 | 89.7% | $+4034.50 | 86.2% | 101.8% | 44.4% | 3.64x | tier>=B bot<30 copyT>=8 copyROI>=40 copyPnL>=50 copyWin>=60 closedROI>=10 smart>=70 |
+| 8 | 14 | 337 | 93.8% | $+3630.63 | 88.1% | 112.2% | 44.4% | 3.96x | tier>=B bot<30 copyT>=10 copyROI>=10 copyPnL>=100 copyWin>=70 closedROI>=0 smart>=70 |
+| 9 | 11 | 264 | 102.1% | $+3082.34 | 89.8% | 115.4% | 65.3% | 2.61x | tier>=B bot<30 copyT>=8 copyROI>=60 copyPnL>=25 copyWin>=80 closedROI>=0 smart>=70 |
+| 10 | 15 | 348 | 92.5% | $+3718.07 | 88.2% | 108.9% | 44.4% | 3.83x | tier>=B bot<30 copyT>=10 copyROI>=10 copyPnL>=50 copyWin>=70 closedROI>=0 smart>=70 |
+| 11 | 19 | 394 | 88.8% | $+4074.44 | 86.3% | 99.5% | 44.4% | 3.76x | tier>=B bot<30 copyT>=8 copyROI>=40 copyPnL>=25 copyWin>=60 closedROI>=10 smart>=70 |
+| 12 | 16 | 368 | 90.8% | $+3842.89 | 87.0% | 106.4% | 44.4% | 3.78x | tier>=B bot<30 copyT>=10 copyROI>=40 copyPnL>=25 copyWin>=60 closedROI>=10 smart>=70 |
