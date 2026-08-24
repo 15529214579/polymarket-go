@@ -1,1 +1,2 @@
-0x65c18d740c8246af3353741c0b32e4b6da552988 # list=scout tier=C smart=100.00 bot=36.22 copyROI=395.0% copyPnL=$+316.02 copyT=1 copyWin=100.0% avgNotional=$539 sources=existing,leaderboard_profit_30d,leaderboard_profit_7d
+0x168a51f1cac0ad3b166797069382495a8aa10d24 # list=scout tier=B smart=99.08 bot=27.30 copyROI=79.7% copyPnL=$+215.11 copyT=2 copyWin=100.0% avgNotional=$29240 sources=existing,leaderboard_profit_30d,leaderboard_volume_7d
+0x65c18d740c8246af3353741c0b32e4b6da552988 # list=scout tier=C smart=100.00 bot=36.29 copyROI=395.0% copyPnL=$+316.02 copyT=1 copyWin=100.0% avgNotional=$518 sources=existing,leaderboard_profit_30d
