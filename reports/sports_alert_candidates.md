@@ -1,8 +1,8 @@
 # Sports Alert Candidates
 
-**Generated:** 2026-08-24 00:10 +08
+**Generated:** 2026-08-25 00:10 +08
 
-- Recent BUY rows inspected: 6
+- Recent BUY rows inspected: 0
 - Diagnostic window: 6h0m0s
 - Alert window: 10m0s
 - Consensus alert window: 15m0s
@@ -101,7 +101,7 @@
 
 | Status | Wallets | Trades | Total | VWAP | LastAge | Participants | Reason | Market |
 |---|---:|---:|---:|---:|---:|---|---|---|
-| consensus | 2 | 3 | $8461 | 0.717 | 3m | `0x3b62...5cc8`, `0xc05e...24ae` | consensus burst in diagnostic window | Will Liverpool FC win on 2026-08-23? |
+| none | 0 | 0 | $0 | 0.000 |  |  |  |  |
 
 ## Unknown Multi-Market Flow
 
@@ -131,9 +131,4 @@
 
 | Status | Mode | Wallet | List | Tier | Bot | Notional | Age | Reason | Market |
 |---|---|---|---|---|---:|---:|---:|---|---|
-| blocked | OBSERVE | `0x3b62...5cc8` | - | - | 0.0 | $3600 | 3m | observe wallet unscored | Will Liverpool FC win on 2026-08-23? |
-| blocked | OBSERVE | `0x3b62...5cc8` | - | - | 0.0 | $3565 | 5m | observe wallet unscored | Will Liverpool FC win on 2026-08-23? |
-| blocked | OBSERVE | `0xc05e...24ae` | - | - | 0.0 | $1296 | 3m | observe wallet unscored | Will Liverpool FC win on 2026-08-23? |
-| blocked | OBSERVE | `0xbc43...96d3` | - | D | 48.3 | $812 | 9m | bot 48.3 > 35.0 | Will Newcastle United FC win on 2026-08-23? |
-| blocked | OBSERVE | `0xf0de...8048` | - | - | 0.0 | $600 | 13m | observe wallet unscored | Indiana Fever vs. Chicago Sky |
-| blocked | OBSERVE | `0xf0de...8048` | - | - | 0.0 | $509 | 8m | observe wallet unscored | Indiana Fever vs. Chicago Sky |
+| none |  |  |  |  | 0.0 | $0 |  |  |  |
