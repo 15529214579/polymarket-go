@@ -1,10 +1,10 @@
 0x13c8c604e315450c626bd3e7ffe2e6c7dc7ea814 # list=target tier=B smart=100.00 bot=32.80 copyROI=34.8% copyPnL=$+250.48 copyT=62 copyWin=64.5% avgNotional=$270 sources=existing
-0x18c2841c2e333538851f4aeef9cbc455d772529a # list=target tier=C smart=100.00 bot=42.98 copyROI=71.8% copyPnL=$+617.09 copyT=63 copyWin=92.1% avgNotional=$287 sources=existing,holder
+0x18c2841c2e333538851f4aeef9cbc455d772529a # list=target tier=C smart=100.00 bot=43.02 copyROI=71.8% copyPnL=$+617.09 copyT=63 copyWin=92.1% avgNotional=$288 sources=existing
 0x224893a2bd098eec718247d6f5af49f6e7f0bc0e # list=target tier=B smart=100.00 bot=29.67 copyROI=26.8% copyPnL=$+45.55 copyT=13 copyWin=46.1% avgNotional=$403 sources=existing
 0x257aec64c9f39f4dac97449f80033a484e24b42a # list=target tier=C smart=100.00 bot=38.49 copyROI=27.6% copyPnL=$+306.28 copyT=93 copyWin=59.1% avgNotional=$236 sources=existing
-0x272d83eacf863ace931e0860a7d35c2f9820bc2f # list=target tier=B smart=100.00 bot=28.74 copyROI=57.7% copyPnL=$+184.57 copyT=29 copyWin=72.4% avgNotional=$190 sources=existing
-0x3724379b7192ddf7fb43aadbba6d8bc3895e69b5 # list=target tier=A smart=100.00 bot=24.90 copyROI=9.4% copyPnL=$+16.00 copyT=11 copyWin=54.5% avgNotional=$501 sources=existing
+0x3724379b7192ddf7fb43aadbba6d8bc3895e69b5 # list=target tier=A smart=100.00 bot=24.91 copyROI=9.4% copyPnL=$+16.00 copyT=11 copyWin=54.5% avgNotional=$506 sources=existing,holder
 0x42f156004cf1db3fef1475a0f09815f12880f53f # list=target tier=B smart=100.00 bot=27.92 copyROI=39.4% copyPnL=$+106.31 copyT=26 copyWin=69.2% avgNotional=$671 sources=existing
+0x51d36822506d49cd89f98352e030a7e22d7f1719 # list=target tier=B smart=100.00 bot=27.62 copyROI=48.4% copyPnL=$+188.88 copyT=31 copyWin=51.6% avgNotional=$191 sources=existing
 0x54f017c3ab1c9dfd169e62bb5e99d147ffa57725 # list=target tier=A smart=100.00 bot=24.44 copyROI=11.0% copyPnL=$+80.43 copyT=59 copyWin=57.6% avgNotional=$628 sources=existing
 0x77958accec3edfc6ea0194e8fb954647456b9a17 # list=target tier=B smart=100.00 bot=29.94 copyROI=46.9% copyPnL=$+121.97 copyT=25 copyWin=52.0% avgNotional=$3028 sources=existing
 0xadfaada4a21c0b3d5c6459f2374d1e3dfd43324e # list=target tier=C smart=100.00 bot=40.33 copyROI=117.6% copyPnL=$+952.39 copyT=25 copyWin=96.0% avgNotional=$388 sources=existing
