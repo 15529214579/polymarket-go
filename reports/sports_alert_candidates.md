@@ -1,8 +1,8 @@
 # Sports Alert Candidates
 
-**Generated:** 2026-08-28 00:10 +08
+**Generated:** 2026-08-29 00:10 +08
 
-- Recent BUY rows inspected: 0
+- Recent BUY rows inspected: 1
 - Diagnostic window: 6h0m0s
 - Alert window: 10m0s
 - Consensus alert window: 15m0s
@@ -131,4 +131,4 @@
 
 | Status | Mode | Wallet | List | Tier | Bot | Notional | Age | Reason | Market |
 |---|---|---|---|---|---:|---:|---:|---|---|
-| none |  |  |  |  | 0.0 | $0 |  |  |  |
+| blocked | REVERSAL-RISK | `0x076d...8d4c` | tape_reversal | D | 40.7 | $1420 | 8m | reversal risk disabled | Will Arsenal FC win on 2026-08-31? |
