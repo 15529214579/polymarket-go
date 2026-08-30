@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-29T00:19:14+08:00",
+  "generated_at": "2026-08-30T00:19:43+08:00",
   "log_path": "/Users/murphyma/work/polymarket-go/db/journal/whale_trades.jsonl",
   "wallets_path": "/Users/murphyma/work/polymarket-go/wallets.strategy-push.txt,/Users/murphyma/work/polymarket-go/wallets.football-score-push.txt,/Users/murphyma/work/polymarket-go/wallets.leaderboard-push.txt,/Users/murphyma/work/polymarket-go/wallets.leaderboard-watch.txt,/Users/murphyma/work/polymarket-go/wallets.leaderboard-sports-push.txt,/Users/murphyma/work/polymarket-go/wallets.sports-holders-push.txt",
   "report_path": "/Users/murphyma/work/polymarket-go/reports/whale_performance.md",
@@ -16,7 +16,7 @@
     "target": 500,
     "watch": 500
   },
-  "since": "2026-08-28T15:34:33Z",
+  "since": "2026-08-29T15:17:56Z",
   "repeat_cooldown": "3m0s",
   "repeat_min_notional": 5000,
   "raw_buys": 0,

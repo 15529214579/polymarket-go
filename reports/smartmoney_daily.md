@@ -1,13 +1,13 @@
 # Smart Money Daily
 
-**Generated:** 2026-08-29 00:19:21 +08
+**Generated:** 2026-08-30 00:19:55 +08
 
 ## Pipeline
 
 - Status: learning
 - Reason: evaluated signals 0 below 10
 - Action: keep current push running and collect more signals
-- Log: `/Users/murphyma/work/polymarket-go/logs/smartmoney-daily-2026-08-29.log`
+- Log: `/Users/murphyma/work/polymarket-go/logs/smartmoney-daily-2026-08-30.log`
 - Discovery report: `/Users/murphyma/work/polymarket-go/reports/strategy_iteration.md`
 - Strategy report: `/Users/murphyma/work/polymarket-go/reports/strategy_lab.md`
 - Sports tape report: `/Users/murphyma/work/polymarket-go/reports/sports_tape.md`
@@ -23,17 +23,17 @@
 - Tape performance report: `/Users/murphyma/work/polymarket-go/reports/whale_performance_tape.md`
 - Push performance report: `/Users/murphyma/work/polymarket-go/reports/whale_performance.md`
 - Paper PnL report: `/Users/murphyma/work/polymarket-go/reports/smartmoney-paper-pnl.md` (status 0)
-- Paper wallet policy: `/Users/murphyma/work/polymarket-go/reports/smartmoney-paper-wallets.md` (status 0, changed no, worker not needed)
+- Paper wallet policy: `/Users/murphyma/work/polymarket-go/reports/smartmoney-paper-wallets.md` (status 0, changed yes, worker restarted after wallet policy change)
 - Paper exit shadow: `/Users/murphyma/work/polymarket-go/reports/smartmoney-exit-shadow.md` (status 0)
 - Maintenance report: `/Users/murphyma/work/polymarket-go/reports/wallet_maintenance.md`
 
 ## Wallet Lists
 
-- Core before count: 13
-- Core after count: 10
+- Core before count: 16
+- Core after count: 16
 - Watch after count: 20
 - Sports after count: 10
-- Scout after count: 1
+- Scout after count: 3
 - Target after count: 10
 - Flow after count: 0
 - Tape after count: 0
@@ -44,10 +44,10 @@
 - Tape edge-hot count: 1
 - Tape reversal count: 8
 - Consensus research count: 8
-- Push before count: 50
-- Push after count: 43
+- Push before count: 53
+- Push after count: 49
 - Quarantine count: 3
-- Review-noise exclude count: 423
+- Review-noise exclude count: 424
 - Edge snapshots: 1282
 - Sports tape alert sent: 5
 - Sports tape alert logged: 5
@@ -57,7 +57,7 @@
 - Sports alert eligible now: 0
 - Sports alert accumulation bursts: 0
 - Sports alert consensus bursts: 0
-- Selected core wallets: 10
+- Selected core wallets: 16
 - Core list changed: yes
 - Push list changed: yes
 - Restart needed: no
@@ -65,12 +65,12 @@
 
 ## Backtest Filter
 
-- Closed copy trades: 182
-- Copy ROI: 131.1%
-- Copy PnL: $+2582.27
-- Copy win rate: 88.5%
-- Worst included CopyROI: 104.0%
-- Params: tier>=B bot<30 copyT>=8 copyROI>=100 copyPnL>=25 copyWin>=80 closedROI>=0 smart>=70
+- Closed copy trades: 309
+- Copy ROI: 120.1%
+- Copy PnL: $+4093.78
+- Copy win rate: 89.0%
+- Worst included CopyROI: 65.3%
+- Params: tier>=B bot<30 copyT>=8 copyROI>=60 copyPnL>=25 copyWin>=60 closedROI>=0 smart>=70
 
 ## Live Core Performance
 
