@@ -1,6 +1,7 @@
-0xdc8359fc0c49132b7bfff407d7f26dca5b8f08f4 # source=sports_tape list=sports_holders_push tier=? buys=1 buyNotional=$1475 maxBuy=$1475 targetCopyROI=0.0% targetCopyT=0 bot=0.0
-0xe9076a87c5ed90ef16e6fe6529c943baeca0cff6 # source=sports_tape list=tape_reversal tier=BOT buys=1 buyNotional=$667 maxBuy=$667 targetCopyROI=-6.7% targetCopyT=10 bot=73.2
-0xdb559557d5fdf57f6b0dacc047a447dbd35851dd # source=sports_tape list=- tier=- buys=1 buyNotional=$656 maxBuy=$656 targetCopyROI=0.0% targetCopyT=0 bot=0.0
-0xc186fb1468c17d44abb38ed1ff60c789914ee96e # source=sports_tape list=- tier=- buys=1 buyNotional=$600 maxBuy=$600 targetCopyROI=0.0% targetCopyT=0 bot=0.0
-0x8dc5667e182f4ba1ac9c8a6ed02db849e05fc07d # source=sports_tape list=- tier=- buys=1 buyNotional=$518 maxBuy=$518 targetCopyROI=0.0% targetCopyT=0 bot=0.0
-0x6a2319d434a6a808f1135097dbc5710e01b3394d # source=sports_tape list=- tier=- buys=1 buyNotional=$500 maxBuy=$500 targetCopyROI=0.0% targetCopyT=0 bot=0.0
+0x19ae9efef67c685a8581d631d99267b1ff10395c # source=sports_tape list=sports_holders_push tier=BOT buys=3 buyNotional=$2982 maxBuy=$1000 targetCopyROI=110.5% targetCopyT=3 bot=69.5
+0xae2b0aaea325a32870f56ff19df3b87acaa190ea # source=sports_tape list=- tier=- buys=1 buyNotional=$2500 maxBuy=$2500 targetCopyROI=0.0% targetCopyT=0 bot=0.0
+0x6055af2b735b5840988c2d1025c74981dd2c5fde # source=sports_tape list=- tier=- buys=1 buyNotional=$1000 maxBuy=$1000 targetCopyROI=0.0% targetCopyT=0 bot=0.0
+0x741889695931a255adbdba0b0d169c17e7ac251f # source=sports_tape list=- tier=- buys=1 buyNotional=$1000 maxBuy=$1000 targetCopyROI=0.0% targetCopyT=0 bot=0.0
+0x88db9afb5f365d09438f0baea94c1969f8b354a4 # source=sports_tape list=- tier=- buys=1 buyNotional=$987 maxBuy=$987 targetCopyROI=0.0% targetCopyT=0 bot=0.0
+0x7e2a8ff8da3a83b95588e1fadc0fc89ad827d25c # source=sports_tape list=- tier=- buys=1 buyNotional=$632 maxBuy=$632 targetCopyROI=0.0% targetCopyT=0 bot=0.0
+0x1720de39dda935fd8fedb01a88cf971b55ac3c09 # source=sports_tape list=- tier=- buys=1 buyNotional=$553 maxBuy=$553 targetCopyROI=0.0% targetCopyT=0 bot=0.0

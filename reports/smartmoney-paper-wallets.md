@@ -1,6 +1,6 @@
 # Smartmoney Paper Wallet Policy
 
-Generated: 2026-08-30T22:56:20+08:00
+Generated: 2026-08-31T23:45:50+08:00
 
 - Rule: at least 10 independent wallet-market samples; promote at net >= +5.00U, ROI >= +2.00%, win rate >= 45.0%, and trimmed net >= +1.00U
 - Robustness: best sample <= 60.0% of net; two-sided markets <= 0; demote at net <= -5.00U
@@ -23,6 +23,8 @@ Generated: 2026-08-30T22:56:20+08:00
 | collect | 0xdb83e85ffd22faa4009273034770f96ffc5b1e50 | 3 | 5 | 100.00 | 4.24 | +15.51 | +7.44 | +15.51% | 100.0% | 0 | 3 | 3/10 independent wallet-market samples |
 | collect | 0x84cfffc3f16dcc353094de30d4a45226eccd2f63 | 5 | 5 | 100.00 | 2.35 | +14.28 | +2.83 | +14.28% | 60.0% | 0 | 1 | 5/10 independent wallet-market samples |
 | collect | 0x6d36f06adba52e8dc9c45c6a85192bf5817af787 | 5 | 5 | 100.00 | 5.45 | +13.37 | +7.34 | +13.37% | 80.0% | 0 | 1 | 5/10 independent wallet-market samples |
+| collect | 0x5ad49cd574df6888a0fe1d2b522f334988f06866 | 1 | 1 | 20.00 | 1.55 | +12.59 | +0.00 | +62.93% | 100.0% | 0 | 1 | 1/10 independent wallet-market samples |
+| collect | 0x46072f22bc5624f7ff43489d570fdc7e745ad542 | 1 | 1 | 20.00 | 1.56 | +12.24 | +0.00 | +61.21% | 100.0% | 0 | 1 | 1/10 independent wallet-market samples |
 | collect | 0x092b02c318fdad19d178ad136f0d2eadbaf8614e | 1 | 1 | 20.00 | 0.38 | +11.34 | +0.00 | +56.72% | 100.0% | 0 | 1 | 1/10 independent wallet-market samples |
 | collect | 0x8850aa62401da0974cb78e0e91026fad036860b1 | 1 | 1 | 20.00 | 0.30 | +7.43 | +0.00 | +37.17% | 100.0% | 0 | 1 | 1/10 independent wallet-market samples |
 | collect | 0x257aec64c9f39f4dac97449f80033a484e24b42a | 1 | 1 | 20.00 | 0.88 | +7.27 | +0.00 | +36.35% | 100.0% | 0 | 1 | 1/10 independent wallet-market samples |
@@ -38,12 +40,12 @@ Generated: 2026-08-30T22:56:20+08:00
 | collect | 0x9f41b736a8d04891178df2495921a5a3e88b8f27 | 1 | 1 | 20.00 | 0.22 | +3.74 | +0.00 | +18.70% | 100.0% | 0 | 1 | 1/10 independent wallet-market samples |
 | collect | 0xb5527654d309c6617addabbb64e47931cf35b70c | 4 | 4 | 80.00 | 2.50 | +3.71 | -4.51 | +4.64% | 50.0% | 0 | 1 | 4/10 independent wallet-market samples |
 | collect | 0xc65ca4755436f82d8eb461e65781584b8cadea39 | 1 | 1 | 20.00 | 0.66 | +3.23 | +0.00 | +16.14% | 100.0% | 0 | 1 | 1/10 independent wallet-market samples |
+| collect | 0x2396babfc88a7a7dcc0390262ab747d7cbad9485 | 4 | 4 | 80.00 | 3.26 | +2.86 | -9.38 | +3.58% | 50.0% | 0 | 1 | 4/10 independent wallet-market samples |
 | collect | 0x1d603dad31fac599c1de6b6002d066993460453d | 1 | 1 | 20.00 | 0.08 | +1.42 | +0.00 | +7.10% | 100.0% | 0 | 1 | 1/10 independent wallet-market samples |
 | collect | 0xfc929f5943f4fa96e395bc58e13fb94af8bd5667 | 6 | 7 | 70.00 | 0.00 | +1.25 | -0.76 | +1.78% | 33.3% | 0 | 2 | 6/10 independent wallet-market samples |
 | collect | 0x5f37da9a547e2c439d6d94d70c98ce35ab49281b | 1 | 1 | 20.00 | 1.51 | +1.22 | +0.00 | +6.10% | 100.0% | 0 | 1 | 1/10 independent wallet-market samples |
 | collect | 0xeb739f5e4f45b0b68688bb252f08327bc01653b0 | 1 | 1 | 20.00 | 1.30 | +1.05 | +0.00 | +5.23% | 100.0% | 0 | 1 | 1/10 independent wallet-market samples |
 | collect | 0xb624f26844e6b3f81dbbee164359fc4581dcde17 | 1 | 1 | 5.00 | 0.00 | +0.69 | +0.00 | +13.85% | 100.0% | 0 | 1 | 1/10 independent wallet-market samples |
-| collect | 0x2396babfc88a7a7dcc0390262ab747d7cbad9485 | 3 | 3 | 60.00 | 3.13 | +0.60 | -11.64 | +1.00% | 33.3% | 0 | 1 | 3/10 independent wallet-market samples |
 | collect | 0xb08223d6994cf79c10afc58653cbb8051ed55138 | 1 | 1 | 20.00 | 0.14 | +0.57 | +0.00 | +2.87% | 100.0% | 0 | 1 | 1/10 independent wallet-market samples |
 | collect | 0x7e01abfa6014486ae386409d2081ace0c73db0b5 | 3 | 3 | 60.00 | 2.99 | +0.40 | -10.88 | +0.66% | 33.3% | 0 | 1 | 3/10 independent wallet-market samples |
 | collect | 0xe916048c587950ade7049381c8e87bf6c7a67e93 | 1 | 2 | 10.00 | 0.00 | +0.10 | +0.00 | +1.04% | 100.0% | 0 | 2 | 1/10 independent wallet-market samples |
@@ -65,6 +67,7 @@ Generated: 2026-08-30T22:56:20+08:00
 | collect | 0xcbb5623096b78505a26524e642c5c9066e585ed9 | 5 | 6 | 120.00 | 5.95 | -4.21 | -7.92 | -3.51% | 40.0% | 0 | 2 | 5/10 independent wallet-market samples |
 | collect | 0x6f3e7f25baa7d2d49e15e2d2957ff3dec62cbcf8 | 1 | 3 | 60.00 | 2.98 | -4.77 | +0.00 | -7.95% | 0.0% | 0 | 3 | 1/10 independent wallet-market samples |
 | demote | 0x3f3aa7005f8006bfcc367d43a25cde25509fe8fd | 10 | 18 | 360.00 | 16.33 | -5.49 | -28.05 | -1.53% | 50.0% | 0 | 4 | net -5.49U <= -5.00U |
+| collect | 0x228b8d11eba89bf1c554f8879a9293b7106daf4c | 3 | 3 | 60.00 | 1.84 | -6.18 | -11.42 | -10.31% | 33.3% | 0 | 1 | 3/10 independent wallet-market samples |
 | collect | 0xa048ddf28c00037796bb9bdc4ad353cfbc31f2b5 | 3 | 3 | 60.00 | 1.25 | -6.42 | -16.89 | -10.70% | 66.7% | 0 | 1 | 3/10 independent wallet-market samples |
 | demote | 0x0e24a2181c154220234c27c7b063789dd9b97014 | 10 | 10 | 200.00 | 7.07 | -6.69 | -18.08 | -3.35% | 60.0% | 0 | 1 | net -6.69U <= -5.00U |
 | collect | 0xd14650532e11324cdaca20f45666486c24679bf0 | 1 | 1 | 20.00 | 1.18 | -7.04 | +0.00 | -35.18% | 0.0% | 0 | 1 | 1/10 independent wallet-market samples |
@@ -77,7 +80,6 @@ Generated: 2026-08-30T22:56:20+08:00
 | collect | 0x5461052f2b30801b598d8090f9da01f870b192be | 1 | 1 | 20.00 | 1.21 | -8.67 | +0.00 | -43.33% | 0.0% | 0 | 1 | 1/10 independent wallet-market samples |
 | collect | 0xadfaada4a21c0b3d5c6459f2374d1e3dfd43324e | 1 | 1 | 20.00 | 0.82 | -10.38 | +0.00 | -51.89% | 0.0% | 0 | 1 | 1/10 independent wallet-market samples |
 | collect | 0x084425dedaa0a4d92164adb33b294005518df46a | 3 | 3 | 60.00 | 2.35 | -10.48 | -13.67 | -17.46% | 33.3% | 0 | 1 | 3/10 independent wallet-market samples |
-| collect | 0x228b8d11eba89bf1c554f8879a9293b7106daf4c | 2 | 2 | 40.00 | 1.60 | -11.42 | -7.64 | -28.56% | 0.0% | 0 | 1 | 2/10 independent wallet-market samples |
 | collect | 0x5b1da62d04a662da31839a482092288ca7b03721 | 4 | 5 | 100.00 | 4.06 | -12.57 | -43.33 | -12.57% | 50.0% | 0 | 2 | 4/10 independent wallet-market samples |
 | collect | 0x3b5a522996a974b0224f86451b41053d94c487ef | 1 | 1 | 20.00 | 1.05 | -13.13 | +0.00 | -65.63% | 0.0% | 0 | 1 | 1/10 independent wallet-market samples |
 | collect | 0xaacac528e8af87ca25809824b384e169b558f5d5 | 9 | 9 | 180.00 | 6.84 | -13.19 | -23.08 | -7.33% | 44.4% | 0 | 1 | 9/10 independent wallet-market samples |

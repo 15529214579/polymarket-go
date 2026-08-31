@@ -1,8 +1,8 @@
 # Sports Alert Candidates
 
-**Generated:** 2026-08-30 00:10 +08
+**Generated:** 2026-08-31 00:10 +08
 
-- Recent BUY rows inspected: 6
+- Recent BUY rows inspected: 9
 - Diagnostic window: 6h0m0s
 - Alert window: 10m0s
 - Consensus alert window: 15m0s
@@ -131,9 +131,12 @@
 
 | Status | Mode | Wallet | List | Tier | Bot | Notional | Age | Reason | Market |
 |---|---|---|---|---|---:|---:|---:|---|---|
-| blocked | OBSERVE | `0xdc83...08f4` | sports_holders_push | ? | 0.0 | $1475 | 9m | tier ? below observe min B | Dota 2: HULIGANI vs Team Lynx - Game 2 Winner |
-| blocked | REVERSAL-RISK | `0xe907...cff6` | tape_reversal | BOT | 73.2 | $667 | 10m | reversal risk disabled | Will Newcastle United FC win on 2026-08-29? |
-| blocked | OBSERVE | `0xdb55...51dd` | - | - | 0.0 | $656 | 11m | observe wallet unscored | Dota 2: HULIGANI vs Team Lynx (BO3) - BLAST Slam Europe Closed Qualifier Playof... |
-| blocked | OBSERVE | `0xc186...e96e` | - | - | 0.0 | $600 | 11m | observe wallet unscored | Dota 2: HULIGANI vs Team Lynx - Game 2 Winner |
-| blocked | OBSERVE | `0x8dc5...c07d` | - | - | 0.0 | $518 | 11m | observe wallet unscored | Dota 2: HULIGANI vs Team Lynx - Game 2 Winner |
-| blocked | OBSERVE | `0x6a23...394d` | - | - | 0.0 | $500 | 8m | observe wallet unscored | Dota 2: HULIGANI vs Team Lynx - Game 2 Winner |
+| blocked | OBSERVE | `0xae2b...90ea` | - | - | 0.0 | $2500 | 8m | observe wallet unscored | Will Manchester United FC win on 2026-08-30? |
+| blocked | OBSERVE | `0x19ae...395c` | sports_holders_push | BOT | 69.5 | $1000 | 7m | BOT tier | Dota 2: Team Lynx vs RE.Arise (BO3) - EPL Masters Group A |
+| blocked | OBSERVE | `0x19ae...395c` | sports_holders_push | BOT | 69.5 | $1000 | 8m | BOT tier | Dota 2: Team Lynx vs RE.Arise (BO3) - EPL Masters Group A |
+| blocked | OBSERVE | `0x6055...5fde` | - | - | 0.0 | $1000 | 10m | observe wallet unscored | Will Manchester United FC win on 2026-08-30? |
+| blocked | OBSERVE | `0x7418...251f` | - | - | 0.0 | $1000 | 11m | observe wallet unscored | Will Ipswich Town FC win on 2026-08-30? |
+| blocked | OBSERVE | `0x88db...54a4` | - | - | 0.0 | $987 | 6m | observe wallet unscored | LoL: Gen.G vs KT Rolster (BO5) - LCK Playoffs |
+| blocked | OBSERVE | `0x19ae...395c` | sports_holders_push | BOT | 69.5 | $982 | 6m | BOT tier | Dota 2: Team Lynx vs RE.Arise (BO3) - EPL Masters Group A |
+| blocked | OBSERVE | `0x7e2a...d25c` | - | - | 0.0 | $632 | 8m | observe wallet unscored | Will Manchester United FC win on 2026-08-30? |
+| blocked | OBSERVE | `0x1720...3c09` | - | - | 0.0 | $553 | 6m | observe wallet unscored | Dota 2: Team Lynx vs RE.Arise (BO3) - EPL Masters Group A |

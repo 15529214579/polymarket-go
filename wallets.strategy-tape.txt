@@ -1,1 +1,1 @@
-
+0xae2b0aaea325a32870f56ff19df3b87acaa190ea # list=tape tier=C smart=100.00 bot=44.50 copyROI=139.3% copyPnL=$+3539.51 copyT=143 copyWin=76.9% avgNotional=$1863 sources=existing,sports_tape
