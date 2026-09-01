@@ -1,6 +1,6 @@
 # Sports Alert Performance
 
-**Generated:** 2026-08-31 00:10 +08
+**Generated:** 2026-09-01 00:10 +08
 
 - Alert log: `/Users/murphyma/work/polymarket-go/db/strategy_iteration/sports_tape_alerts.jsonl`
 - Fixed paper stake: $10.00 per Telegram alert
