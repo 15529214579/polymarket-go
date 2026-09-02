@@ -1,6 +1,6 @@
 # Sports Burst Performance
 
-**Generated:** 2026-09-01 00:10 +08
+**Generated:** 2026-09-02 00:10 +08
 
 - Tape: `/Users/murphyma/work/polymarket-go/db/strategy_iteration/sports_tape.jsonl`
 - Fixed paper stake: $10.00 per burst

@@ -1,8 +1,8 @@
 # Sports Alert Candidates
 
-**Generated:** 2026-09-01 00:10 +08
+**Generated:** 2026-09-02 00:10 +08
 
-- Recent BUY rows inspected: 2
+- Recent BUY rows inspected: 1
 - Diagnostic window: 6h0m0s
 - Alert window: 10m0s
 - Consensus alert window: 15m0s
@@ -131,5 +131,4 @@
 
 | Status | Mode | Wallet | List | Tier | Bot | Notional | Age | Reason | Market |
 |---|---|---|---|---|---:|---:|---:|---|---|
-| blocked | OBSERVE | `0x283c...ba51` | - | - | 0.0 | $2533 | 7m | observe wallet unscored | Will Aston Villa FC win on 2026-08-31? |
-| blocked | OBSERVE | `0x59f4...c1f1` | - | - | 0.0 | $2000 | 3m | observe wallet unscored | Dota 2: 4ikibamboni vs Inner Circle (BO3) - EPL Masters Group A |
+| blocked | OBSERVE | `0x85e9...2eea` | - | - | 0.0 | $1459 | 14m | observe wallet unscored | Dota 2: Team Synapse vs Level UP - Game 1 Winner |
