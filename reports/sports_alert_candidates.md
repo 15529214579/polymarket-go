@@ -1,8 +1,8 @@
 # Sports Alert Candidates
 
-**Generated:** 2026-09-02 00:10 +08
+**Generated:** 2026-09-03 00:10 +08
 
-- Recent BUY rows inspected: 1
+- Recent BUY rows inspected: 0
 - Diagnostic window: 6h0m0s
 - Alert window: 10m0s
 - Consensus alert window: 15m0s
@@ -131,4 +131,4 @@
 
 | Status | Mode | Wallet | List | Tier | Bot | Notional | Age | Reason | Market |
 |---|---|---|---|---|---:|---:|---:|---|---|
-| blocked | OBSERVE | `0x85e9...2eea` | - | - | 0.0 | $1459 | 14m | observe wallet unscored | Dota 2: Team Synapse vs Level UP - Game 1 Winner |
+| none |  |  |  |  | 0.0 | $0 |  |  |  |

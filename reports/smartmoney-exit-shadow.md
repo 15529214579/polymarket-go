@@ -1,36 +1,36 @@
 # Smartmoney Exit Shadow
 
-Generated: 2026-09-02T00:29:29+08:00
+Generated: 2026-09-03T00:19:37+08:00
 
-- Independent position-policy samples: 5697
+- Independent position-policy samples: 5714
 
 ## By Policy
 
 | Cohort | Samples | Positive | Post-actual | Net | Avg net | Positive rate |
 |---|---:|---:|---:|---:|---:|---:|
-| sl_20 | 593 | 0 | 56 | -4527.07 | -7.63 | 0.0% |
-| sl_25 | 554 | 0 | 67 | -4725.01 | -8.53 | 0.0% |
-| timeout_10m | 935 | 273 | 37 | -1015.57 | -1.09 | 29.2% |
-| timeout_20m | 897 | 277 | 58 | -962.76 | -1.07 | 30.9% |
+| sl_20 | 597 | 0 | 57 | -4558.12 | -7.64 | 0.0% |
+| sl_25 | 558 | 0 | 68 | -4758.54 | -8.53 | 0.0% |
+| timeout_10m | 938 | 274 | 40 | -1034.15 | -1.10 | 29.2% |
+| timeout_20m | 898 | 277 | 59 | -974.20 | -1.08 | 30.8% |
 | timeout_30m | 844 | 322 | 121 | +70.50 | +0.08 | 38.2% |
 | timeout_45m | 684 | 306 | 368 | +1091.65 | +1.60 | 44.7% |
 | timeout_60m | 544 | 230 | 306 | +1087.24 | +2.00 | 42.3% |
-| tp_30 | 389 | 389 | 63 | +2367.55 | +6.09 | 100.0% |
-| tp_50 | 257 | 257 | 75 | +2600.16 | +10.12 | 100.0% |
+| tp_30 | 392 | 392 | 65 | +2382.94 | +6.08 | 100.0% |
+| tp_50 | 259 | 259 | 77 | +2618.16 | +10.11 | 100.0% |
 
 ## By Category / Policy
 
 | Cohort | Samples | Positive | Post-actual | Net | Avg net | Positive rate |
 |---|---:|---:|---:|---:|---:|---:|
-| esports / sl_20 | 305 | 0 | 26 | -1987.81 | -6.52 | 0.0% |
-| esports / sl_25 | 284 | 0 | 32 | -2173.79 | -7.65 | 0.0% |
-| esports / timeout_10m | 476 | 163 | 27 | -367.85 | -0.77 | 34.2% |
-| esports / timeout_20m | 452 | 176 | 37 | -75.34 | -0.17 | 38.9% |
+| esports / sl_20 | 309 | 0 | 27 | -2018.87 | -6.53 | 0.0% |
+| esports / sl_25 | 288 | 0 | 33 | -2207.32 | -7.66 | 0.0% |
+| esports / timeout_10m | 479 | 164 | 30 | -386.43 | -0.81 | 34.2% |
+| esports / timeout_20m | 453 | 176 | 38 | -86.77 | -0.19 | 38.9% |
 | esports / timeout_30m | 410 | 187 | 77 | +507.54 | +1.24 | 45.6% |
 | esports / timeout_45m | 292 | 164 | 179 | +1250.68 | +4.28 | 56.2% |
 | esports / timeout_60m | 223 | 127 | 152 | +1131.64 | +5.07 | 57.0% |
-| esports / tp_30 | 229 | 229 | 36 | +1366.65 | +5.97 | 100.0% |
-| esports / tp_50 | 165 | 165 | 42 | +1631.57 | +9.89 | 100.0% |
+| esports / tp_30 | 232 | 232 | 38 | +1382.03 | +5.96 | 100.0% |
+| esports / tp_50 | 167 | 167 | 44 | +1649.57 | +9.88 | 100.0% |
 | football / sl_20 | 78 | 0 | 9 | -726.58 | -9.32 | 0.0% |
 | football / sl_25 | 73 | 0 | 10 | -720.63 | -9.87 | 0.0% |
 | football / timeout_10m | 130 | 20 | 3 | -255.88 | -1.97 | 15.4% |
@@ -69,7 +69,7 @@ Only positions observed at both horizons are compared. Uplift is later net PnL m
 
 | Category / Pair | Matched | Later better | Later post-actual | Earlier net | Later net | Uplift | Avg uplift | Better rate |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| esports / timeout_10m -> timeout_20m | 452 | 198 | 37 | -226.34 | -75.34 | +151.00 | +0.33 | 43.8% |
+| esports / timeout_10m -> timeout_20m | 453 | 199 | 38 | -242.35 | -86.77 | +155.58 | +0.34 | 43.9% |
 | esports / timeout_20m -> timeout_30m | 410 | 169 | 77 | +439.29 | +507.54 | +68.24 | +0.17 | 41.2% |
 | esports / timeout_30m -> timeout_45m | 292 | 107 | 179 | +794.38 | +1250.68 | +456.30 | +1.56 | 36.6% |
 | esports / timeout_45m -> timeout_60m | 223 | 50 | 152 | +922.55 | +1131.64 | +209.08 | +0.94 | 22.4% |
