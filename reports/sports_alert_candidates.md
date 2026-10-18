@@ -1,8 +1,8 @@
 # Sports Alert Candidates
 
-**Generated:** 2026-09-04 00:10 +08
+**Generated:** 2026-09-05 00:10 +08
 
-- Recent BUY rows inspected: 2
+- Recent BUY rows inspected: 1
 - Diagnostic window: 6h0m0s
 - Alert window: 10m0s
 - Consensus alert window: 15m0s
@@ -131,5 +131,4 @@
 
 | Status | Mode | Wallet | List | Tier | Bot | Notional | Age | Reason | Market |
 |---|---|---|---|---|---:|---:|---:|---|---|
-| blocked | OBSERVE | `0x1944...8088` | - | - | 0.0 | $2220 | 5m | observe wallet unscored | Dota 2: 4ikibamboni vs Power Rangers (BO3) - EPL Masters Group A |
-| blocked | OBSERVE | `0x4b40...b090` | - | - | 0.0 | $800 | 10m | observe wallet unscored | LoL: Dominion Goblins vs Dream Esports (BO5) - LPLOL Playoffs |
+| blocked | OBSERVE | `0x4858...3dd3` | - | - | 0.0 | $513 | 10m | observe wallet unscored | Dota 2: Power Rangers vs Team Synapse - Game 2 Winner |

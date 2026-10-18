@@ -1,6 +1,6 @@
 # Sports Whale Tape
 
-**Generated:** 2026-09-04 00:10 +08
+**Generated:** 2026-09-05 00:10 +08
 
 - Target categories: basketball,soccer,esports
 - Min notional: $500
@@ -13,12 +13,12 @@
 
 | Wallet | List | Tier | Buys | BuyNotional | MaxBuy | Mkts | Cat | Smart | Bot | TargetCopyROI | TargetCopyT |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `0x1944...8088` | - | - | 1 | $2220 | $2220 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
-| `0x4b40...b090` | - | - | 1 | $800 | $800 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
+| `0x4858...3dd3` | - | - | 1 | $513 | $513 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
+| `0xa07c...11a0` | - | - | 0 | $0 | $0 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
 
 ## Largest Trades
 
 | Time | Wallet | List | Side | Notional | Price | Outcome | Category | Market |
 |---|---|---|---|---:|---:|---|---|---|
-| 09-04 00:05 | `0x1944...8088` | - | BUY | $2220 | 0.277 | 4ikibamboni | soccer | Dota 2: 4ikibamboni vs Power Rangers (BO3) - EPL Masters Group A |
-| 09-04 00:00 | `0x4b40...b090` | - | BUY | $800 | 0.655 | Dominion Goblins | esports | LoL: Dominion Goblins vs Dream Esports (BO5) - LPLOL Playoffs |
+| 09-04 23:59 | `0xa07c...11a0` | - | SELL | $3850 | 0.350 | No | soccer | Will Liverpool FC win on 2026-09-04? |
+| 09-05 00:00 | `0x4858...3dd3` | - | BUY | $513 | 0.330 | Team Synapse | esports | Dota 2: Power Rangers vs Team Synapse - Game 2 Winner |
