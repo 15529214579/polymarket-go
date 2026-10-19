@@ -1,17 +1,17 @@
 # Smartmoney Paper PnL
 
-Generated: 2026-09-05T00:19:12+08:00
+Generated: 2026-10-19T00:18:10+08:00
 
 - Tradable realized net PnL: **-202.59U** (459 positions)
-- Broad collection realized net PnL: -1200.36U (890 positions; research only)
-- Combined observed realized net PnL: -1402.95U
-- Gross PnL: -702.70U
-- Fees: 700.25U (entry 430.18U / exit 270.07U)
-- Closed positions: 1349 (1452 journal rows)
-- Open: 11 positions / 220.00U exposure / 5.87U remaining entry fees
-- Conservative open PnL: -225.87U (open value marked to zero)
-- Conservative total PnL: **-1628.83U**
-- Tradable conservative total: **-202.59U**; broad collection conservative total: -1426.23U
+- Broad collection realized net PnL: -1216.58U (895 positions; research only)
+- Combined observed realized net PnL: -1419.17U
+- Gross PnL: -715.93U
+- Fees: 703.24U (entry 432.14U / exit 271.09U)
+- Closed positions: 1354 (1459 journal rows)
+- Open: 9 positions / 180.00U exposure / 4.97U remaining entry fees
+- Conservative open PnL: -184.97U (open value marked to zero)
+- Conservative total PnL: **-1604.14U**
+- Tradable conservative total: **-202.59U**; broad collection conservative total: -1401.55U
 
 ## By Policy
 
@@ -25,14 +25,14 @@ Generated: 2026-09-05T00:19:12+08:00
 | smartmoney-2026-08-03-p0p1-v3 | 151 | 151 | 3020.00 | -1119.39 | 77.73 | -1197.12 | 52/99/0 |
 | smartmoney-2026-08-04-promoted-v4 | 16 | 16 | 320.00 | -162.11 | 8.14 | -170.26 | 4/12/0 |
 | smartmoney-2026-08-04-risk-v5 | 44 | 53 | 880.00 | -42.55 | 35.31 | -77.85 | 15/29/0 |
-| smartmoney-2026-08-13-risk-v6 | 200 | 252 | 4000.00 | -285.59 | 155.66 | -441.25 | 86/114/0 |
+| smartmoney-2026-08-13-risk-v6 | 205 | 259 | 4100.00 | -298.82 | 158.65 | -457.47 | 88/117/0 |
 
 ## By Stake
 
 | Cohort | Positions | Rows | Capital | Gross | Fees | Net | W/L/F |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | 10U | 7 | 7 | 70.00 | +1.25 | 0.00 | +1.25 | 2/5/0 |
-| 20U+ | 1011 | 1105 | 20220.00 | -748.97 | 699.85 | -1448.82 | 470/541/0 |
+| 20U+ | 1016 | 1112 | 20320.00 | -762.21 | 702.84 | -1465.04 | 472/544/0 |
 | 5U | 331 | 340 | 1655.00 | +45.03 | 0.40 | +44.62 | 120/97/114 |
 
 ## By Strategy
@@ -40,7 +40,7 @@ Generated: 2026-09-05T00:19:12+08:00
 | Cohort | Positions | Rows | Capital | Gross | Fees | Net | W/L/F |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | copytrade | 340 | 352 | 3535.00 | -107.52 | 75.18 | -182.70 | 169/171/0 |
-| copytrade_collect | 889 | 980 | 17780.00 | -556.63 | 622.84 | -1179.47 | 420/469/0 |
+| copytrade_collect | 894 | 987 | 17880.00 | -569.86 | 625.83 | -1195.69 | 422/472/0 |
 | football_score | 1 | 1 | 20.00 | -20.00 | 0.94 | -20.94 | 0/1/0 |
 | football_score_collect | 1 | 1 | 20.00 | -20.00 | 0.89 | -20.89 | 0/1/0 |
 | legacy_auto | 118 | 118 | 590.00 | +1.45 | 0.40 | +1.05 | 3/1/114 |
@@ -49,7 +49,7 @@ Generated: 2026-09-05T00:19:12+08:00
 
 | Cohort | Positions | Rows | Capital | Gross | Fees | Net | W/L/F |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| fee-aware | 1015 | 1109 | 20240.00 | -747.53 | 700.25 | -1447.78 | 473/542/0 |
+| fee-aware | 1020 | 1116 | 20340.00 | -760.76 | 703.24 | -1464.00 | 475/545/0 |
 | legacy-no-cost | 334 | 343 | 1705.00 | +44.82 | 0.00 | +44.82 | 119/101/114 |
 
 ## By Signal Source
@@ -74,9 +74,9 @@ Generated: 2026-09-05T00:19:12+08:00
 | copytrade_collect_wallet:0x6d36f06adba52e8dc9c45c6a85192bf5817af787 | 5 | 7 | 100.00 | +18.82 | 5.45 | +13.37 | 4/1/0 |
 | copytrade_collect_wallet:0x0ec9d0ca75335cb9e683907bf628a0b5ee831e0c | 5 | 5 | 100.00 | +16.38 | 3.10 | +13.28 | 3/2/0 |
 | copytrade_collect_wallet:0x5ad49cd574df6888a0fe1d2b522f334988f06866 | 1 | 2 | 20.00 | +14.14 | 1.55 | +12.59 | 1/0/0 |
-| copytrade_collect_wallet:0x46072f22bc5624f7ff43489d570fdc7e745ad542 | 1 | 2 | 20.00 | +13.80 | 1.56 | +12.24 | 1/0/0 |
 | copytrade_wallet:0x092b02c318fdad19d178ad136f0d2eadbaf8614e | 1 | 1 | 20.00 | +11.73 | 0.38 | +11.34 | 1/0/0 |
 | copytrade_w_2a35…9015 | 25 | 26 | 155.00 | +12.37 | 1.48 | +10.89 | 15/10/0 |
+| copytrade_collect_wallet:0x46072f22bc5624f7ff43489d570fdc7e745ad542 | 2 | 3 | 40.00 | +12.97 | 2.30 | +10.67 | 1/1/0 |
 | copytrade_wallet:0x7673f8cafcd4b3d299b5a9744a799a88d06ffa40 | 5 | 5 | 100.00 | +12.07 | 2.40 | +9.66 | 3/2/0 |
 | copytrade_collect_wallet:0x7673f8cafcd4b3d299b5a9744a799a88d06ffa40 | 8 | 8 | 160.00 | +13.86 | 4.37 | +9.49 | 4/4/0 |
 | copytrade_collect_wallet:0x8850aa62401da0974cb78e0e91026fad036860b1 | 1 | 2 | 20.00 | +7.74 | 0.30 | +7.43 | 1/0/0 |
@@ -91,6 +91,7 @@ Generated: 2026-09-05T00:19:12+08:00
 | copytrade_collect_wallet:0xbca08c1bc204a34f2fddbe47b438b9bd42ac9705 | 1 | 2 | 20.00 | +5.44 | 0.56 | +4.88 | 1/0/0 |
 | copytrade_collect_wallet:0x6e32312760e4604d45a8ae69cede9ef9a0b8ab65 | 4 | 4 | 80.00 | +6.44 | 2.43 | +4.01 | 3/1/0 |
 | copytrade_w_7a26…1589 | 6 | 7 | 60.00 | +4.94 | 1.09 | +3.85 | 2/4/0 |
+| copytrade_collect_wallet:0xae2b0aaea325a32870f56ff19df3b87acaa190ea | 2 | 3 | 40.00 | +5.40 | 1.60 | +3.80 | 1/1/0 |
 | copytrade_collect_wallet:0x9f41b736a8d04891178df2495921a5a3e88b8f27 | 1 | 1 | 20.00 | +3.96 | 0.22 | +3.74 | 1/0/0 |
 | copytrade_collect_wallet:0xb5527654d309c6617addabbb64e47931cf35b70c | 4 | 5 | 80.00 | +6.21 | 2.50 | +3.71 | 2/2/0 |
 | copytrade_collect_wallet:0xc65ca4755436f82d8eb461e65781584b8cadea39 | 1 | 1 | 20.00 | +3.89 | 0.66 | +3.23 | 1/0/0 |
@@ -110,7 +111,6 @@ Generated: 2026-09-05T00:19:12+08:00
 | copytrade_w_e916…7e93 | 2 | 2 | 10.00 | +0.10 | 0.00 | +0.10 | 1/1/0 |
 | copytrade_w_4873…15ba | 19 | 19 | 95.00 | +0.02 | 0.00 | +0.02 | 11/8/0 |
 | copytrade_collect_wallet:0x17e2e9176973fa604091bf5ed692bc1f566cd472 | 2 | 3 | 40.00 | +1.92 | 2.03 | -0.11 | 1/1/0 |
-| copytrade_collect_wallet:0x84cfffc3f16dcc353094de30d4a45226eccd2f63 | 10 | 14 | 200.00 | +6.30 | 6.47 | -0.17 | 5/5/0 |
 | copytrade_w_cdc1…bdd8 | 9 | 9 | 45.00 | -1.01 | 0.00 | -1.01 | 0/9/0 |
 | copytrade_wallet:0xcbb5623096b78505a26524e642c5c9066e585ed9 | 4 | 4 | 80.00 | +2.14 | 3.37 | -1.23 | 2/2/0 |
 | copytrade_collect_wallet:0x5811c8ad5dc5990528357ecf1a6d03311d6c0976 | 1 | 1 | 20.00 | -1.24 | 0.50 | -1.74 | 0/1/0 |
@@ -125,7 +125,6 @@ Generated: 2026-09-05T00:19:12+08:00
 | copytrade_w_2a99…51bb | 1 | 1 | 20.00 | -1.77 | 1.10 | -2.88 | 0/1/0 |
 | copytrade_collect_wallet:0xcbb5623096b78505a26524e642c5c9066e585ed9 | 2 | 2 | 40.00 | -0.40 | 2.59 | -2.98 | 0/2/0 |
 | copytrade_collect_wallet:0x4a3f86ed9ce6b3dac5b66e2d5478a6bf38cc4333 | 1 | 1 | 20.00 | -2.48 | 0.95 | -3.44 | 0/1/0 |
-| copytrade_collect_wallet:0xae2b0aaea325a32870f56ff19df3b87acaa190ea | 1 | 1 | 20.00 | -2.45 | 1.09 | -3.54 | 0/1/0 |
 | copytrade_wallet:0xf1771327cccb5cda15e0eaa3c56755bbf3655f6a | 1 | 1 | 20.00 | -2.25 | 1.37 | -3.61 | 0/1/0 |
 | copytrade_collect_wallet:0xb6dd8a264ee0b57e11ea6839cb8f53bfeb597af9 | 1 | 1 | 20.00 | -2.90 | 1.09 | -3.99 | 0/1/0 |
 | copytrade_collect_wallet:0x6f3e7f25baa7d2d49e15e2d2957ff3dec62cbcf8 | 3 | 3 | 60.00 | -1.79 | 2.98 | -4.77 | 0/3/0 |
@@ -136,6 +135,7 @@ Generated: 2026-09-05T00:19:12+08:00
 | copytrade_collect_wallet:0xd14650532e11324cdaca20f45666486c24679bf0 | 1 | 1 | 20.00 | -5.86 | 1.18 | -7.04 | 0/1/0 |
 | copytrade_collect_wallet:0x4cb03276679d644ec1852f744668f345d41657e0 | 18 | 23 | 360.00 | +5.89 | 13.65 | -7.77 | 9/9/0 |
 | copytrade_w_f3ce…a57a | 5 | 5 | 100.00 | -5.89 | 2.19 | -8.07 | 0/5/0 |
+| copytrade_collect_wallet:0xfe67df6e0c585e50cbe8bdcad804d980c6b8a2e8 | 1 | 1 | 20.00 | -7.40 | 0.70 | -8.10 | 0/1/0 |
 | copytrade_collect_wallet:0x877fdb546da48353fd712056495f66e31dad8f3b | 2 | 2 | 40.00 | -7.53 | 0.57 | -8.10 | 0/2/0 |
 | copytrade_collect_wallet:0xd8fa447d6f61fa6774906974b75e54cead7c581f | 1 | 1 | 20.00 | -7.74 | 0.45 | -8.19 | 0/1/0 |
 | copytrade_collect_wallet:0x44c4c88662edc9e0978ee40e96ee8457531609cb | 1 | 1 | 20.00 | -6.80 | 1.44 | -8.24 | 0/1/0 |
@@ -147,6 +147,7 @@ Generated: 2026-09-05T00:19:12+08:00
 | copytrade_wallet:0x5b1da62d04a662da31839a482092288ca7b03721 | 5 | 5 | 100.00 | -8.51 | 4.06 | -12.57 | 2/3/0 |
 | copytrade_collect_wallet:0x3b5a522996a974b0224f86451b41053d94c487ef | 1 | 1 | 20.00 | -12.08 | 1.05 | -13.13 | 0/1/0 |
 | copytrade_collect_wallet:0x01af8bb6abbcff287e8a726a1c5f39dd0b427bc2 | 1 | 1 | 20.00 | -13.47 | 0.28 | -13.75 | 0/1/0 |
+| copytrade_collect_wallet:0x84cfffc3f16dcc353094de30d4a45226eccd2f63 | 12 | 17 | 240.00 | -6.55 | 7.50 | -14.06 | 6/6/0 |
 | copytrade_collect_wallet:0xd786a8b89db608e0ed4f2414a94704fc3d9659b8 | 3 | 3 | 60.00 | -13.42 | 0.90 | -14.32 | 2/1/0 |
 | copytrade_collect_wallet:0xaacac528e8af87ca25809824b384e169b558f5d5 | 10 | 14 | 200.00 | -6.94 | 7.56 | -14.50 | 4/6/0 |
 | copytrade_collect_wallet:0x2ba6c2c20075a5c5f6996dd32f080e5d005e644c | 3 | 4 | 60.00 | -11.78 | 2.96 | -14.74 | 1/2/0 |

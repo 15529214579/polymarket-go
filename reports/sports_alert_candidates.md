@@ -1,8 +1,8 @@
 # Sports Alert Candidates
 
-**Generated:** 2026-09-05 00:10 +08
+**Generated:** 2026-10-19 00:10 +08
 
-- Recent BUY rows inspected: 1
+- Recent BUY rows inspected: 6
 - Diagnostic window: 6h0m0s
 - Alert window: 10m0s
 - Consensus alert window: 15m0s
@@ -101,7 +101,7 @@
 
 | Status | Wallets | Trades | Total | VWAP | LastAge | Participants | Reason | Market |
 |---|---:|---:|---:|---:|---:|---|---|---|
-| none | 0 | 0 | $0 | 0.000 |  |  |  |  |
+| consensus | 2 | 2 | $9360 | 0.880 | 10m | `0x5cb5...7ce9`, `0x927c...6633` | consensus burst in diagnostic window | Will Nottingham Forest FC win on 2026-10-18? |
 
 ## Unknown Multi-Market Flow
 
@@ -131,4 +131,9 @@
 
 | Status | Mode | Wallet | List | Tier | Bot | Notional | Age | Reason | Market |
 |---|---|---|---|---|---:|---:|---:|---|---|
-| blocked | OBSERVE | `0x4858...3dd3` | - | - | 0.0 | $513 | 10m | observe wallet unscored | Dota 2: Power Rangers vs Team Synapse - Game 2 Winner |
+| blocked | OBSERVE | `0x9052...3c2d` | - | BOT | 64.7 | $16720 | 10m | BOT tier | Will Nottingham Forest FC win on 2026-10-18? |
+| blocked | OBSERVE | `0x9052...3c2d` | - | BOT | 64.7 | $9780 | 5m | BOT tier | Will Nottingham Forest FC win on 2026-10-18? |
+| blocked | OBSERVE | `0x927c...6633` | - | - | 0.0 | $8360 | 10m | observe wallet unscored | Will Nottingham Forest FC win on 2026-10-18? |
+| blocked | OBSERVE | `0x821d...cf16` | sports_holders_push | D | 47.0 | $1756 | 5m | bot 47.0 > 35.0 | Will Nottingham Forest FC win on 2026-10-18? |
+| blocked | OBSERVE | `0x3f45...180b` | - | - | 0.0 | $1000 | 11m | observe wallet unscored | Will Arsenal FC win on 2026-10-18? |
+| blocked | OBSERVE | `0x5cb5...7ce9` | - | - | 0.0 | $1000 | 11m | observe wallet unscored | Will Nottingham Forest FC win on 2026-10-18? |
