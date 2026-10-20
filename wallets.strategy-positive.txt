@@ -1,106 +1,101 @@
-0x0378b8c3f53f5b3f6de8ff8ae984774f35dd7634 # tier=B action=prompt smart=100.00 bot=29.02 edge=100.00 copyROI=45.7% copyPnL=$+425.24 copyT=86 positive edge, prompt before auto-follow
+0x0378b8c3f53f5b3f6de8ff8ae984774f35dd7634 # tier=B action=prompt smart=100.00 bot=29.08 edge=100.00 copyROI=46.6% copyPnL=$+414.53 copyT=82 positive edge, prompt before auto-follow
 0x075db7e59486eab8c0a72dbd8f20a6f3d19d58c1 # tier=A action=prompt smart=100.00 bot=20.13 edge=100.00 copyROI=173.7% copyPnL=$+1354.97 copyT=70 strong smart-money signal and low bot score
-0x077c5e84caa83b917664db3c85e9085b831e5df1 # tier=B action=prompt smart=100.00 bot=25.83 edge=100.00 copyROI=98.1% copyPnL=$+127.54 copyT=11 positive edge, prompt before auto-follow
 0x092b02c318fdad19d178ad136f0d2eadbaf8614e # tier=B action=prompt smart=100.00 bot=27.37 edge=100.00 copyROI=102.5% copyPnL=$+225.51 copyT=22 positive edge, prompt before auto-follow
-0x0a47c276f4e7e531fbdf277196a8c43c86420c54 # tier=B action=prompt smart=100.00 bot=32.43 edge=100.00 copyROI=20.1% copyPnL=$+24.08 copyT=5 positive edge, prompt before auto-follow
-0x0d23fc6838433dbff11e4667ef5991e9dd9d2d56 # tier=B action=prompt smart=100.00 bot=26.53 edge=100.00 copyROI=42.0% copyPnL=$+84.10 copyT=20 positive edge, prompt before auto-follow
+0x0a47c276f4e7e531fbdf277196a8c43c86420c54 # tier=A action=prompt smart=100.00 bot=23.44 edge=100.00 copyROI=36.1% copyPnL=$+36.07 copyT=5 strong smart-money signal and low bot score
+0x0d23fc6838433dbff11e4667ef5991e9dd9d2d56 # tier=B action=prompt smart=100.00 bot=26.23 edge=100.00 copyROI=42.0% copyPnL=$+84.10 copyT=20 positive edge, prompt before auto-follow
 0x0d666ec36448f6d782385c708b3dbad08c28ff1d # tier=B action=prompt smart=100.00 bot=34.48 edge=100.00 copyROI=100.0% copyPnL=$+619.91 copyT=42 positive edge, prompt before auto-follow
-0x0e24a2181c154220234c27c7b063789dd9b97014 # tier=B action=prompt smart=100.00 bot=30.92 edge=100.00 copyROI=46.4% copyPnL=$+408.49 copyT=73 positive edge, prompt before auto-follow
-0x0ec9d0ca75335cb9e683907bf628a0b5ee831e0c # tier=A action=prompt smart=100.00 bot=19.59 edge=100.00 copyROI=10.3% copyPnL=$+38.02 copyT=36 strong smart-money signal and low bot score
+0x0e24a2181c154220234c27c7b063789dd9b97014 # tier=B action=prompt smart=100.00 bot=30.86 edge=100.00 copyROI=46.4% copyPnL=$+408.49 copyT=73 positive edge, prompt before auto-follow
+0x0ec9d0ca75335cb9e683907bf628a0b5ee831e0c # tier=A action=prompt smart=100.00 bot=19.52 edge=100.00 copyROI=9.8% copyPnL=$+37.43 copyT=37 strong smart-money signal and low bot score
 0x0f003f00e53f0dbb063e14b4da093ac8e3f473ce # tier=B action=prompt smart=100.00 bot=26.64 edge=100.00 copyROI=225.7% copyPnL=$+7199.08 copyT=195 positive edge, prompt before auto-follow
-0x11f5c7f160882fc45e0184f828e7e5f4ff8eea34 # tier=A action=prompt smart=100.00 bot=24.12 edge=100.00 copyROI=78.3% copyPnL=$+180.03 copyT=23 strong smart-money signal and low bot score
+0x11f5c7f160882fc45e0184f828e7e5f4ff8eea34 # tier=A action=prompt smart=100.00 bot=24.17 edge=100.00 copyROI=78.3% copyPnL=$+180.03 copyT=23 strong smart-money signal and low bot score
 0x13962e51dae27be6515927f066bf1862a77962b5 # tier=B action=prompt smart=100.00 bot=25.38 edge=97.82 copyROI=10.3% copyPnL=$+6.18 copyT=3 positive edge, prompt before auto-follow
 0x15dd406b8fa114570f174ed1d73cc876054895ba # tier=A action=prompt smart=100.00 bot=24.99 edge=100.00 copyROI=117.1% copyPnL=$+749.44 copyT=61 strong smart-money signal and low bot score
 0x162d26908e581c662ac3de4dec808014de5f8944 # tier=A action=prompt smart=100.00 bot=24.81 edge=100.00 copyROI=104.0% copyPnL=$+332.66 copyT=31 strong smart-money signal and low bot score
-0x17e2e9176973fa604091bf5ed692bc1f566cd472 # tier=B action=prompt smart=100.00 bot=29.91 edge=100.00 copyROI=244.8% copyPnL=$+11115.99 copyT=427 positive edge, prompt before auto-follow
+0x17e2e9176973fa604091bf5ed692bc1f566cd472 # tier=B action=prompt smart=100.00 bot=29.90 edge=100.00 copyROI=244.8% copyPnL=$+11336.77 copyT=435 positive edge, prompt before auto-follow
 0x1944ec2927cb2a86fcad6e555ef25ea65ec98088 # tier=A action=prompt smart=100.00 bot=23.37 edge=100.00 copyROI=45.7% copyPnL=$+77.67 copyT=11 strong smart-money signal and low bot score
-0x1bd8e711317690e0a0ef4553a92378d81476e5f8 # tier=A action=prompt smart=100.00 bot=23.58 edge=100.00 copyROI=147.9% copyPnL=$+547.10 copyT=37 strong smart-money signal and low bot score
+0x1bd8e711317690e0a0ef4553a92378d81476e5f8 # tier=A action=prompt smart=100.00 bot=24.16 edge=100.00 copyROI=147.9% copyPnL=$+547.10 copyT=37 strong smart-money signal and low bot score
 0x208927449ac85131e4f34d0c499bfae71a24712e # tier=B action=prompt smart=100.00 bot=28.79 edge=100.00 copyROI=92.5% copyPnL=$+1221.19 copyT=51 positive edge, prompt before auto-follow
 0x21cc6013bbab523a42e791ff14e50992efb954bc # tier=B action=prompt smart=100.00 bot=26.52 edge=100.00 copyROI=77.1% copyPnL=$+131.00 copyT=17 positive edge, prompt before auto-follow
-0x257aec64c9f39f4dac97449f80033a484e24b42a # tier=B action=prompt smart=100.00 bot=28.93 edge=100.00 copyROI=21.3% copyPnL=$+97.89 copyT=42 positive edge, prompt before auto-follow
+0x257aec64c9f39f4dac97449f80033a484e24b42a # tier=B action=prompt smart=100.00 bot=29.00 edge=100.00 copyROI=21.3% copyPnL=$+97.89 copyT=42 positive edge, prompt before auto-follow
 0x285faa3e3d1465cf3ff1bff1e1d14891f5b8495f # tier=B action=prompt smart=100.00 bot=24.85 edge=100.00 copyROI=448.0% copyPnL=$+447.99 copyT=4 positive edge, prompt before auto-follow
-0x2a35f54dc4bbca26704ea6ca5df8820075cb9015 # tier=B action=prompt smart=100.00 bot=25.65 edge=100.00 copyROI=115.0% copyPnL=$+3553.00 copyT=233 positive edge, prompt before auto-follow
-0x2a99dac44bf1d44dd74f16b145df840ae66a51bb # tier=B action=prompt smart=100.00 bot=33.30 edge=100.00 copyROI=54.7% copyPnL=$+1301.54 copyT=231 positive edge, prompt before auto-follow
-0x2b17ceaade0469dcc19bc9d7597389201b60d36d # tier=A action=auto-small smart=100.00 bot=17.54 edge=100.00 copyROI=119.9% copyPnL=$+203.76 copyT=10 strong smart-money signal and low bot score
-0x2b8530b61aeb94cb6c1c7e6dc0c52adda01b43d3 # tier=B action=prompt smart=100.00 bot=22.67 edge=100.00 copyROI=54.0% copyPnL=$+16.20 copyT=3 positive edge, prompt before auto-follow
+0x2a35f54dc4bbca26704ea6ca5df8820075cb9015 # tier=B action=prompt smart=100.00 bot=25.55 edge=100.00 copyROI=115.4% copyPnL=$+3531.77 copyT=231 positive edge, prompt before auto-follow
+0x2a99dac44bf1d44dd74f16b145df840ae66a51bb # tier=B action=prompt smart=100.00 bot=33.40 edge=100.00 copyROI=55.3% copyPnL=$+1309.93 copyT=230 positive edge, prompt before auto-follow
+0x2b17ceaade0469dcc19bc9d7597389201b60d36d # tier=A action=auto-small smart=100.00 bot=17.63 edge=100.00 copyROI=119.9% copyPnL=$+203.76 copyT=10 strong smart-money signal and low bot score
 0x2ba6c2c20075a5c5f6996dd32f080e5d005e644c # tier=B action=prompt smart=100.00 bot=28.67 edge=96.17 copyROI=62.8% copyPnL=$+94.19 copyT=4 positive edge, prompt before auto-follow
 0x2c5b62d200918db923d8f57903a0cb3872251dcd # tier=A action=prompt smart=100.00 bot=3.53 edge=100.00 copyROI=146.9% copyPnL=$+132.20 copyT=9 strong smart-money signal and low bot score
 0x2c6374499f1f1a80b4f1d0eff89eb81345dc0ca5 # tier=A action=prompt smart=100.00 bot=17.39 edge=100.00 copyROI=92.2% copyPnL=$+46.10 copyT=5 strong smart-money signal and low bot score
 0x2cf09999d298fae387b194aff1ebadb8832ddf85 # tier=B action=prompt smart=100.00 bot=29.18 edge=100.00 copyROI=151.8% copyPnL=$+333.88 copyT=21 positive edge, prompt before auto-follow
 0x2d395d11014415644fe9a8599fe050e7f3a06053 # tier=B action=prompt smart=100.00 bot=33.50 edge=100.00 copyROI=161.8% copyPnL=$+1359.16 copyT=14 positive edge, prompt before auto-follow
+0x2fccc0dc27101d9d908b63d0c0111f0e9bb1e74c # tier=B action=prompt smart=100.00 bot=29.04 edge=100.00 copyROI=68.8% copyPnL=$+20.62 copyT=3 positive edge, prompt before auto-follow
 0x308f2f04ae0a520f4f72a961ed96f5c39f0c70a0 # tier=A action=prompt smart=100.00 bot=23.33 edge=95.82 copyROI=14.3% copyPnL=$+7.17 copyT=5 strong smart-money signal and low bot score
-0x30c7ac0158499ddc6761047f7f69bcf7d036ac3b # tier=B action=prompt smart=100.00 bot=33.73 edge=100.00 copyROI=113.2% copyPnL=$+837.39 copyT=11 positive edge, prompt before auto-follow
+0x30c7ac0158499ddc6761047f7f69bcf7d036ac3b # tier=B action=prompt smart=100.00 bot=33.43 edge=100.00 copyROI=108.9% copyPnL=$+631.49 copyT=10 positive edge, prompt before auto-follow
 0x344c30f4717119980ecfad7c442177710584a1ae # tier=B action=prompt smart=100.00 bot=28.08 edge=93.32 copyROI=10.2% copyPnL=$+3.06 copyT=3 positive edge, prompt before auto-follow
 0x3471a897e56a8d3621ca79af87dae4325977f17e # tier=A action=prompt smart=100.00 bot=19.41 edge=100.00 copyROI=209.9% copyPnL=$+1175.19 copyT=12 strong smart-money signal and low bot score
-0x3520f4198a03313718b801421420010be0801fa0 # tier=B action=prompt smart=100.00 bot=33.02 edge=100.00 copyROI=172.1% copyPnL=$+361.41 copyT=20 positive edge, prompt before auto-follow
+0x3520f4198a03313718b801421420010be0801fa0 # tier=B action=prompt smart=100.00 bot=32.53 edge=100.00 copyROI=172.1% copyPnL=$+361.41 copyT=20 positive edge, prompt before auto-follow
 0x3724379b7192ddf7fb43aadbba6d8bc3895e69b5 # tier=A action=prompt smart=100.00 bot=16.92 edge=100.00 copyROI=8.7% copyPnL=$+8.73 copyT=6 strong smart-money signal and low bot score
-0x3830fd68537b1a408d495c31acdbe7d9f1e3d2d5 # tier=B action=prompt smart=100.00 bot=34.75 edge=100.00 copyROI=70.0% copyPnL=$+273.17 copyT=39 positive edge, prompt before auto-follow
+0x3830fd68537b1a408d495c31acdbe7d9f1e3d2d5 # tier=B action=prompt smart=100.00 bot=34.71 edge=100.00 copyROI=70.0% copyPnL=$+273.17 copyT=39 positive edge, prompt before auto-follow
 0x387f1720cfc532a80297faaabc00e2296871970b # tier=B action=prompt smart=100.00 bot=23.25 edge=94.74 copyROI=395.9% copyPnL=$+158.36 copyT=4 positive edge, prompt before auto-follow
-0x3d40c569a05ba1a9b72e639609bbba4771d45739 # tier=B action=prompt smart=100.00 bot=26.41 edge=100.00 copyROI=29.4% copyPnL=$+32.38 copyT=10 positive edge, prompt before auto-follow
-0x3e357803bf5319c4d7f45d6e76da6750330c4f69 # tier=A action=prompt smart=98.44 bot=13.75 edge=100.00 copyROI=418.6% copyPnL=$+293.01 copyT=7 strong smart-money signal and low bot score
+0x3d40c569a05ba1a9b72e639609bbba4771d45739 # tier=B action=prompt smart=100.00 bot=26.40 edge=100.00 copyROI=29.4% copyPnL=$+32.38 copyT=10 positive edge, prompt before auto-follow
+0x3e357803bf5319c4d7f45d6e76da6750330c4f69 # tier=A action=prompt smart=98.32 bot=13.96 edge=100.00 copyROI=418.6% copyPnL=$+293.01 copyT=7 strong smart-money signal and low bot score
 0x3f3da070a6fadfa1232ab49a95d0d8988c812e18 # tier=B action=prompt smart=100.00 bot=33.97 edge=100.00 copyROI=87.5% copyPnL=$+131.27 copyT=6 positive edge, prompt before auto-follow
-0x404e7ab090ba136cebe5e0c517d094f84bea7a34 # tier=A action=prompt smart=100.00 bot=21.83 edge=100.00 copyROI=76.1% copyPnL=$+60.88 copyT=8 strong smart-money signal and low bot score
-0x407c2584742989ae2924c106649d05ee7f724ba3 # tier=B action=prompt smart=100.00 bot=33.97 edge=100.00 copyROI=43.5% copyPnL=$+17.39 copyT=4 positive edge, prompt before auto-follow
-0x42c99f38d2b951b0dc8e8bd5371fa80c9dd19623 # tier=A action=auto-small smart=100.00 bot=12.68 edge=100.00 copyROI=143.8% copyPnL=$+3119.68 copyT=155 strong smart-money signal and low bot score
+0x404e7ab090ba136cebe5e0c517d094f84bea7a34 # tier=A action=prompt smart=100.00 bot=20.88 edge=100.00 copyROI=76.1% copyPnL=$+60.88 copyT=8 strong smart-money signal and low bot score
+0x407c2584742989ae2924c106649d05ee7f724ba3 # tier=B action=prompt smart=100.00 bot=33.86 edge=100.00 copyROI=43.5% copyPnL=$+17.39 copyT=4 positive edge, prompt before auto-follow
+0x41bbdde43bdb0de3043af6e6d6165265c2111827 # tier=B action=prompt smart=100.00 bot=33.86 edge=100.00 copyROI=24.0% copyPnL=$+9.60 copyT=3 positive edge, prompt before auto-follow
+0x42c99f38d2b951b0dc8e8bd5371fa80c9dd19623 # tier=A action=auto-small smart=100.00 bot=12.92 edge=100.00 copyROI=137.6% copyPnL=$+2902.28 copyT=151 strong smart-money signal and low bot score
 0x43e935d5f6484816639b1783040648a7b85da4fb # tier=B action=prompt smart=100.00 bot=34.59 edge=100.00 copyROI=281.2% copyPnL=$+393.62 copyT=13 positive edge, prompt before auto-follow
 0x46072f22bc5624f7ff43489d570fdc7e745ad542 # tier=B action=prompt smart=100.00 bot=26.50 edge=100.00 copyROI=113.2% copyPnL=$+203.74 copyT=17 positive edge, prompt before auto-follow
-0x4873713d4954ab6ecebaf5fb1b018f622bb515ba # tier=B action=prompt smart=100.00 bot=33.27 edge=100.00 copyROI=111.8% copyPnL=$+2371.22 copyT=106 positive edge, prompt before auto-follow
-0x4b4071d1456249cd8d7272d533a3efe191aa2f6a # tier=B action=prompt smart=100.00 bot=31.96 edge=100.00 copyROI=197.3% copyPnL=$+59.18 copyT=3 positive edge, prompt before auto-follow
-0x4cb03276679d644ec1852f744668f345d41657e0 # tier=B action=prompt smart=100.00 bot=34.09 edge=100.00 copyROI=122.7% copyPnL=$+1815.79 copyT=84 positive edge, prompt before auto-follow
+0x4873713d4954ab6ecebaf5fb1b018f622bb515ba # tier=B action=prompt smart=100.00 bot=33.12 edge=100.00 copyROI=112.2% copyPnL=$+2355.68 copyT=105 positive edge, prompt before auto-follow
+0x4b4071d1456249cd8d7272d533a3efe191aa2f6a # tier=B action=prompt smart=100.00 bot=31.92 edge=100.00 copyROI=197.3% copyPnL=$+59.18 copyT=3 positive edge, prompt before auto-follow
+0x4cb03276679d644ec1852f744668f345d41657e0 # tier=B action=prompt smart=100.00 bot=34.39 edge=100.00 copyROI=122.7% copyPnL=$+1815.79 copyT=84 positive edge, prompt before auto-follow
 0x4cf25c3320b28cd164911d982c75b375cb9c2057 # tier=B action=prompt smart=70.95 bot=29.83 edge=81.88 copyROI=8.3% copyPnL=$+10.80 copyT=11 positive edge, prompt before auto-follow
 0x4da54527d9134dba2f40a8f84eecf57f6e423baf # tier=B action=prompt smart=100.00 bot=31.65 edge=100.00 copyROI=48.0% copyPnL=$+293.09 copyT=59 positive edge, prompt before auto-follow
 0x50e432c7fa40c0395e832c20a0abd65fe1621ced # tier=B action=prompt smart=100.00 bot=19.13 edge=100.00 copyROI=82.5% copyPnL=$+33.00 copyT=4 positive edge, prompt before auto-follow
-0x513587a2f36a8cb29333052a6a479091ef8a7217 # tier=A action=prompt smart=100.00 bot=18.68 edge=100.00 copyROI=148.9% copyPnL=$+1697.96 copyT=85 strong smart-money signal and low bot score
+0x513587a2f36a8cb29333052a6a479091ef8a7217 # tier=A action=auto-small smart=100.00 bot=17.99 edge=100.00 copyROI=149.4% copyPnL=$+1703.40 copyT=88 strong smart-money signal and low bot score
 0x54f017c3ab1c9dfd169e62bb5e99d147ffa57725 # tier=B action=prompt smart=100.00 bot=25.16 edge=100.00 copyROI=16.1% copyPnL=$+67.60 copyT=39 positive edge, prompt before auto-follow
-0x56acab44cfca2e88bb9b3406890aea7bfa0cd77e # tier=B action=prompt smart=100.00 bot=27.49 edge=100.00 copyROI=226.1% copyPnL=$+7663.40 copyT=309 positive edge, prompt before auto-follow
+0x56acab44cfca2e88bb9b3406890aea7bfa0cd77e # tier=B action=prompt smart=100.00 bot=27.52 edge=100.00 copyROI=226.3% copyPnL=$+7331.42 copyT=295 positive edge, prompt before auto-follow
 0x578e354ae9365002ac8eea4baadbe9d8cf95c3c0 # tier=B action=prompt smart=100.00 bot=25.81 edge=100.00 copyROI=48.7% copyPnL=$+14.61 copyT=3 positive edge, prompt before auto-follow
 0x586a4788648f16d462b47a4403030b645fbabe99 # tier=B action=prompt smart=100.00 bot=34.98 edge=100.00 copyROI=129.7% copyPnL=$+194.50 copyT=12 positive edge, prompt before auto-follow
 0x592532bdb0a8a544ba59deecec7bb1a72a609984 # tier=B action=prompt smart=100.00 bot=31.70 edge=100.00 copyROI=97.0% copyPnL=$+174.66 copyT=15 positive edge, prompt before auto-follow
-0x5be94b3a84065bacc8bc57b7bf46c4fb4ba5ef2b # tier=B action=prompt smart=100.00 bot=27.12 edge=100.00 copyROI=245.9% copyPnL=$+3024.91 copyT=123 positive edge, prompt before auto-follow
-0x612f885bd3d0236ea53ebfd501fae971c59c05d8 # tier=B action=prompt smart=100.00 bot=25.03 edge=100.00 copyROI=105.9% copyPnL=$+592.79 copyT=53 positive edge, prompt before auto-follow
+0x5ba711c5cf8d430e7d1e0b94a07e0a522f608732 # tier=B action=prompt smart=100.00 bot=30.95 edge=100.00 copyROI=48.8% copyPnL=$+673.91 copyT=133 positive edge, prompt before auto-follow
+0x5be94b3a84065bacc8bc57b7bf46c4fb4ba5ef2b # tier=B action=prompt smart=100.00 bot=27.12 edge=100.00 copyROI=248.0% copyPnL=$+3099.79 copyT=125 positive edge, prompt before auto-follow
+0x612f885bd3d0236ea53ebfd501fae971c59c05d8 # tier=A action=prompt smart=100.00 bot=24.97 edge=100.00 copyROI=105.9% copyPnL=$+592.79 copyT=53 strong smart-money signal and low bot score
 0x62613833b3dc8bb3fdfd89b73d30dc1d0e4d4adb # tier=B action=prompt smart=100.00 bot=7.65 edge=100.00 copyROI=71.3% copyPnL=$+21.38 copyT=3 positive edge, prompt before auto-follow
 0x651d591c4b0e33eb58a5a03f102f610029fb6f4d # tier=B action=prompt smart=100.00 bot=25.11 edge=99.64 copyROI=19.3% copyPnL=$+5.79 copyT=3 positive edge, prompt before auto-follow
 0x66ef2abb1231f16e3b4d1aa55fdbf6c73da7a836 # tier=B action=prompt smart=100.00 bot=18.00 edge=100.00 copyROI=122.4% copyPnL=$+48.97 copyT=3 positive edge, prompt before auto-follow
 0x66ef5c5afc583ce86d44d21ebd79c402d596f738 # tier=B action=prompt smart=100.00 bot=34.16 edge=100.00 copyROI=15.8% copyPnL=$+15.85 copyT=10 positive edge, prompt before auto-follow
-0x677d9aa41592d57893636ca461d89f0ceb264907 # tier=A action=prompt smart=100.00 bot=21.76 edge=100.00 copyROI=85.6% copyPnL=$+1010.57 copyT=117 strong smart-money signal and low bot score
+0x677d9aa41592d57893636ca461d89f0ceb264907 # tier=A action=prompt smart=100.00 bot=21.61 edge=100.00 copyROI=86.2% copyPnL=$+1043.40 copyT=120 strong smart-money signal and low bot score
 0x68cb34a278606e379de8cbf07614df64aa696f57 # tier=B action=prompt smart=100.00 bot=17.52 edge=71.55 copyROI=199.8% copyPnL=$+99.91 copyT=4 positive edge, prompt before auto-follow
 0x6db568e61e5e3de7d87f831431b673f38ce2e279 # tier=B action=prompt smart=100.00 bot=27.04 edge=100.00 copyROI=100.0% copyPnL=$+3918.02 copyT=64 positive edge, prompt before auto-follow
-0x6e5499610351827c22d83a6570b738e40a2f511e # tier=A action=prompt smart=100.00 bot=24.90 edge=100.00 copyROI=7.5% copyPnL=$+45.51 copyT=51 strong smart-money signal and low bot score
-0x7391fc8006956409ee1b05fe01335b0df0e45375 # tier=A action=prompt smart=100.00 bot=19.73 edge=100.00 copyROI=5.3% copyPnL=$+5.27 copyT=10 strong smart-money signal and low bot score
-0x73c201ac38bbdd31ae6f58928c29b7aa4d3a3a29 # tier=B action=prompt smart=100.00 bot=33.44 edge=100.00 copyROI=15.0% copyPnL=$+236.11 copyT=156 positive edge, prompt before auto-follow
-0x760f1063f9f07d5125de802b16775a967b7f326a # tier=B action=prompt smart=100.00 bot=30.53 edge=100.00 copyROI=126.0% copyPnL=$+1284.66 copyT=91 positive edge, prompt before auto-follow
-0x77f15562490da48ad913546b9d461b398ec191bd # tier=B action=prompt smart=100.00 bot=33.15 edge=100.00 copyROI=74.5% copyPnL=$+335.41 copyT=20 positive edge, prompt before auto-follow
+0x6e5499610351827c22d83a6570b738e40a2f511e # tier=A action=prompt smart=100.00 bot=24.63 edge=100.00 copyROI=7.2% copyPnL=$+44.89 copyT=52 strong smart-money signal and low bot score
+0x7391fc8006956409ee1b05fe01335b0df0e45375 # tier=A action=prompt smart=100.00 bot=20.00 edge=100.00 copyROI=5.3% copyPnL=$+5.27 copyT=10 strong smart-money signal and low bot score
+0x73c201ac38bbdd31ae6f58928c29b7aa4d3a3a29 # tier=B action=prompt smart=100.00 bot=33.37 edge=100.00 copyROI=15.0% copyPnL=$+238.65 copyT=158 positive edge, prompt before auto-follow
+0x760f1063f9f07d5125de802b16775a967b7f326a # tier=B action=prompt smart=100.00 bot=30.59 edge=100.00 copyROI=126.0% copyPnL=$+1284.66 copyT=91 positive edge, prompt before auto-follow
+0x77f15562490da48ad913546b9d461b398ec191bd # tier=B action=prompt smart=100.00 bot=33.08 edge=100.00 copyROI=74.5% copyPnL=$+335.41 copyT=20 positive edge, prompt before auto-follow
 0x789fa76a100c7622e53775c79fa3cc5e8d8a20ec # tier=B action=prompt smart=99.38 bot=26.94 edge=100.00 copyROI=71.6% copyPnL=$+171.80 copyT=18 positive edge, prompt before auto-follow
-0x797255f4701331610041687268d246071343594f # tier=B action=prompt smart=100.00 bot=33.29 edge=100.00 copyROI=57.7% copyPnL=$+934.33 copyT=127 positive edge, prompt before auto-follow
+0x797255f4701331610041687268d246071343594f # tier=B action=prompt smart=100.00 bot=33.26 edge=100.00 copyROI=56.7% copyPnL=$+929.50 copyT=129 positive edge, prompt before auto-follow
 0x7d68a721f2975657fd035ac362ff1dcd952a8239 # tier=A action=auto-small smart=100.00 bot=10.71 edge=100.00 copyROI=114.7% copyPnL=$+229.39 copyT=20 strong smart-money signal and low bot score
-0x7e3392a6c04e7db3931425b9f9a35d106ae673e7 # tier=B action=prompt smart=100.00 bot=34.02 edge=100.00 copyROI=169.0% copyPnL=$+743.75 copyT=43 positive edge, prompt before auto-follow
+0x7e3392a6c04e7db3931425b9f9a35d106ae673e7 # tier=B action=prompt smart=100.00 bot=34.06 edge=100.00 copyROI=169.0% copyPnL=$+743.75 copyT=43 positive edge, prompt before auto-follow
 0x7fcfe9989700c2f346b98e43e215936f587980ac # tier=B action=prompt smart=100.00 bot=12.29 edge=100.00 copyROI=2.5% copyPnL=$+0.75 copyT=3 positive edge, prompt before auto-follow
 0x877fdb546da48353fd712056495f66e31dad8f3b # tier=B action=prompt smart=100.00 bot=29.68 edge=100.00 copyROI=48.7% copyPnL=$+58.39 copyT=5 positive edge, prompt before auto-follow
 0x88423c5126475c73a7798733fb6221831c551fbd # tier=B action=prompt smart=90.67 bot=26.30 edge=64.19 copyROI=42.5% copyPnL=$+12.74 copyT=3 positive edge, prompt before auto-follow
-0x885ba72c03aebeee878a386ed0b2acf9ee0ea30d # tier=B action=prompt smart=100.00 bot=32.13 edge=100.00 copyROI=80.5% copyPnL=$+40.23 copyT=4 positive edge, prompt before auto-follow
+0x885ba72c03aebeee878a386ed0b2acf9ee0ea30d # tier=B action=prompt smart=100.00 bot=32.42 edge=100.00 copyROI=80.5% copyPnL=$+40.23 copyT=4 positive edge, prompt before auto-follow
 0x89878c25fe61899e1d6fabec2d058c64c10902f3 # tier=B action=prompt smart=100.00 bot=34.26 edge=100.00 copyROI=68.4% copyPnL=$+780.25 copyT=62 positive edge, prompt before auto-follow
-0x89cfd0142921c330205bab181aa2ecbe22315f47 # tier=B action=prompt smart=100.00 bot=25.61 edge=100.00 copyROI=308.4% copyPnL=$+1110.04 copyT=36 positive edge, prompt before auto-follow
-0x8ba27b7c9de2b6367f986bff5f9c8049204c1650 # tier=A action=prompt smart=100.00 bot=21.80 edge=100.00 copyROI=384.1% copyPnL=$+6529.46 copyT=129 strong smart-money signal and low bot score
-0x8dd10e3a2570d3d62440f0e7f988aff7223f5a9b # tier=B action=prompt smart=100.00 bot=34.50 edge=100.00 copyROI=60.5% copyPnL=$+66.53 copyT=11 positive edge, prompt before auto-follow
-0x9358d1428d3a621c9ad7c548c32f83ab07744a33 # tier=A action=prompt smart=80.51 bot=3.07 edge=86.20 copyROI=106.9% copyPnL=$+149.64 copyT=14 strong smart-money signal and low bot score
-0xa164b901678d14b57b89a8d4e928956fe46a8b02 # tier=B action=prompt smart=100.00 bot=33.00 edge=100.00 copyROI=212.9% copyPnL=$+702.54 copyT=28 positive edge, prompt before auto-follow
-0xaca05b6bdb509612dfbf36d99f60dbf4021d9b86 # tier=A action=prompt smart=100.00 bot=19.13 edge=100.00 copyROI=330.6% copyPnL=$+429.71 copyT=13 strong smart-money signal and low bot score
+0x89cfd0142921c330205bab181aa2ecbe22315f47 # tier=B action=prompt smart=100.00 bot=25.69 edge=100.00 copyROI=307.9% copyPnL=$+1077.73 copyT=35 positive edge, prompt before auto-follow
+0x8ba27b7c9de2b6367f986bff5f9c8049204c1650 # tier=A action=prompt smart=100.00 bot=22.49 edge=100.00 copyROI=376.7% copyPnL=$+6892.98 copyT=137 strong smart-money signal and low bot score
+0x8dd10e3a2570d3d62440f0e7f988aff7223f5a9b # tier=B action=prompt smart=100.00 bot=33.11 edge=100.00 copyROI=59.5% copyPnL=$+53.59 copyT=9 positive edge, prompt before auto-follow
+0x9358d1428d3a621c9ad7c548c32f83ab07744a33 # tier=A action=prompt smart=90.06 bot=2.90 edge=87.40 copyROI=106.9% copyPnL=$+149.64 copyT=14 strong smart-money signal and low bot score
+0x9a0c1f312018409dbc6be714f1fbf9a09b27370e # tier=B action=prompt smart=100.00 bot=30.59 edge=100.00 copyROI=81.7% copyPnL=$+1372.23 copyT=140 positive edge, prompt before auto-follow
+0xa164b901678d14b57b89a8d4e928956fe46a8b02 # tier=B action=prompt smart=100.00 bot=32.88 edge=100.00 copyROI=212.9% copyPnL=$+702.54 copyT=28 positive edge, prompt before auto-follow
+0xaca05b6bdb509612dfbf36d99f60dbf4021d9b86 # tier=A action=prompt smart=100.00 bot=19.18 edge=100.00 copyROI=330.6% copyPnL=$+429.71 copyT=13 strong smart-money signal and low bot score
 0xae2b0aaea325a32870f56ff19df3b87acaa190ea # tier=B action=prompt smart=100.00 bot=34.60 edge=100.00 copyROI=232.9% copyPnL=$+6335.38 copyT=192 positive edge, prompt before auto-follow
 0xbb4d40a7c40df098cd819bc3692558026270de5a # tier=A action=prompt smart=100.00 bot=15.18 edge=100.00 copyROI=129.8% copyPnL=$+64.90 copyT=5 strong smart-money signal and low bot score
-0xbc651060abb7c5f99988c352c8f4f8b2fb2696c8 # tier=A action=prompt smart=100.00 bot=22.56 edge=100.00 copyROI=9.4% copyPnL=$+37.42 copyT=40 strong smart-money signal and low bot score
-0xbe128a1af51b6a9173f7496b21e9034dc10a728f # tier=B action=prompt smart=100.00 bot=26.84 edge=100.00 copyROI=95.9% copyPnL=$+28.76 copyT=3 positive edge, prompt before auto-follow
-0xc16e1477bec0d3970b8bba3a6ea9faea73918f62 # tier=B action=prompt smart=100.00 bot=30.35 edge=100.00 copyROI=104.7% copyPnL=$+125.68 copyT=6 positive edge, prompt before auto-follow
-0xc4020444a9d906a6dde62fa898a8f068634cc7f1 # tier=B action=prompt smart=100.00 bot=29.39 edge=100.00 copyROI=118.6% copyPnL=$+177.96 copyT=12 positive edge, prompt before auto-follow
+0xbc651060abb7c5f99988c352c8f4f8b2fb2696c8 # tier=A action=prompt smart=100.00 bot=22.67 edge=100.00 copyROI=9.4% copyPnL=$+37.42 copyT=40 strong smart-money signal and low bot score
+0xbe128a1af51b6a9173f7496b21e9034dc10a728f # tier=B action=prompt smart=100.00 bot=27.14 edge=100.00 copyROI=95.9% copyPnL=$+28.76 copyT=3 positive edge, prompt before auto-follow
+0xc16e1477bec0d3970b8bba3a6ea9faea73918f62 # tier=B action=prompt smart=100.00 bot=29.75 edge=100.00 copyROI=104.7% copyPnL=$+125.68 copyT=6 positive edge, prompt before auto-follow
 0xcbb5623096b78505a26524e642c5c9066e585ed9 # tier=B action=prompt smart=100.00 bot=25.77 edge=100.00 copyROI=8.2% copyPnL=$+4.90 copyT=5 positive edge, prompt before auto-follow
-0xcdc16095643e158c407da40f9a9a8da24f80bdd8 # tier=B action=prompt smart=100.00 bot=32.70 edge=100.00 copyROI=55.4% copyPnL=$+354.81 copyT=37 positive edge, prompt before auto-follow
+0xcdc16095643e158c407da40f9a9a8da24f80bdd8 # tier=B action=prompt smart=100.00 bot=32.67 edge=100.00 copyROI=55.4% copyPnL=$+354.81 copyT=37 positive edge, prompt before auto-follow
 0xdb06587a02ed4c451107313c7128fafb5165d9ac # tier=B action=prompt smart=100.00 bot=32.05 edge=100.00 copyROI=20.8% copyPnL=$+20.76 copyT=10 positive edge, prompt before auto-follow
-0xddf37336be71210729a5b79d62d90d6b2bdf8d34 # tier=A action=prompt smart=100.00 bot=2.93 edge=100.00 copyROI=240.5% copyPnL=$+216.46 copyT=7 strong smart-money signal and low bot score
-0xe21cff72d4004e36d6047e837c198e33fe99b754 # tier=B action=prompt smart=100.00 bot=29.19 edge=100.00 copyROI=30.9% copyPnL=$+327.85 copyT=65 positive edge, prompt before auto-follow
-0xe4b14e55bbfd549b913108dbcaa344391c2ba75e # tier=A action=prompt smart=100.00 bot=24.09 edge=100.00 copyROI=195.0% copyPnL=$+312.07 copyT=12 strong smart-money signal and low bot score
-0xe8962daa681ac36a18e737ab4449aae2a284a4c7 # tier=A action=prompt smart=100.00 bot=24.26 edge=100.00 copyROI=42.3% copyPnL=$+591.76 copyT=131 strong smart-money signal and low bot score
-0xf3ce7f04dde4f8c5aed19a20e5ecd8520e5ca57a # tier=B action=prompt smart=100.00 bot=34.31 edge=100.00 copyROI=64.4% copyPnL=$+4461.34 copyT=299 positive edge, prompt before auto-follow
-0xf4e144462829dead1a93c6fd23a33560736e34a5 # tier=A action=prompt smart=100.00 bot=13.44 edge=100.00 copyROI=190.5% copyPnL=$+95.26 copyT=5 strong smart-money signal and low bot score
-0xf4ec03081af3116b77f0d52c109c6828ff0ec574 # tier=B action=prompt smart=100.00 bot=29.42 edge=100.00 copyROI=65.4% copyPnL=$+379.31 copyT=41 positive edge, prompt before auto-follow
-0xfa191702147d1db0853b5a1b4e6a81964159bb8f # tier=B action=prompt smart=100.00 bot=30.86 edge=100.00 copyROI=140.5% copyPnL=$+224.74 copyT=16 positive edge, prompt before auto-follow
-0xfbe8b1fccf402e4c7a739f5989aaee17ec6fbb28 # tier=A action=auto-small smart=100.00 bot=17.48 edge=100.00 copyROI=33.1% copyPnL=$+238.61 copyT=29 strong smart-money signal and low bot score
-0xfeca1660eb6a90641c7d4a48a9a0d568287d8c27 # tier=B action=prompt smart=100.00 bot=25.52 edge=100.00 copyROI=114.2% copyPnL=$+57.10 copyT=5 positive edge, prompt before auto-follow
+0xdc60e778a26e1618730b7c7e271bfec4720795df # tier=B action=prompt smart=100.00 bot=24.15 edge=81.10 copyROI=26.1% copyPnL=$+15.67 copyT=3 positive edge, prompt before auto-follow
+0xddf37336be71210729a5b79d62d90d6b2bdf8d34 # tier=A action=prompt smart=100.00 bot=2.58 edge=100.00 copyROI=240.5% copyPnL=$+216.46 copyT=7 strong smart-money signal and low bot score
+0xe21cff72d4004e36d6047e837c198e33fe99b754 # tier=B action=prompt smart=100.00 bot=29.18 edge=100.00 copyROI=30.9% copyPnL=$+327.85 copyT=65 positive edge, prompt before auto-follow
+0xf3ce7f04dde4f8c5aed19a20e5ecd8520e5ca57a # tier=B action=prompt smart=100.00 bot=34.43 edge=100.00 copyROI=64.6% copyPnL=$+4458.26 copyT=297 positive edge, prompt before auto-follow

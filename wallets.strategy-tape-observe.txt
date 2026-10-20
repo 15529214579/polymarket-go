@@ -1,2 +1,2 @@
-0x9052a5f2324b8efa264a2a37e942770284143c2d # list=tape_observe status=reject-bot tier=BOT bot=64.7 maxBuy=$16720 buyNotional=$26500 buys=2 copyROI=134.6% copyT=69 risks=bot_like_flow,burst_trading,opposite_side_same_market
-0x927cf2bb94d15707993f954552e56c74eb6d6633 # list=tape_observe status=reject-bot tier=BOT bot=64.8 maxBuy=$8360 buyNotional=$8360 buys=1 copyROI=-5.6% copyT=58 risks=bot_like_flow,burst_trading,negative_copy_sim,open_copy_exposure
+0x9052a5f2324b8efa264a2a37e942770284143c2d # list=tape_observe status=reject-bot tier=BOT bot=64.6 maxBuy=$16720 buyNotional=$26500 buys=2 copyROI=132.7% copyT=68 risks=bot_like_flow,burst_trading,opposite_side_same_market
+0x927cf2bb94d15707993f954552e56c74eb6d6633 # list=tape_observe status=reject-bot tier=BOT bot=64.4 maxBuy=$8360 buyNotional=$8360 buys=1 copyROI=-3.9% copyT=59 risks=bot_like_flow,burst_trading,negative_copy_sim,open_copy_exposure
