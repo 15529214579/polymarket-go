@@ -1,11 +1,11 @@
 # Smartmoney Paper Wallet Policy
 
-Generated: 2026-10-20T23:45:52+08:00
+Generated: 2026-10-21T23:23:41+08:00
 
 - Rule: at least 10 independent wallet-market samples; promote at net >= +5.00U, ROI >= +2.00%, win rate >= 45.0%, and trimmed net >= +1.00U
 - Robustness: best sample <= 60.0% of net; two-sided markets <= 0; demote at net <= -5.00U
 - Emergency demotion: >= 2 samples with net <= -20.00U and ROI <= -20.0%
-- Decisions: 1 promoted / 30 demoted / 0 unresolved
+- Decisions: 1 promoted / 31 demoted / 0 unresolved
 
 | Decision | Wallet | Samples | Positions | Capital | Fees | Net | Trimmed | ROI | Win | Two-sided | Max/sample | Reason |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
@@ -52,12 +52,15 @@ Generated: 2026-10-20T23:45:52+08:00
 | keep | 0x4873713d4954ab6ecebaf5fb1b018f622bb515ba | 16 | 19 | 95.00 | 0.00 | +0.02 | -3.55 | +0.02% | 62.5% | 0 | 2 | best sample is 15836.2% of net > 60.0% |
 | collect | 0x17e2e9176973fa604091bf5ed692bc1f566cd472 | 2 | 2 | 40.00 | 2.03 | -0.11 | -8.08 | -0.28% | 50.0% | 0 | 1 | 2/10 independent wallet-market samples |
 | collect | 0xcdc16095643e158c407da40f9a9a8da24f80bdd8 | 5 | 9 | 45.00 | 0.00 | -1.01 | -0.93 | -2.24% | 0.0% | 1 | 2 | 5/10 independent wallet-market samples |
+| collect | 0xf3a6ac44c5c90ff2b4afa4459f71acc2e57971bd | 1 | 1 | 20.00 | 0.15 | -1.23 | +0.00 | -6.17% | 0.0% | 0 | 1 | 1/10 independent wallet-market samples |
+| collect | 0x797255f4701331610041687268d246071343594f | 1 | 1 | 20.00 | 0.30 | -1.60 | +0.00 | -8.01% | 0.0% | 0 | 1 | 1/10 independent wallet-market samples |
 | collect | 0x5811c8ad5dc5990528357ecf1a6d03311d6c0976 | 1 | 1 | 20.00 | 0.50 | -1.74 | +0.00 | -8.72% | 0.0% | 0 | 1 | 1/10 independent wallet-market samples |
 | collect | 0x65c18d740c8246af3353741c0b32e4b6da552988 | 2 | 2 | 40.00 | 2.06 | -1.94 | -7.42 | -4.85% | 50.0% | 0 | 1 | 2/10 independent wallet-market samples |
 | collect | 0x8ce7eb8a3ad1d6907b24368865c8487a68fb3150 | 1 | 1 | 20.00 | 0.73 | -2.17 | +0.00 | -10.84% | 0.0% | 0 | 1 | 1/10 independent wallet-market samples |
 | collect | 0xf3816d0bf529a2ac81d356a0261f039a57e240c2 | 1 | 1 | 20.00 | 0.73 | -2.17 | +0.00 | -10.84% | 0.0% | 0 | 1 | 1/10 independent wallet-market samples |
 | collect | 0x6daae04265d65cb2aae7fe6db4210568de7d954a | 2 | 2 | 40.00 | 1.29 | -2.18 | -1.34 | -5.44% | 0.0% | 0 | 1 | 2/10 independent wallet-market samples |
 | collect | 0x789fa76a100c7622e53775c79fa3cc5e8d8a20ec | 1 | 1 | 20.00 | 0.51 | -2.28 | +0.00 | -11.38% | 0.0% | 0 | 1 | 1/10 independent wallet-market samples |
+| collect | 0xf1183431be2c3720e013a1dd8b5d3a0d2cc34e2a | 1 | 1 | 20.00 | 0.50 | -2.32 | +0.00 | -11.59% | 0.0% | 0 | 1 | 1/10 independent wallet-market samples |
 | collect | 0xbfab152afa43741b41be0f355f862be2630cf067 | 5 | 6 | 120.00 | 2.20 | -2.48 | -11.54 | -2.07% | 60.0% | 0 | 2 | 5/10 independent wallet-market samples |
 | keep | 0xb99c7db4da4774477ee0207bf0755a3cb7677e96 | 11 | 12 | 240.00 | 9.88 | -2.66 | -14.72 | -1.11% | 54.5% | 0 | 2 | net -2.66U, ROI -1.11% |
 | collect | 0x0378b8c3f53f5b3f6de8ff8ae984774f35dd7634 | 1 | 1 | 20.00 | 0.55 | -2.69 | +0.00 | -13.46% | 0.0% | 0 | 1 | 1/10 independent wallet-market samples |
@@ -65,15 +68,18 @@ Generated: 2026-10-20T23:45:52+08:00
 | collect | 0xf1771327cccb5cda15e0eaa3c56755bbf3655f6a | 1 | 1 | 20.00 | 1.37 | -3.61 | +0.00 | -18.07% | 0.0% | 0 | 1 | 1/10 independent wallet-market samples |
 | collect | 0xb6dd8a264ee0b57e11ea6839cb8f53bfeb597af9 | 1 | 1 | 20.00 | 1.09 | -3.99 | +0.00 | -19.94% | 0.0% | 0 | 1 | 1/10 independent wallet-market samples |
 | collect | 0xcbb5623096b78505a26524e642c5c9066e585ed9 | 5 | 6 | 120.00 | 5.95 | -4.21 | -7.92 | -3.51% | 40.0% | 0 | 2 | 5/10 independent wallet-market samples |
+| collect | 0x234fcc29efc4d831e5b1dd92d266498ac6b16320 | 2 | 2 | 40.00 | 0.82 | -4.66 | -8.89 | -11.65% | 50.0% | 0 | 1 | 2/10 independent wallet-market samples |
 | collect | 0x6f3e7f25baa7d2d49e15e2d2957ff3dec62cbcf8 | 1 | 3 | 60.00 | 2.98 | -4.77 | +0.00 | -7.95% | 0.0% | 0 | 3 | 1/10 independent wallet-market samples |
+| collect | 0x997cb45c25e94b4ee58c234ce1f211496a0d51f3 | 1 | 1 | 20.00 | 0.41 | -5.27 | +0.00 | -26.36% | 0.0% | 0 | 1 | 1/10 independent wallet-market samples |
 | demote | 0x3f3aa7005f8006bfcc367d43a25cde25509fe8fd | 10 | 18 | 360.00 | 16.33 | -5.49 | -28.05 | -1.53% | 50.0% | 0 | 4 | net -5.49U <= -5.00U |
-| collect | 0x228b8d11eba89bf1c554f8879a9293b7106daf4c | 3 | 3 | 60.00 | 1.84 | -6.18 | -11.42 | -10.31% | 33.3% | 0 | 1 | 3/10 independent wallet-market samples |
 | collect | 0xfe67df6e0c585e50cbe8bdcad804d980c6b8a2e8 | 2 | 2 | 40.00 | 0.79 | -6.32 | -8.10 | -15.80% | 50.0% | 0 | 1 | 2/10 independent wallet-market samples |
 | collect | 0xa048ddf28c00037796bb9bdc4ad353cfbc31f2b5 | 3 | 3 | 60.00 | 1.25 | -6.42 | -16.89 | -10.70% | 66.7% | 0 | 1 | 3/10 independent wallet-market samples |
 | demote | 0x0e24a2181c154220234c27c7b063789dd9b97014 | 10 | 10 | 200.00 | 7.07 | -6.69 | -18.08 | -3.35% | 60.0% | 0 | 1 | net -6.69U <= -5.00U |
 | collect | 0xaa4d38848acdc90c973c307837f682749cf30bd2 | 1 | 1 | 20.00 | 0.76 | -6.93 | +0.00 | -34.63% | 0.0% | 0 | 1 | 1/10 independent wallet-market samples |
 | collect | 0xd14650532e11324cdaca20f45666486c24679bf0 | 1 | 1 | 20.00 | 1.18 | -7.04 | +0.00 | -35.18% | 0.0% | 0 | 1 | 1/10 independent wallet-market samples |
 | demote | 0x4cb03276679d644ec1852f744668f345d41657e0 | 17 | 18 | 360.00 | 13.65 | -7.77 | -14.53 | -2.16% | 52.9% | 0 | 2 | net -7.77U <= -5.00U |
+| collect | 0xb3e4df5349601936ee454c7ba94fa7743e502061 | 1 | 1 | 20.00 | 0.00 | -7.86 | +0.00 | -39.32% | 0.0% | 0 | 1 | 1/10 independent wallet-market samples |
+| collect | 0xbe7ef1907a730226453814dedeee3995c0656d00 | 1 | 1 | 20.00 | 0.00 | -7.86 | +0.00 | -39.32% | 0.0% | 0 | 1 | 1/10 independent wallet-market samples |
 | collect | 0x877fdb546da48353fd712056495f66e31dad8f3b | 1 | 2 | 40.00 | 0.57 | -8.10 | +0.00 | -20.26% | 0.0% | 0 | 2 | 1/10 independent wallet-market samples |
 | collect | 0xd8fa447d6f61fa6774906974b75e54cead7c581f | 1 | 1 | 20.00 | 0.45 | -8.19 | +0.00 | -40.97% | 0.0% | 0 | 1 | 1/10 independent wallet-market samples |
 | collect | 0x44c4c88662edc9e0978ee40e96ee8457531609cb | 1 | 1 | 20.00 | 1.44 | -8.24 | +0.00 | -41.21% | 0.0% | 0 | 1 | 1/10 independent wallet-market samples |
@@ -94,6 +100,7 @@ Generated: 2026-10-20T23:45:52+08:00
 | demote | 0x3c2b0236a49e16eea4b1bf026d945da0320d825e | 10 | 10 | 185.00 | 7.99 | -15.49 | -25.83 | -8.37% | 50.0% | 0 | 1 | net -15.49U <= -5.00U |
 | demote | 0x821dab0565ebf5b327f51db06223fdcfe01acf16 | 13 | 25 | 500.00 | 13.28 | -16.22 | -25.82 | -3.24% | 53.8% | 6 | 4 | net -16.22U <= -5.00U |
 | collect | 0x07b1235ea85393b56b5b00a5988144f84ba66dfc | 9 | 9 | 180.00 | 8.30 | -16.31 | -22.15 | -9.06% | 44.4% | 0 | 1 | 9/10 independent wallet-market samples |
+| collect | 0x228b8d11eba89bf1c554f8879a9293b7106daf4c | 4 | 5 | 100.00 | 2.14 | -16.76 | -22.00 | -16.76% | 25.0% | 1 | 2 | 4/10 independent wallet-market samples |
 | collect | 0xb9abbf527032ba370e3519de95ff907d0154f282 | 4 | 4 | 80.00 | 2.82 | -16.86 | -22.95 | -21.08% | 25.0% | 0 | 1 | 4/10 independent wallet-market samples |
 | demote | 0x29295021c598f1ec3efb894e69820f9691521dd0 | 27 | 62 | 1240.00 | 32.98 | -17.02 | -74.71 | -1.37% | 40.7% | 11 | 4 | net -17.02U <= -5.00U |
 | collect | 0x684baa57c338c2549aec0aa3f034f695d72a8409 | 5 | 9 | 180.00 | 6.93 | -17.06 | -20.68 | -9.48% | 40.0% | 0 | 3 | 5/10 independent wallet-market samples |
@@ -119,6 +126,7 @@ Generated: 2026-10-20T23:45:52+08:00
 | collect | 0xd3bc202269d0bbd1a158264be8f7e1e0f9e45bd2 | 8 | 9 | 180.00 | 5.68 | -34.26 | -49.04 | -19.03% | 50.0% | 0 | 2 | 8/10 independent wallet-market samples |
 | demote | 0x0d2d845a6ff64e31e04a70afce8a573940767ff5 | 10 | 22 | 440.00 | 11.33 | -35.75 | -60.10 | -8.13% | 40.0% | 1 | 5 | net -35.75U <= -5.00U |
 | demote | 0x076daa87c4fe1a85402a9b6b8e0a866224388d4c | 2 | 4 | 80.00 | 3.50 | -37.03 | -28.45 | -46.28% | 0.0% | 0 | 3 | emergency: 2 samples, net -37.03U, ROI -46.28% |
+| demote | 0x1f3a646ce5cbe2c70270e7a46161d89b7c7b895d | 2 | 4 | 80.00 | 0.29 | -38.04 | -29.69 | -47.55% | 0.0% | 1 | 3 | emergency: 2 samples, net -38.04U, ROI -47.55% |
 | demote | 0xcefda2f799dc8849adb83cb846c08b9d1feed6aa | 2 | 4 | 80.00 | 2.98 | -38.05 | -41.05 | -47.57% | 50.0% | 0 | 2 | emergency: 2 samples, net -38.05U, ROI -47.57% |
 | demote | 0x272d83eacf863ace931e0860a7d35c2f9820bc2f | 10 | 10 | 200.00 | 8.62 | -43.29 | -50.37 | -21.64% | 30.0% | 0 | 1 | emergency: 10 samples, net -43.29U, ROI -21.64% |
 | demote | 0xa35cf55a8a65525c7c9227b0a9b429d4e8f5a113 | 10 | 10 | 200.00 | 8.76 | -46.21 | -54.13 | -23.10% | 30.0% | 0 | 1 | emergency: 10 samples, net -46.21U, ROI -23.10% |

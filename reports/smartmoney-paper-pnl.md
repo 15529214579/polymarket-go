@@ -1,17 +1,17 @@
 # Smartmoney Paper PnL
 
-Generated: 2026-10-20T00:16:39+08:00
+Generated: 2026-10-21T00:17:46+08:00
 
 - Tradable realized net PnL: **-202.59U** (459 positions)
-- Broad collection realized net PnL: -1214.80U (896 positions; research only)
-- Combined observed realized net PnL: -1417.39U
-- Gross PnL: -714.07U
-- Fees: 703.32U (entry 432.23U / exit 271.09U)
-- Closed positions: 1355 (1460 journal rows)
-- Open: 10 positions / 200.00U exposure / 5.62U remaining entry fees
-- Conservative open PnL: -205.62U (open value marked to zero)
-- Conservative total PnL: **-1623.01U**
-- Tradable conservative total: **-202.59U**; broad collection conservative total: -1420.41U
+- Broad collection realized net PnL: -1224.03U (897 positions; research only)
+- Combined observed realized net PnL: -1426.63U
+- Gross PnL: -722.18U
+- Fees: 704.44U (entry 432.88U / exit 271.56U)
+- Closed positions: 1356 (1461 journal rows)
+- Open: 9 positions / 180.00U exposure / 4.97U remaining entry fees
+- Conservative open PnL: -184.97U (open value marked to zero)
+- Conservative total PnL: **-1611.59U**
+- Tradable conservative total: **-202.59U**; broad collection conservative total: -1409.00U
 
 ## By Policy
 
@@ -25,14 +25,14 @@ Generated: 2026-10-20T00:16:39+08:00
 | smartmoney-2026-08-03-p0p1-v3 | 151 | 151 | 3020.00 | -1119.39 | 77.73 | -1197.12 | 52/99/0 |
 | smartmoney-2026-08-04-promoted-v4 | 16 | 16 | 320.00 | -162.11 | 8.14 | -170.26 | 4/12/0 |
 | smartmoney-2026-08-04-risk-v5 | 44 | 53 | 880.00 | -42.55 | 35.31 | -77.85 | 15/29/0 |
-| smartmoney-2026-08-13-risk-v6 | 206 | 260 | 4120.00 | -296.95 | 158.74 | -455.69 | 89/117/0 |
+| smartmoney-2026-08-13-risk-v6 | 207 | 261 | 4140.00 | -305.07 | 159.85 | -464.93 | 89/118/0 |
 
 ## By Stake
 
 | Cohort | Positions | Rows | Capital | Gross | Fees | Net | W/L/F |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | 10U | 7 | 7 | 70.00 | +1.25 | 0.00 | +1.25 | 2/5/0 |
-| 20U+ | 1017 | 1113 | 20340.00 | -760.34 | 702.92 | -1463.26 | 473/544/0 |
+| 20U+ | 1018 | 1114 | 20360.00 | -768.46 | 704.04 | -1472.50 | 473/545/0 |
 | 5U | 331 | 340 | 1655.00 | +45.03 | 0.40 | +44.62 | 120/97/114 |
 
 ## By Strategy
@@ -40,7 +40,7 @@ Generated: 2026-10-20T00:16:39+08:00
 | Cohort | Positions | Rows | Capital | Gross | Fees | Net | W/L/F |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | copytrade | 340 | 352 | 3535.00 | -107.52 | 75.18 | -182.70 | 169/171/0 |
-| copytrade_collect | 895 | 988 | 17900.00 | -567.99 | 625.91 | -1193.91 | 423/472/0 |
+| copytrade_collect | 896 | 989 | 17920.00 | -576.11 | 627.03 | -1203.14 | 423/473/0 |
 | football_score | 1 | 1 | 20.00 | -20.00 | 0.94 | -20.94 | 0/1/0 |
 | football_score_collect | 1 | 1 | 20.00 | -20.00 | 0.89 | -20.89 | 0/1/0 |
 | legacy_auto | 118 | 118 | 590.00 | +1.45 | 0.40 | +1.05 | 3/1/114 |
@@ -49,7 +49,7 @@ Generated: 2026-10-20T00:16:39+08:00
 
 | Cohort | Positions | Rows | Capital | Gross | Fees | Net | W/L/F |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| fee-aware | 1021 | 1117 | 20360.00 | -758.89 | 703.32 | -1462.21 | 476/545/0 |
+| fee-aware | 1022 | 1118 | 20380.00 | -767.01 | 704.44 | -1471.45 | 476/546/0 |
 | legacy-no-cost | 334 | 343 | 1705.00 | +44.82 | 0.00 | +44.82 | 119/101/114 |
 
 ## By Signal Source
@@ -142,6 +142,7 @@ Generated: 2026-10-20T00:16:39+08:00
 | copytrade_collect_wallet:0x888b6adca603e900a9d71613732727a68f7e5d1a | 1 | 1 | 20.00 | -7.05 | 1.28 | -8.33 | 0/1/0 |
 | copytrade_collect_wallet:0x6c817d646358c58963e6ebeb2cb41c3f4c8398b7 | 1 | 1 | 20.00 | -7.88 | 0.69 | -8.57 | 0/1/0 |
 | copytrade_collect_wallet:0xe760b6327dfdeb66a9782f033d257b79c474f2f9 | 1 | 1 | 20.00 | -7.72 | 0.92 | -8.65 | 0/1/0 |
+| copytrade_collect_wallet:0xa278b41b5afda5d18da683eb7f851a7b2dc13369 | 1 | 1 | 20.00 | -8.12 | 1.12 | -9.24 | 0/1/0 |
 | copytrade_collect_wallet:0xadfaada4a21c0b3d5c6459f2374d1e3dfd43324e | 1 | 1 | 20.00 | -9.56 | 0.82 | -10.38 | 0/1/0 |
 | copytrade_collect_wallet:0x084425dedaa0a4d92164adb33b294005518df46a | 3 | 3 | 60.00 | -8.13 | 2.35 | -10.48 | 1/2/0 |
 | copytrade_wallet:0x5b1da62d04a662da31839a482092288ca7b03721 | 5 | 5 | 100.00 | -8.51 | 4.06 | -12.57 | 2/3/0 |

@@ -1,8 +1,8 @@
 # Sports Alert Candidates
 
-**Generated:** 2026-10-20 00:10 +08
+**Generated:** 2026-10-21 00:10 +08
 
-- Recent BUY rows inspected: 0
+- Recent BUY rows inspected: 7
 - Diagnostic window: 6h0m0s
 - Alert window: 10m0s
 - Consensus alert window: 15m0s
@@ -131,4 +131,10 @@
 
 | Status | Mode | Wallet | List | Tier | Bot | Notional | Age | Reason | Market |
 |---|---|---|---|---|---:|---:|---:|---|---|
-| none |  |  |  |  | 0.0 | $0 |  |  |  |
+| blocked | OBSERVE | `0x6e55...68d0` | - | - | 0.0 | $2100 | 1m | observe wallet unscored | Dota 2: Team Synapse vs Yellow Submarine - Game 1 Winner |
+| blocked | OBSERVE | `0x6e55...68d0` | - | - | 0.0 | $2100 | 7m | observe wallet unscored | Dota 2: Team Synapse vs Yellow Submarine - Game 1 Winner |
+| blocked | OBSERVE | `0xc9f4...c1e4` | - | - | 0.0 | $1763 | 13m | observe wallet unscored | Dota 2: Team Synapse vs Yellow Submarine - Game 1 Winner |
+| blocked | OBSERVE | `0x7bcc...b4fa` | - | - | 0.0 | $1000 | 5m | observe wallet unscored | Dota 2: Team Synapse vs Yellow Submarine - Game 1 Winner |
+| blocked | OBSERVE | `0x86df...d902` | - | - | 0.0 | $839 | 9m | observe wallet unscored | Dota 2: Team Synapse vs Yellow Submarine - Game 1 Winner |
+| blocked | OBSERVE | `0xc0f5...3d04` | - | - | 0.0 | $737 | 5m | observe wallet unscored | Dota 2: Team Synapse vs Yellow Submarine - Game 1 Winner |
+| blocked | OBSERVE | `0x234f...6320` | - | - | 0.0 | $588 | 9m | observe wallet unscored | Dota 2: Team Synapse vs Yellow Submarine - Game 1 Winner |
