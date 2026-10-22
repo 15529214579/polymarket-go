@@ -1,6 +1,2 @@
-0x6e553015227ef6f43683a866bec357d6608368d0 # source=sports_tape list=- tier=- buys=2 buyNotional=$4200 maxBuy=$2100 targetCopyROI=0.0% targetCopyT=0 bot=0.0
-0xc9f4bec86118be62d973fd53004efca8fed8c1e4 # source=sports_tape list=- tier=- buys=1 buyNotional=$1763 maxBuy=$1763 targetCopyROI=0.0% targetCopyT=0 bot=0.0
-0x7bccd2d3dfd370f65aa3cc5d51c7c9649ad9b4fa # source=sports_tape list=- tier=- buys=1 buyNotional=$1000 maxBuy=$1000 targetCopyROI=0.0% targetCopyT=0 bot=0.0
-0x86df6ce94c9263d09a6052b43d652adb7b51d902 # source=sports_tape list=- tier=- buys=1 buyNotional=$839 maxBuy=$839 targetCopyROI=0.0% targetCopyT=0 bot=0.0
-0xc0f5345be7d24194892f10627123ffe91c633d04 # source=sports_tape list=- tier=- buys=1 buyNotional=$737 maxBuy=$737 targetCopyROI=0.0% targetCopyT=0 bot=0.0
-0x234fcc29efc4d831e5b1dd92d266498ac6b16320 # source=sports_tape list=- tier=- buys=1 buyNotional=$588 maxBuy=$588 targetCopyROI=0.0% targetCopyT=0 bot=0.0
+0xf3ce7f04dde4f8c5aed19a20e5ecd8520e5ca57a # source=sports_tape list=tape_reversal tier=B buys=2 buyNotional=$2131 maxBuy=$1234 targetCopyROI=62.1% targetCopyT=298 bot=34.2
+0xd106952ebf30a3125affd8a23b6c1f30c35fc79c # source=sports_tape list=- tier=- buys=1 buyNotional=$730 maxBuy=$730 targetCopyROI=0.0% targetCopyT=0 bot=0.0

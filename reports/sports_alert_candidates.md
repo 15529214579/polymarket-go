@@ -1,8 +1,8 @@
 # Sports Alert Candidates
 
-**Generated:** 2026-10-21 00:10 +08
+**Generated:** 2026-10-22 00:10 +08
 
-- Recent BUY rows inspected: 7
+- Recent BUY rows inspected: 3
 - Diagnostic window: 6h0m0s
 - Alert window: 10m0s
 - Consensus alert window: 15m0s
@@ -131,10 +131,6 @@
 
 | Status | Mode | Wallet | List | Tier | Bot | Notional | Age | Reason | Market |
 |---|---|---|---|---|---:|---:|---:|---|---|
-| blocked | OBSERVE | `0x6e55...68d0` | - | - | 0.0 | $2100 | 1m | observe wallet unscored | Dota 2: Team Synapse vs Yellow Submarine - Game 1 Winner |
-| blocked | OBSERVE | `0x6e55...68d0` | - | - | 0.0 | $2100 | 7m | observe wallet unscored | Dota 2: Team Synapse vs Yellow Submarine - Game 1 Winner |
-| blocked | OBSERVE | `0xc9f4...c1e4` | - | - | 0.0 | $1763 | 13m | observe wallet unscored | Dota 2: Team Synapse vs Yellow Submarine - Game 1 Winner |
-| blocked | OBSERVE | `0x7bcc...b4fa` | - | - | 0.0 | $1000 | 5m | observe wallet unscored | Dota 2: Team Synapse vs Yellow Submarine - Game 1 Winner |
-| blocked | OBSERVE | `0x86df...d902` | - | - | 0.0 | $839 | 9m | observe wallet unscored | Dota 2: Team Synapse vs Yellow Submarine - Game 1 Winner |
-| blocked | OBSERVE | `0xc0f5...3d04` | - | - | 0.0 | $737 | 5m | observe wallet unscored | Dota 2: Team Synapse vs Yellow Submarine - Game 1 Winner |
-| blocked | OBSERVE | `0x234f...6320` | - | - | 0.0 | $588 | 9m | observe wallet unscored | Dota 2: Team Synapse vs Yellow Submarine - Game 1 Winner |
+| blocked | REVERSAL-RISK | `0xf3ce...a57a` | tape_reversal | B | 34.2 | $1234 | 7m | reversal risk disabled | Dota 2: salamit vs HULIGANI - Game 1 Winner |
+| blocked | REVERSAL-RISK | `0xf3ce...a57a` | tape_reversal | B | 34.2 | $897 | 6m | reversal risk disabled | Dota 2: salamit vs HULIGANI - Game 1 Winner |
+| blocked | OBSERVE | `0xd106...c79c` | - | - | 0.0 | $730 | 12m | observe wallet unscored | Mavericks vs. Rockets |
