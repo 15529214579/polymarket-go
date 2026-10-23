@@ -1,6 +1,6 @@
 # Sports Burst Performance
 
-**Generated:** 2026-10-22 00:10 +08
+**Generated:** 2026-10-23 00:10 +08
 
 - Tape: `/Users/murphyma/work/polymarket-go/db/strategy_iteration/sports_tape.jsonl`
 - Fixed paper stake: $10.00 per burst
@@ -12,13 +12,13 @@
 
 ## Summary
 
-- Bursts: 0
-- Marked to current midpoint: 0
+- Bursts: 1
+- Marked to current midpoint: 1
 - Unmarked: 0
-- Win rate incl. midpoint marks: 0.0%
-- PnL incl. midpoint marks: $+0.00
-- ROI incl. midpoint marks: 0.0%
-- Avg price delta: +0.00pp
+- Win rate incl. midpoint marks: 100.0%
+- PnL incl. midpoint marks: $+0.35
+- ROI incl. midpoint marks: 3.5%
+- Avg price delta: +1.50pp
 
 ## Mode Gates
 
@@ -27,7 +27,7 @@
 
 | Key | Bursts | Marked | Win | ROI | PnL | Action |
 |---|---:|---:|---:|---:|---:|---|
-| n/a | 0 | 0 | 0.0% | 0.0% | $+0.00 | COLLECT |
+| `CONSENSUS` | 1 | 1 | 100.0% | 3.5% | $+0.35 | COLLECT_POSITIVE |
 
 ## Scope Gates
 
@@ -36,7 +36,7 @@
 
 | Key | Bursts | Marked | Win | ROI | PnL | Action |
 |---|---:|---:|---:|---:|---:|---|
-| n/a | 0 | 0 | 0.0% | 0.0% | $+0.00 | COLLECT |
+| `consensus` | 1 | 1 | 100.0% | 3.5% | $+0.35 | COLLECT_POSITIVE |
 
 ## Wallet Gates
 
@@ -45,7 +45,7 @@
 
 | Key | Bursts | Marked | Win | ROI | PnL | Action |
 |---|---:|---:|---:|---:|---:|---|
-| n/a | 0 | 0 | 0.0% | 0.0% | $+0.00 | COLLECT |
+| `multi:2` | 1 | 1 | 100.0% | 3.5% | $+0.35 | COLLECT_POSITIVE |
 
 ## Consensus Participants
 
@@ -53,7 +53,8 @@
 
 | Wallet | Signals | Marked | Win | ROI | PnL | TotalNotional | AvgDeltaPP |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| n/a | 0 | 0 | 0.0% | 0.0% | $+0.00 | $0 | +0.00 |
+| `0x689f...259c` | 1 | 1 | 100.0% | 3.5% | $+0.35 | $10994 | +1.50 |
+| `0xbcc3...ac9c` | 1 | 1 | 100.0% | 3.5% | $+0.35 | $10994 | +1.50 |
 
 ## Research-Only Consensus Watch
 
@@ -73,16 +74,17 @@
 ## Durable Consensus Event History
 
 - Rule: persisted CONSENSUS events imported from live and shadow alert logs; this survives tape-window rollover
-- Events: 4
-- Marked to current midpoint/settlement: 4
-- Marked samples still needed for promotion review: 1
-- Win rate incl. midpoint marks: 50.0%
-- PnL incl. midpoint marks: $+1.38
+- Events: 5
+- Marked to current midpoint/settlement: 5
+- Marked samples still needed for promotion review: 0
+- Win rate incl. midpoint marks: 60.0%
+- PnL incl. midpoint marks: $+1.73
 - ROI incl. midpoint marks: 3.5%
 - Gate action: COLLECT_POSITIVE
 
 | Last | Category | Wallets | Trades | Total | VWAP | Mid | ROI | Market |
 |---|---|---:|---:|---:|---:|---:|---:|---|
+| 10-23 00:03 | esports | 2 | 2 | $10994 | 0.430 | 0.445 | 3.5% | Dota 2: Team Liquid vs 1win - Game 2 Winner |
 | 07-09 12:49 | soccer | 2 | 2 | $17277 | 0.629 | 1.000 | 59.0% | Will France win on 2026-07-09? |
 | 07-09 11:40 | basketball | 4 | 4 | $11047 | 0.848 | 0.500 | -41.0% | Indiana Fever vs. Los Angeles Sparks |
 | 07-09 11:31 | basketball | 3 | 3 | $10694 | 0.790 | 0.500 | -36.7% | Indiana Fever vs. Los Angeles Sparks |
@@ -102,9 +104,12 @@
 | `0x93bd...bbc5` | D | 55.0 | 1 | 1 | 100.0% | 32.6% | $+3.26 | $10336 | +24.58 |
 | `0x9679...9315` | D | 56.3 | 1 | 1 | 100.0% | 32.6% | $+3.26 | $10336 | +24.58 |
 | `0x7120...7c4e` | D | 57.2 | 1 | 1 | 100.0% | 13.8% | $+1.38 | $11047 | +11.68 |
+| `0x689f...259c` | - | 0.0 | 1 | 1 | 100.0% | 3.5% | $+0.35 | $10994 | +1.50 |
+| `0xbcc3...ac9c` | - | 0.0 | 1 | 1 | 100.0% | 3.5% | $+0.35 | $10994 | +1.50 |
 
 ## Recent Bursts
 
 | Last | Scope | Mode | Actor | Participants | Wallets | Trades | Total | VWAP | Mid | ROI | Market |
 |---|---|---|---|---|---:|---:|---:|---:|---:|---:|---|
-| n/a |  |  |  |  | 0 | 0 | $0 | 0.000 | 0.000 | 0.0% |  |
+| 7m | consensus | CONSENSUS | `multi:2` | `0x689f...259c`, `0xbcc3...ac9c` | 2 | 2 | $10994 | 0.430 | 0.445 | 3.5% | Dota 2: Team Liquid vs 1win - Game 2 Winner |
+

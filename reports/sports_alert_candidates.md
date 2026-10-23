@@ -1,8 +1,8 @@
 # Sports Alert Candidates
 
-**Generated:** 2026-10-22 00:10 +08
+**Generated:** 2026-10-23 00:10 +08
 
-- Recent BUY rows inspected: 3
+- Recent BUY rows inspected: 7
 - Diagnostic window: 6h0m0s
 - Alert window: 10m0s
 - Consensus alert window: 15m0s
@@ -101,7 +101,7 @@
 
 | Status | Wallets | Trades | Total | VWAP | LastAge | Participants | Reason | Market |
 |---|---:|---:|---:|---:|---:|---|---|---|
-| none | 0 | 0 | $0 | 0.000 |  |  |  |  |
+| consensus | 2 | 2 | $10994 | 0.430 | 7m | `0x689f...259c`, `0xbcc3...ac9c` | consensus burst in diagnostic window | Dota 2: Team Liquid vs 1win - Game 2 Winner |
 
 ## Unknown Multi-Market Flow
 
@@ -131,6 +131,10 @@
 
 | Status | Mode | Wallet | List | Tier | Bot | Notional | Age | Reason | Market |
 |---|---|---|---|---|---:|---:|---:|---|---|
-| blocked | REVERSAL-RISK | `0xf3ce...a57a` | tape_reversal | B | 34.2 | $1234 | 7m | reversal risk disabled | Dota 2: salamit vs HULIGANI - Game 1 Winner |
-| blocked | REVERSAL-RISK | `0xf3ce...a57a` | tape_reversal | B | 34.2 | $897 | 6m | reversal risk disabled | Dota 2: salamit vs HULIGANI - Game 1 Winner |
-| blocked | OBSERVE | `0xd106...c79c` | - | - | 0.0 | $730 | 12m | observe wallet unscored | Mavericks vs. Rockets |
+| blocked | OBSERVE | `0xde7b...5f4b` | - | D | 45.8 | $11733 | 4m | bot 45.8 > 35.0 | Cavaliers vs. 76ers |
+| blocked | OBSERVE | `0xbcc3...ac9c` | consensus_research | - | 0.0 | $9666 | 7m | consensus research wallet requires consensus burst | Dota 2: Team Liquid vs 1win - Game 2 Winner |
+| blocked | OBSERVE | `0xc0f5...3d04` | - | - | 0.0 | $2211 | 7m | observe wallet unscored | Dota 2: CyberHero vs Yellow Submarine - Game 1 Winner |
+| blocked | OBSERVE | `0x689f...259c` | consensus_research | - | 0.0 | $1328 | 7m | consensus research wallet requires consensus burst | Dota 2: Team Liquid vs 1win - Game 2 Winner |
+| blocked | OBSERVE | `0x1365...c82a` | - | - | 0.0 | $1327 | 7m | observe wallet unscored | Dota 2: Team Liquid vs 1win - Game 2 Winner |
+| blocked | OBSERVE | `0xefde...6505` | - | - | 0.0 | $999 | 7m | observe wallet unscored | Bulls vs. Bucks |
+| blocked | OBSERVE | `0x8637...0c86` | - | - | 0.0 | $600 | 6m | observe wallet unscored | Dota 2: Team Liquid vs 1win - Game 2 Winner |
