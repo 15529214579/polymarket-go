@@ -1,6 +1,6 @@
 # Sports Burst Performance
 
-**Generated:** 2026-10-23 00:10 +08
+**Generated:** 2026-10-24 00:10 +08
 
 - Tape: `/Users/murphyma/work/polymarket-go/db/strategy_iteration/sports_tape.jsonl`
 - Fixed paper stake: $10.00 per burst
@@ -12,13 +12,13 @@
 
 ## Summary
 
-- Bursts: 1
-- Marked to current midpoint: 1
+- Bursts: 0
+- Marked to current midpoint: 0
 - Unmarked: 0
-- Win rate incl. midpoint marks: 100.0%
-- PnL incl. midpoint marks: $+0.35
-- ROI incl. midpoint marks: 3.5%
-- Avg price delta: +1.50pp
+- Win rate incl. midpoint marks: 0.0%
+- PnL incl. midpoint marks: $+0.00
+- ROI incl. midpoint marks: 0.0%
+- Avg price delta: +0.00pp
 
 ## Mode Gates
 
@@ -27,7 +27,7 @@
 
 | Key | Bursts | Marked | Win | ROI | PnL | Action |
 |---|---:|---:|---:|---:|---:|---|
-| `CONSENSUS` | 1 | 1 | 100.0% | 3.5% | $+0.35 | COLLECT_POSITIVE |
+| n/a | 0 | 0 | 0.0% | 0.0% | $+0.00 | COLLECT |
 
 ## Scope Gates
 
@@ -36,7 +36,7 @@
 
 | Key | Bursts | Marked | Win | ROI | PnL | Action |
 |---|---:|---:|---:|---:|---:|---|
-| `consensus` | 1 | 1 | 100.0% | 3.5% | $+0.35 | COLLECT_POSITIVE |
+| n/a | 0 | 0 | 0.0% | 0.0% | $+0.00 | COLLECT |
 
 ## Wallet Gates
 
@@ -45,7 +45,7 @@
 
 | Key | Bursts | Marked | Win | ROI | PnL | Action |
 |---|---:|---:|---:|---:|---:|---|
-| `multi:2` | 1 | 1 | 100.0% | 3.5% | $+0.35 | COLLECT_POSITIVE |
+| n/a | 0 | 0 | 0.0% | 0.0% | $+0.00 | COLLECT |
 
 ## Consensus Participants
 
@@ -53,23 +53,64 @@
 
 | Wallet | Signals | Marked | Win | ROI | PnL | TotalNotional | AvgDeltaPP |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| `0x689f...259c` | 1 | 1 | 100.0% | 3.5% | $+0.35 | $10994 | +1.50 |
-| `0xbcc3...ac9c` | 1 | 1 | 100.0% | 3.5% | $+0.35 | $10994 | +1.50 |
+| n/a | 0 | 0 | 0.0% | 0.0% | $+0.00 | $0 | +0.00 |
 
 ## Research-Only Consensus Watch
 
 - Rule: lower-threshold cross-wallet same-asset BUY bursts for sample discovery only; not Telegram-pushed and not counted as official CONSENSUS
 - Threshold: total>=$5000 wallets>=2
-- Watch bursts: 0
-- Marked to current midpoint/settlement: 0
-- ROI incl. midpoint marks: 0.0%
-- Durable watch events: 7
-- Durable watch marked: 7
-- Durable watch ROI: 8.9%
+- Watch bursts: 1
+- Marked to current midpoint/settlement: 1
+- ROI incl. midpoint marks: -7.4%
+- Durable watch events: 8
+- Durable watch marked: 8
+- Durable watch ROI: 6.8%
 
 | Last | Wallets | Trades | Total | VWAP | Mid | ROI | Participants | Market |
 |---|---:|---:|---:|---:|---:|---:|---|---|
-| n/a | 0 | 0 | $0 | 0.000 | 0.000 | 0.0% |  |  |
+| 10-24 00:05 | 6 | 6 | $8481 | 0.751 | 0.695 | -7.4% | `0x14ca...8f43`, `0x7e4d...b4ca`, `0x891a...f778`, `0xc0f5...3d04`, `0xcd6d...75c2`, `0xd5e4...2c05` | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
+
+### Durable Watch History
+
+| Last | Wallets | Trades | Total | VWAP | Mid | ROI | Market |
+|---|---:|---:|---:|---:|---:|---:|---|
+| 10-24 00:05 | 6 | 6 | $8481 | 0.751 | 0.695 | -7.4% | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
+| 10-21 00:08 | 3 | 4 | $6963 | 0.791 | 0.989 | 24.9% | Dota 2: Team Synapse vs Yellow Submarine - Game 1 Winner |
+| 10-19 00:00 | 2 | 2 | $9360 | 0.880 | 0.875 | -0.6% | Will Nottingham Forest FC win on 2026-10-18? |
+| 08-24 00:07 | 2 | 3 | $8461 | 0.717 | 0.725 | 1.1% | Will Liverpool FC win on 2026-08-23? |
+| 08-05 00:06 | 3 | 3 | $5020 | 0.769 | 0.925 | 20.3% | Dota 2: Team Falcons vs Team Liquid - Game 1 Winner |
+| 08-02 00:07 | 3 | 6 | $8586 | 0.694 | 0.745 | 7.3% | Dota 2: GLYPH vs Zero Tenacity - Game 1 Winner |
+| 07-09 11:28 | 3 | 4 | $8705 | 0.781 | 0.843 | 7.9% | Indiana Fever vs. Los Angeles Sparks |
+| 07-09 10:29 | 2 | 3 | $8397 | 0.400 | 0.404 | 1.0% | Will Spain win on 2026-07-10? |
+
+### Durable Watch Participants
+
+| Wallet | Tier | Bot | Signals | Marked | Win | ROI | PnL | TotalNotional | AvgDeltaPP |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `0x6e55...68d0` | - | 0.0 | 1 | 1 | 100.0% | 24.9% | $+2.49 | $6963 | +19.74 |
+| `0x7bcc...b4fa` | - | 0.0 | 1 | 1 | 100.0% | 24.9% | $+2.49 | $6963 | +19.74 |
+| `0xc9f4...c1e4` | - | 0.0 | 1 | 1 | 100.0% | 24.9% | $+2.49 | $6963 | +19.74 |
+| `0x0c99...0c88` | - | 0.0 | 1 | 1 | 100.0% | 20.3% | $+2.03 | $5020 | +15.63 |
+| `0x1b1f...d6d5` | C | 43.5 | 1 | 1 | 100.0% | 20.3% | $+2.03 | $5020 | +15.63 |
+| `0x51be...12c2` | - | 0.0 | 1 | 1 | 100.0% | 20.3% | $+2.03 | $5020 | +15.63 |
+| `0x124e...1c58` | C | 40.5 | 1 | 1 | 100.0% | 7.9% | $+0.79 | $8705 | +6.19 |
+| `0xc365...2e53` | - | 0.0 | 1 | 1 | 100.0% | 7.9% | $+0.79 | $8705 | +6.19 |
+| `0xf202...9ea8` | - | 0.0 | 1 | 1 | 100.0% | 7.9% | $+0.79 | $8705 | +6.19 |
+| `0x4aec...4ce9` | D | 58.8 | 1 | 1 | 100.0% | 7.3% | $+0.73 | $8586 | +5.07 |
+| `0xdf27...026f` | - | 0.0 | 1 | 1 | 100.0% | 7.3% | $+0.73 | $8586 | +5.07 |
+| `0xe16d...5e30` | D | 45.7 | 1 | 1 | 100.0% | 7.3% | $+0.73 | $8586 | +5.07 |
+| `0x3b62...5cc8` | - | 0.0 | 1 | 1 | 100.0% | 1.1% | $+0.11 | $8461 | +0.80 |
+| `0xc05e...24ae` | - | 0.0 | 1 | 1 | 100.0% | 1.1% | $+0.11 | $8461 | +0.80 |
+| `0x204f...5e14` | D | 48.9 | 1 | 1 | 100.0% | 1.0% | $+0.10 | $8397 | +0.40 |
+| `0x7ea5...de7b` | - | 0.0 | 1 | 1 | 100.0% | 1.0% | $+0.10 | $8397 | +0.40 |
+| `0x5cb5...7ce9` | - | 0.0 | 1 | 1 | 0.0% | -0.6% | $-0.06 | $9360 | -0.50 |
+| `0x927c...6633` | - | 0.0 | 1 | 1 | 0.0% | -0.6% | $-0.06 | $9360 | -0.50 |
+| `0x14ca...8f43` | - | 0.0 | 1 | 1 | 0.0% | -7.4% | $-0.74 | $8481 | -5.56 |
+| `0x7e4d...b4ca` | - | 0.0 | 1 | 1 | 0.0% | -7.4% | $-0.74 | $8481 | -5.56 |
+| `0x891a...f778` | - | 0.0 | 1 | 1 | 0.0% | -7.4% | $-0.74 | $8481 | -5.56 |
+| `0xc0f5...3d04` | D | 56.7 | 1 | 1 | 0.0% | -7.4% | $-0.74 | $8481 | -5.56 |
+| `0xcd6d...75c2` | - | 0.0 | 1 | 1 | 0.0% | -7.4% | $-0.74 | $8481 | -5.56 |
+| `0xd5e4...2c05` | - | 0.0 | 1 | 1 | 0.0% | -7.4% | $-0.74 | $8481 | -5.56 |
 
 ## Durable Consensus Event History
 
@@ -104,12 +145,11 @@
 | `0x93bd...bbc5` | D | 55.0 | 1 | 1 | 100.0% | 32.6% | $+3.26 | $10336 | +24.58 |
 | `0x9679...9315` | D | 56.3 | 1 | 1 | 100.0% | 32.6% | $+3.26 | $10336 | +24.58 |
 | `0x7120...7c4e` | D | 57.2 | 1 | 1 | 100.0% | 13.8% | $+1.38 | $11047 | +11.68 |
-| `0x689f...259c` | - | 0.0 | 1 | 1 | 100.0% | 3.5% | $+0.35 | $10994 | +1.50 |
-| `0xbcc3...ac9c` | - | 0.0 | 1 | 1 | 100.0% | 3.5% | $+0.35 | $10994 | +1.50 |
+| `0x689f...259c` | BOT | 61.5 | 1 | 1 | 100.0% | 3.5% | $+0.35 | $10994 | +1.50 |
+| `0xbcc3...ac9c` | D | 53.8 | 1 | 1 | 100.0% | 3.5% | $+0.35 | $10994 | +1.50 |
 
 ## Recent Bursts
 
 | Last | Scope | Mode | Actor | Participants | Wallets | Trades | Total | VWAP | Mid | ROI | Market |
 |---|---|---|---|---|---:|---:|---:|---:|---:|---:|---|
-| 7m | consensus | CONSENSUS | `multi:2` | `0x689f...259c`, `0xbcc3...ac9c` | 2 | 2 | $10994 | 0.430 | 0.445 | 3.5% | Dota 2: Team Liquid vs 1win - Game 2 Winner |
-
+| n/a |  |  |  |  | 0 | 0 | $0 | 0.000 | 0.000 | 0.0% |  |

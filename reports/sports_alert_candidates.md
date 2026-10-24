@@ -1,8 +1,8 @@
 # Sports Alert Candidates
 
-**Generated:** 2026-10-23 00:10 +08
+**Generated:** 2026-10-24 00:10 +08
 
-- Recent BUY rows inspected: 7
+- Recent BUY rows inspected: 23
 - Diagnostic window: 6h0m0s
 - Alert window: 10m0s
 - Consensus alert window: 15m0s
@@ -42,7 +42,7 @@
 
 | Wallet | List | Tier | Bot | Notional | Samples | Win | AvgPP | 5m | 15m | 1h | Gap | Market |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|
-| none |  |  | 0.0 | $0 | 0 | 0.0% | +0.00 | +0.00 | +0.00 | +0.00 |  |  |
+| `0x1550...5481` | target | C | 43.2 | $2400 | 0 | 0.0% | +0.00 | +0.00 | +0.00 | +0.00 | no edge snapshots | Mavericks vs. Pacers |
 
 ## Negative-Edge Blocked Wallets
 
@@ -101,7 +101,7 @@
 
 | Status | Wallets | Trades | Total | VWAP | LastAge | Participants | Reason | Market |
 |---|---:|---:|---:|---:|---:|---|---|---|
-| consensus | 2 | 2 | $10994 | 0.430 | 7m | `0x689f...259c`, `0xbcc3...ac9c` | consensus burst in diagnostic window | Dota 2: Team Liquid vs 1win - Game 2 Winner |
+| consensus | 6 | 6 | $8481 | 0.751 | 4m | `0x14ca...8f43`, `0x7e4d...b4ca`, `0x891a...f778`, `0xc0f5...3d04`, `0xcd6d...75c2`, `0xd5e4...2c05` | consensus burst in diagnostic window | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
 
 ## Unknown Multi-Market Flow
 
@@ -131,10 +131,26 @@
 
 | Status | Mode | Wallet | List | Tier | Bot | Notional | Age | Reason | Market |
 |---|---|---|---|---|---:|---:|---:|---|---|
-| blocked | OBSERVE | `0xde7b...5f4b` | - | D | 45.8 | $11733 | 4m | bot 45.8 > 35.0 | Cavaliers vs. 76ers |
-| blocked | OBSERVE | `0xbcc3...ac9c` | consensus_research | - | 0.0 | $9666 | 7m | consensus research wallet requires consensus burst | Dota 2: Team Liquid vs 1win - Game 2 Winner |
-| blocked | OBSERVE | `0xc0f5...3d04` | - | - | 0.0 | $2211 | 7m | observe wallet unscored | Dota 2: CyberHero vs Yellow Submarine - Game 1 Winner |
-| blocked | OBSERVE | `0x689f...259c` | consensus_research | - | 0.0 | $1328 | 7m | consensus research wallet requires consensus burst | Dota 2: Team Liquid vs 1win - Game 2 Winner |
-| blocked | OBSERVE | `0x1365...c82a` | - | - | 0.0 | $1327 | 7m | observe wallet unscored | Dota 2: Team Liquid vs 1win - Game 2 Winner |
-| blocked | OBSERVE | `0xefde...6505` | - | - | 0.0 | $999 | 7m | observe wallet unscored | Bulls vs. Bucks |
-| blocked | OBSERVE | `0x8637...0c86` | - | - | 0.0 | $600 | 6m | observe wallet unscored | Dota 2: Team Liquid vs 1win - Game 2 Winner |
+| blocked | OBSERVE | `0xa5d9...88ad` | tape_observe | TAPE | 0.0 | $8158 | 3m | tier TAPE below observe min B | Will Arsenal FC win on 2026-10-24? |
+| blocked | OBSERVE | `0x81f0...cbb1` | tape_observe | TAPE | 0.0 | $6045 | 6m | tier TAPE below observe min B | Clippers vs. Lakers |
+| blocked | OBSERVE | `0xa5d9...88ad` | tape_observe | TAPE | 0.0 | $5042 | 3m | tier TAPE below observe min B | Will Arsenal FC win on 2026-10-24? |
+| blocked | EDGE-HOT | `0x1550...5481` | target | C | 43.2 | $2400 | 4m | edge-hot thresholds not met | Mavericks vs. Pacers |
+| blocked | EDGE-HOT | `0x1550...5481` | target | C | 43.2 | $2080 | 5m | edge-hot thresholds not met | Raptors vs. Wizards |
+| blocked | OBSERVE | `0xc0f5...3d04` | - | D | 56.7 | $1864 | 4m | bot 56.7 > 35.0 | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
+| blocked | OBSERVE | `0xd5e4...2c05` | - | - | 0.0 | $1500 | 6m | observe wallet unscored | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
+| blocked | OBSERVE | `0x50d0...a6fc` | - | - | 0.0 | $1470 | 9m | observe wallet unscored | Raptors vs. Wizards |
+| blocked | OBSERVE | `0x50d0...a6fc` | - | - | 0.0 | $1417 | 10m | observe wallet unscored | Trail Blazers vs. Kings |
+| blocked | OBSERVE | `0xcd6d...75c2` | - | - | 0.0 | $1400 | 14m | observe wallet unscored | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
+| blocked | OBSERVE | `0x6bc7...c4a9` | football_score_push | D | 65.9 | $1273 | 13m | bot 65.9 > 35.0 | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
+| blocked | OBSERVE | `0x891a...f778` | - | - | 0.0 | $1266 | 8m | observe wallet unscored | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
+| blocked | OBSERVE | `0x7e4d...b4ca` | - | - | 0.0 | $1238 | 14m | observe wallet unscored | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
+| blocked | OBSERVE | `0x14ca...8f43` | - | - | 0.0 | $1213 | 8m | observe wallet unscored | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
+| blocked | OBSERVE | `0xeb69...cfd1` | - | - | 0.0 | $989 | 10m | observe wallet unscored | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
+| blocked | OBSERVE | `0x769c...2ee3` | - | - | 0.0 | $936 | 8m | observe wallet unscored | Dota 2: BetBoom Team vs Astra Invicta (BO3) - PARI Universe Group B |
+| blocked | OBSERVE | `0x6bc7...c4a9` | football_score_push | D | 65.9 | $878 | 13m | bot 65.9 > 35.0 | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
+| blocked | OBSERVE | `0x1c01...e7d0` | - | - | 0.0 | $781 | 8m | observe wallet unscored | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
+| blocked | OBSERVE | `0x249e...4fa6` | - | - | 0.0 | $644 | 9m | observe wallet unscored | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
+| blocked | OBSERVE | `0xeb69...cfd1` | - | - | 0.0 | $593 | 9m | observe wallet unscored | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
+| blocked | OBSERVE | `0xf902...a267` | - | - | 0.0 | $553 | 13m | observe wallet unscored | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
+| blocked | OBSERVE | `0x3a01...c89e` | - | - | 0.0 | $553 | 8m | observe wallet unscored | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
+| blocked | OBSERVE | `0x77d9...06ed` | - | - | 0.0 | $541 | 11m | observe wallet unscored | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
