@@ -1,13 +1,13 @@
 # Sports Alert Candidates
 
-**Generated:** 2026-10-24 00:10 +08
+**Generated:** 2026-10-25 00:10 +08
 
-- Recent BUY rows inspected: 23
+- Recent BUY rows inspected: 26
 - Diagnostic window: 6h0m0s
 - Alert window: 10m0s
 - Consensus alert window: 15m0s
-- Currently alertable unsent rows: 0
-- Eligible unsent rows in diagnostic window: 0
+- Currently alertable unsent rows: 1
+- Eligible unsent rows in diagnostic window: 1
 - Already sent rows in window: 0
 - Positive-edge required modes: CANDIDATE,PROBATION
 - Observe min notional: $3000
@@ -42,7 +42,7 @@
 
 | Wallet | List | Tier | Bot | Notional | Samples | Win | AvgPP | 5m | 15m | 1h | Gap | Market |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|
-| `0x1550...5481` | target | C | 43.2 | $2400 | 0 | 0.0% | +0.00 | +0.00 | +0.00 | +0.00 | no edge snapshots | Mavericks vs. Pacers |
+| `0x1550...5481` | target | C | 43.6 | $4735 | 0 | 0.0% | +0.00 | +0.00 | +0.00 | +0.00 | no edge snapshots | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
 
 ## Negative-Edge Blocked Wallets
 
@@ -101,7 +101,8 @@
 
 | Status | Wallets | Trades | Total | VWAP | LastAge | Participants | Reason | Market |
 |---|---:|---:|---:|---:|---:|---|---|---|
-| consensus | 6 | 6 | $8481 | 0.751 | 4m | `0x14ca...8f43`, `0x7e4d...b4ca`, `0x891a...f778`, `0xc0f5...3d04`, `0xcd6d...75c2`, `0xd5e4...2c05` | consensus burst in diagnostic window | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
+| consensus | 9 | 9 | $62298 | 0.520 | 2m | `0x074a...f0e0`, `0x0df2...5d51`, `0x2d8a...e818`, `0x479e...91c3`, `0x6bc7...c4a9`, `0xb5db...5800`, `0xbc56...8f28`, `0xcf0c...f2bb`, +1 more | consensus burst in diagnostic window | Will Chelsea FC win on 2026-10-24? |
+| consensus | 5 | 5 | $18325 | 0.666 | 3m | `0x00a9...36bb`, `0x1550...5481`, `0x4214...db99`, `0x5dfa...de9c`, `0xc5f0...40ec` | consensus burst in diagnostic window | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
 
 ## Unknown Multi-Market Flow
 
@@ -131,26 +132,29 @@
 
 | Status | Mode | Wallet | List | Tier | Bot | Notional | Age | Reason | Market |
 |---|---|---|---|---|---:|---:|---:|---|---|
-| blocked | OBSERVE | `0xa5d9...88ad` | tape_observe | TAPE | 0.0 | $8158 | 3m | tier TAPE below observe min B | Will Arsenal FC win on 2026-10-24? |
-| blocked | OBSERVE | `0x81f0...cbb1` | tape_observe | TAPE | 0.0 | $6045 | 6m | tier TAPE below observe min B | Clippers vs. Lakers |
-| blocked | OBSERVE | `0xa5d9...88ad` | tape_observe | TAPE | 0.0 | $5042 | 3m | tier TAPE below observe min B | Will Arsenal FC win on 2026-10-24? |
-| blocked | EDGE-HOT | `0x1550...5481` | target | C | 43.2 | $2400 | 4m | edge-hot thresholds not met | Mavericks vs. Pacers |
-| blocked | EDGE-HOT | `0x1550...5481` | target | C | 43.2 | $2080 | 5m | edge-hot thresholds not met | Raptors vs. Wizards |
-| blocked | OBSERVE | `0xc0f5...3d04` | - | D | 56.7 | $1864 | 4m | bot 56.7 > 35.0 | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
-| blocked | OBSERVE | `0xd5e4...2c05` | - | - | 0.0 | $1500 | 6m | observe wallet unscored | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
-| blocked | OBSERVE | `0x50d0...a6fc` | - | - | 0.0 | $1470 | 9m | observe wallet unscored | Raptors vs. Wizards |
-| blocked | OBSERVE | `0x50d0...a6fc` | - | - | 0.0 | $1417 | 10m | observe wallet unscored | Trail Blazers vs. Kings |
-| blocked | OBSERVE | `0xcd6d...75c2` | - | - | 0.0 | $1400 | 14m | observe wallet unscored | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
-| blocked | OBSERVE | `0x6bc7...c4a9` | football_score_push | D | 65.9 | $1273 | 13m | bot 65.9 > 35.0 | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
-| blocked | OBSERVE | `0x891a...f778` | - | - | 0.0 | $1266 | 8m | observe wallet unscored | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
-| blocked | OBSERVE | `0x7e4d...b4ca` | - | - | 0.0 | $1238 | 14m | observe wallet unscored | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
-| blocked | OBSERVE | `0x14ca...8f43` | - | - | 0.0 | $1213 | 8m | observe wallet unscored | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
-| blocked | OBSERVE | `0xeb69...cfd1` | - | - | 0.0 | $989 | 10m | observe wallet unscored | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
-| blocked | OBSERVE | `0x769c...2ee3` | - | - | 0.0 | $936 | 8m | observe wallet unscored | Dota 2: BetBoom Team vs Astra Invicta (BO3) - PARI Universe Group B |
-| blocked | OBSERVE | `0x6bc7...c4a9` | football_score_push | D | 65.9 | $878 | 13m | bot 65.9 > 35.0 | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
-| blocked | OBSERVE | `0x1c01...e7d0` | - | - | 0.0 | $781 | 8m | observe wallet unscored | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
-| blocked | OBSERVE | `0x249e...4fa6` | - | - | 0.0 | $644 | 9m | observe wallet unscored | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
-| blocked | OBSERVE | `0xeb69...cfd1` | - | - | 0.0 | $593 | 9m | observe wallet unscored | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
-| blocked | OBSERVE | `0xf902...a267` | - | - | 0.0 | $553 | 13m | observe wallet unscored | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
-| blocked | OBSERVE | `0x3a01...c89e` | - | - | 0.0 | $553 | 8m | observe wallet unscored | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
-| blocked | OBSERVE | `0x77d9...06ed` | - | - | 0.0 | $541 | 11m | observe wallet unscored | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
+| eligible | OBSERVE | `0x0df2...5d51` | - | - | 0.0 | $26101 | 7m | insider-scout huge whale | Will Chelsea FC win on 2026-10-24? |
+| blocked | OBSERVE | `0xcbc6...ec62` | - | D | 50.3 | $294000 | 6m | bot 50.3 > insider max 35.0 | Will Chelsea FC win on 2026-10-24? |
+| blocked | OBSERVE | `0xcf0c...f2bb` | - | - | 0.0 | $12804 | 7m | observe wallet unscored | Will Chelsea FC win on 2026-10-24? |
+| blocked | OBSERVE | `0x074a...f0e0` | - | - | 0.0 | $12804 | 7m | observe wallet unscored | Will Chelsea FC win on 2026-10-24? |
+| blocked | OBSERVE | `0x4214...db99` | - | - | 0.0 | $4792 | 5m | observe wallet unscored | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
+| blocked | EDGE-HOT | `0x1550...5481` | target | C | 43.6 | $4735 | 5m | edge-hot thresholds not met | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
+| blocked | OBSERVE | `0x5dfa...de9c` | - | - | 0.0 | $3810 | 3m | observe wallet unscored | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
+| blocked | OBSERVE | `0xf9d4...f843` | - | - | 0.0 | $3505 | 7m | observe wallet unscored | Will Chelsea FC win on 2026-10-24? |
+| blocked | OBSERVE | `0xc5f0...40ec` | - | - | 0.0 | $3120 | 7m | observe wallet unscored | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
+| blocked | OBSERVE | `0x00a9...36bb` | - | - | 0.0 | $1868 | 8m | observe wallet unscored | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
+| blocked | OBSERVE | `0xbc56...8f28` | - | - | 0.0 | $1800 | 6m | observe wallet unscored | Will Chelsea FC win on 2026-10-24? |
+| blocked | REVERSAL-RISK | `0xe907...cff6` | tape_reversal | BOT | 80.1 | $1619 | 6m | reversal risk disabled | Will Chelsea FC win on 2026-10-24? |
+| blocked | OBSERVE | `0xb5db...5800` | - | - | 0.0 | $1464 | 5m | observe wallet unscored | Will Chelsea FC win on 2026-10-24? |
+| blocked | EDGE-HOT | `0x1550...5481` | target | C | 43.6 | $1444 | 10m | edge-hot thresholds not met | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
+| blocked | OBSERVE | `0x479e...91c3` | - | - | 0.0 | $1410 | 8m | observe wallet unscored | Will Chelsea FC win on 2026-10-24? |
+| blocked | OBSERVE | `0x6bc7...c4a9` | - | - | 0.0 | $1408 | 7m | observe wallet unscored | Will Chelsea FC win on 2026-10-24? |
+| blocked | OBSERVE | `0x51be...12c2` | - | - | 0.0 | $1244 | 9m | observe wallet unscored | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
+| blocked | OBSERVE | `0x9697...18e9` | sports_holders_push | D | 54.7 | $1149 | 11m | bot 54.7 > 35.0 | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
+| blocked | OBSERVE | `0x2d8a...e818` | - | - | 0.0 | $1000 | 2m | observe wallet unscored | Will Chelsea FC win on 2026-10-24? |
+| blocked | OBSERVE | `0x36d7...c7ed` | - | - | 0.0 | $1000 | 3m | observe wallet unscored | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
+| blocked | OBSERVE | `0x3231...6e75` | - | - | 0.0 | $692 | 6m | observe wallet unscored | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
+| blocked | OBSERVE | `0x309c...e6fb` | - | - | 0.0 | $690 | 8m | observe wallet unscored | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
+| blocked | OBSERVE | `0x77d9...06ed` | - | - | 0.0 | $600 | 5m | observe wallet unscored | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
+| blocked | OBSERVE | `0x77d9...06ed` | - | - | 0.0 | $600 | 5m | observe wallet unscored | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
+| blocked | OBSERVE | `0x77d9...06ed` | - | - | 0.0 | $600 | 5m | observe wallet unscored | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
+| blocked | OBSERVE | `0x77d9...06ed` | - | - | 0.0 | $600 | 5m | observe wallet unscored | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |

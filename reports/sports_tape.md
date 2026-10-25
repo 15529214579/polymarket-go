@@ -1,65 +1,67 @@
 # Sports Whale Tape
 
-**Generated:** 2026-10-24 00:10 +08
+**Generated:** 2026-10-25 00:10 +08
 
 - Target categories: basketball,soccer,esports
 - Min notional: $500
 - Retain window: 6h0m0s
 - Retained prior trades: 0
 - Trades: 26
-- Wallets: 20
+- Wallets: 22
 
 ## Top Wallets
 
 | Wallet | List | Tier | Buys | BuyNotional | MaxBuy | Mkts | Cat | Smart | Bot | TargetCopyROI | TargetCopyT |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `0xa5d9...88ad` | - | - | 2 | $13200 | $8158 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
-| `0x81f0...cbb1` | - | - | 1 | $6045 | $6045 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
-| `0x1550...5481` | target | C | 2 | $4480 | $2400 | 2 | 1 | 100.0 | 43.2 | 175.4% | 10 |
-| `0x50d0...a6fc` | - | - | 2 | $2887 | $1470 | 2 | 1 | 0.0 | 0.0 | 0.0% | 0 |
-| `0x6bc7...c4a9` | football_score_push | D | 2 | $2151 | $1273 | 1 | 1 | 100.0 | 65.9 | 75.1% | 6 |
-| `0xc0f5...3d04` | - | D | 1 | $1864 | $1864 | 1 | 1 | 100.0 | 56.7 | 122.7% | 68 |
-| `0xeb69...cfd1` | - | - | 2 | $1582 | $989 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
-| `0xd5e4...2c05` | - | - | 1 | $1500 | $1500 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
-| `0xcd6d...75c2` | - | - | 1 | $1400 | $1400 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
-| `0x891a...f778` | - | - | 1 | $1266 | $1266 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
-| `0x7e4d...b4ca` | - | - | 1 | $1238 | $1238 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
-| `0x14ca...8f43` | - | - | 1 | $1213 | $1213 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
-| `0x769c...2ee3` | - | - | 1 | $936 | $936 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
-| `0x1c01...e7d0` | - | - | 1 | $781 | $781 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
-| `0x249e...4fa6` | - | - | 1 | $644 | $644 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
-| `0xf902...a267` | - | - | 1 | $553 | $553 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
-| `0x3a01...c89e` | - | - | 1 | $553 | $553 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
-| `0x77d9...06ed` | - | - | 1 | $541 | $541 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
-| `0x0ddf...9fe7` | - | - | 0 | $0 | $0 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
-| `0x8a36...4836` | - | - | 0 | $0 | $0 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
+| `0xcbc6...ec62` | - | D | 1 | $294000 | $294000 | 1 | 1 | 100.0 | 50.3 | 114.4% | 2 |
+| `0x0df2...5d51` | - | - | 1 | $26101 | $26101 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
+| `0x074a...f0e0` | - | - | 1 | $12804 | $12804 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
+| `0xcf0c...f2bb` | - | - | 1 | $12804 | $12804 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
+| `0x1550...5481` | target | C | 2 | $6179 | $4735 | 1 | 1 | 100.0 | 43.6 | 174.4% | 18 |
+| `0x4214...db99` | - | - | 1 | $4792 | $4792 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
+| `0x5dfa...de9c` | - | - | 1 | $3810 | $3810 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
+| `0xf9d4...f843` | - | - | 1 | $3505 | $3505 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
+| `0xc5f0...40ec` | - | - | 1 | $3120 | $3120 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
+| `0x77d9...06ed` | - | - | 4 | $2400 | $600 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
+| `0x00a9...36bb` | - | - | 1 | $1868 | $1868 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
+| `0xbc56...8f28` | - | - | 1 | $1800 | $1800 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
+| `0xe907...cff6` | tape_reversal | BOT | 1 | $1619 | $1619 | 1 | 1 | 100.0 | 80.1 | 28.1% | 13 |
+| `0xb5db...5800` | - | - | 1 | $1464 | $1464 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
+| `0x479e...91c3` | - | - | 1 | $1410 | $1410 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
+| `0x6bc7...c4a9` | - | - | 1 | $1408 | $1408 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
+| `0x51be...12c2` | - | - | 1 | $1244 | $1244 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
+| `0x9697...18e9` | sports_holders_push | D | 1 | $1149 | $1149 | 1 | 1 | 100.0 | 54.7 | 23.1% | 47 |
+| `0x2d8a...e818` | - | - | 1 | $1000 | $1000 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
+| `0x36d7...c7ed` | - | - | 1 | $1000 | $1000 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
+| `0x3231...6e75` | - | - | 1 | $692 | $692 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
+| `0x309c...e6fb` | - | - | 1 | $690 | $690 | 1 | 1 | 0.0 | 0.0 | 0.0% | 0 |
 
 ## Largest Trades
 
 | Time | Wallet | List | Side | Notional | Price | Outcome | Category | Market |
 |---|---|---|---|---:|---:|---|---|---|
-| 10-24 00:07 | `0xa5d9...88ad` | - | BUY | $8158 | 0.340 | No | soccer | Will Arsenal FC win on 2026-10-24? |
-| 10-24 00:04 | `0x81f0...cbb1` | - | BUY | $6045 | 0.770 | Lakers | basketball | Clippers vs. Lakers |
-| 10-24 00:07 | `0xa5d9...88ad` | - | BUY | $5042 | 0.334 | No | soccer | Will Arsenal FC win on 2026-10-24? |
-| 10-24 00:03 | `0x8a36...4836` | - | SELL | $3450 | 0.810 | Astra Invicta | esports | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
-| 10-24 00:06 | `0x1550...5481` | target | BUY | $2400 | 0.300 | Mavericks | basketball | Mavericks vs. Pacers |
-| 10-24 00:05 | `0x1550...5481` | target | BUY | $2080 | 0.260 | Wizards | basketball | Raptors vs. Wizards |
-| 10-24 00:05 | `0xc0f5...3d04` | - | BUY | $1864 | 0.892 | Astra Invicta | esports | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
-| 10-24 00:04 | `0xd5e4...2c05` | - | BUY | $1500 | 0.876 | Astra Invicta | esports | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
-| 10-24 00:01 | `0x50d0...a6fc` | - | BUY | $1470 | 0.750 | Raptors | basketball | Raptors vs. Wizards |
-| 10-24 00:00 | `0x50d0...a6fc` | - | BUY | $1417 | 0.810 | Trail Blazers | basketball | Trail Blazers vs. Kings |
-| 10-23 23:56 | `0xcd6d...75c2` | - | BUY | $1400 | 0.600 | Astra Invicta | esports | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
-| 10-23 23:57 | `0x6bc7...c4a9` | football_score_push | BUY | $1273 | 0.590 | Astra Invicta | esports | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
-| 10-24 00:01 | `0x891a...f778` | - | BUY | $1266 | 0.790 | Astra Invicta | esports | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
-| 10-23 23:56 | `0x7e4d...b4ca` | - | BUY | $1238 | 0.610 | Astra Invicta | esports | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
-| 10-24 00:02 | `0x14ca...8f43` | - | BUY | $1213 | 0.791 | Astra Invicta | esports | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
-| 10-23 23:56 | `0x0ddf...9fe7` | - | SELL | $1028 | 0.590 | Astra Invicta | esports | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
-| 10-24 00:00 | `0xeb69...cfd1` | - | BUY | $989 | 0.788 | Astra Invicta | esports | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
-| 10-23 23:56 | `0x77d9...06ed` | - | SELL | $971 | 0.600 | Astra Invicta | esports | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
-| 10-24 00:01 | `0x769c...2ee3` | - | BUY | $936 | 0.898 | Astra Invicta | esports | Dota 2: BetBoom Team vs Astra Invicta (BO3) - PARI Universe Group B |
-| 10-23 23:57 | `0x6bc7...c4a9` | football_score_push | BUY | $878 | 0.590 | Astra Invicta | esports | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
-| 10-24 00:01 | `0x1c01...e7d0` | - | BUY | $781 | 0.230 | BetBoom Team | esports | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
-| 10-24 00:01 | `0x249e...4fa6` | - | BUY | $644 | 0.750 | Astra Invicta | esports | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
-| 10-24 00:01 | `0xeb69...cfd1` | - | BUY | $593 | 0.788 | Astra Invicta | esports | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
-| 10-23 23:57 | `0xf902...a267` | - | BUY | $553 | 0.590 | Astra Invicta | esports | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
-| 10-24 00:02 | `0x3a01...c89e` | - | BUY | $553 | 0.790 | Astra Invicta | esports | Dota 2: BetBoom Team vs Astra Invicta - Game 2 Winner |
+| 10-25 00:03 | `0xcbc6...ec62` | - | BUY | $294000 | 0.490 | No | soccer | Will Chelsea FC win on 2026-10-24? |
+| 10-25 00:03 | `0x0df2...5d51` | - | BUY | $26101 | 0.520 | Yes | soccer | Will Chelsea FC win on 2026-10-24? |
+| 10-25 00:03 | `0xcf0c...f2bb` | - | BUY | $12804 | 0.520 | Yes | soccer | Will Chelsea FC win on 2026-10-24? |
+| 10-25 00:03 | `0x074a...f0e0` | - | BUY | $12804 | 0.520 | Yes | soccer | Will Chelsea FC win on 2026-10-24? |
+| 10-25 00:05 | `0x4214...db99` | - | BUY | $4792 | 0.670 | Team Spirit | esports | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
+| 10-25 00:05 | `0x1550...5481` | target | BUY | $4735 | 0.660 | Team Spirit | esports | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
+| 10-25 00:07 | `0x5dfa...de9c` | - | BUY | $3810 | 0.650 | Team Spirit | esports | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
+| 10-25 00:03 | `0xf9d4...f843` | - | BUY | $3505 | 0.520 | Yes | soccer | Will Chelsea FC win on 2026-10-24? |
+| 10-25 00:03 | `0xc5f0...40ec` | - | BUY | $3120 | 0.680 | Team Spirit | esports | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
+| 10-25 00:02 | `0x00a9...36bb` | - | BUY | $1868 | 0.680 | Team Spirit | esports | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
+| 10-25 00:04 | `0xbc56...8f28` | - | BUY | $1800 | 0.520 | Yes | soccer | Will Chelsea FC win on 2026-10-24? |
+| 10-25 00:03 | `0xe907...cff6` | tape_reversal | BUY | $1619 | 0.520 | Yes | soccer | Will Chelsea FC win on 2026-10-24? |
+| 10-25 00:05 | `0xb5db...5800` | - | BUY | $1464 | 0.520 | Yes | soccer | Will Chelsea FC win on 2026-10-24? |
+| 10-25 00:00 | `0x1550...5481` | target | BUY | $1444 | 0.260 | BetBoom Team | esports | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
+| 10-25 00:02 | `0x479e...91c3` | - | BUY | $1410 | 0.520 | Yes | soccer | Will Chelsea FC win on 2026-10-24? |
+| 10-25 00:03 | `0x6bc7...c4a9` | - | BUY | $1408 | 0.520 | Yes | soccer | Will Chelsea FC win on 2026-10-24? |
+| 10-25 00:01 | `0x51be...12c2` | - | BUY | $1244 | 0.280 | BetBoom Team | esports | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
+| 10-24 23:59 | `0x9697...18e9` | sports_holders_push | BUY | $1149 | 0.250 | BetBoom Team | esports | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
+| 10-25 00:08 | `0x2d8a...e818` | - | BUY | $1000 | 0.520 | Yes | soccer | Will Chelsea FC win on 2026-10-24? |
+| 10-25 00:07 | `0x36d7...c7ed` | - | BUY | $1000 | 0.646 | Team Spirit | esports | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
+| 10-25 00:04 | `0x3231...6e75` | - | BUY | $692 | 0.660 | Team Spirit | esports | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
+| 10-25 00:02 | `0x309c...e6fb` | - | BUY | $690 | 0.690 | Team Spirit | esports | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
+| 10-25 00:05 | `0x77d9...06ed` | - | BUY | $600 | 0.660 | Team Spirit | esports | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
+| 10-25 00:05 | `0x77d9...06ed` | - | BUY | $600 | 0.660 | Team Spirit | esports | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
+| 10-25 00:05 | `0x77d9...06ed` | - | BUY | $600 | 0.660 | Team Spirit | esports | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |

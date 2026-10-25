@@ -1,6 +1,6 @@
 # Whale Performance Report
 
-**Generated:** 2026-10-24 00:17 +08
+**Generated:** 2026-10-25 00:19 +08
 
 - Log: `/Users/murphyma/work/polymarket-go/db/journal/whale_trades.jsonl`
 - Wallet filter: `/Users/murphyma/work/polymarket-go/wallets.strategy-tape.txt`
