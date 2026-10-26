@@ -1,6 +1,6 @@
 # Leaderboard Whale Scan
 
-**Generated:** 2026-10-25 00:17 +08
+**Generated:** 2026-10-26 00:18 +08
 
 - Scores: `/Users/murphyma/work/polymarket-go/db/strategy_iteration/wallet_scores.json`
 - Push wallets: `/Users/murphyma/work/polymarket-go/wallets.strategy-push.txt`

@@ -1,13 +1,13 @@
 # Smart Money Daily
 
-**Generated:** 2026-10-25 00:19:49 +08
+**Generated:** 2026-10-26 00:20:41 +08
 
 ## Pipeline
 
 - Status: learning
 - Reason: evaluated signals 0 below 10
 - Action: keep current push running and collect more signals
-- Log: `/Users/murphyma/work/polymarket-go/logs/smartmoney-daily-2026-10-25.log`
+- Log: `/Users/murphyma/work/polymarket-go/logs/smartmoney-daily-2026-10-26.log`
 - Discovery report: `/Users/murphyma/work/polymarket-go/reports/strategy_iteration.md`
 - Strategy report: `/Users/murphyma/work/polymarket-go/reports/strategy_lab.md`
 - Sports tape report: `/Users/murphyma/work/polymarket-go/reports/sports_tape.md`
@@ -29,35 +29,35 @@
 
 ## Wallet Lists
 
-- Core before count: 21
-- Core after count: 25
+- Core before count: 20
+- Core after count: 22
 - Watch after count: 20
 - Sports after count: 10
 - Scout after count: 0
 - Target after count: 10
 - Flow after count: 0
-- Tape after count: 0
-- Tape observe count: 4
+- Tape after count: 1
+- Tape observe count: 0
 - Tape probation count: 0
 - Tape candidate count: 0
 - Tape follow-ready count: 0
 - Tape edge-hot count: 1
 - Tape reversal count: 8
-- Consensus research count: 10
-- Push before count: 59
-- Push after count: 63
+- Consensus research count: 20
+- Push before count: 58
+- Push after count: 60
 - Quarantine count: 3
 - Review-noise exclude count: 431
 - Edge snapshots: 1282
 - Sports tape alert sent: 5
 - Sports tape alert logged: 5
 - Sports tape shadow alert logged: 7
-- Sports consensus event history: 7
+- Sports consensus event history: 8
 - Sports consensus watch event history: 8
-- Sports alert eligible now: 1
+- Sports alert eligible now: 0
 - Sports alert accumulation bursts: 0
-- Sports alert consensus bursts: 2
-- Selected core wallets: 25
+- Sports alert consensus bursts: 1
+- Selected core wallets: 22
 - Core list changed: yes
 - Push list changed: yes
 - Restart needed: no
@@ -65,11 +65,11 @@
 
 ## Backtest Filter
 
-- Closed copy trades: 2828
-- Copy ROI: 166.1%
-- Copy PnL: $+59247.76
-- Copy win rate: 96.0%
-- Worst included CopyROI: 101.1%
+- Closed copy trades: 2812
+- Copy ROI: 167.6%
+- Copy PnL: $+59301.36
+- Copy win rate: 96.1%
+- Worst included CopyROI: 100.0%
 - Params: tier>=B bot<30 copyT>=15 copyROI>=100 copyPnL>=25 copyWin>=60 closedROI>=0 smart>=70
 
 ## Live Core Performance
@@ -240,13 +240,13 @@
 
 ## Sports Burst Performance
 
-- Bursts: 2
-- Marked to current midpoint: 2
+- Bursts: 1
+- Marked to current midpoint: 1
 - Unmarked: 0
-- Win rate incl. midpoint marks: 0.0%
-- PnL incl. midpoint marks: $-1.61
-- ROI incl. midpoint marks: -8.0%
-- Avg price delta: -5.29pp
+- Win rate incl. midpoint marks: 100.0%
+- PnL incl. midpoint marks: $+2.10
+- ROI incl. midpoint marks: 21.0%
+- Avg price delta: +17.32pp
 
 ## Live Scout Performance
 

@@ -1,1 +1,3 @@
-
+0x64ceab3becc143e1b97a8e16dc270c2297566015 # list=tape tier=C smart=100.00 bot=39.54 copyROI=109.8% copyPnL=$+779.94 copyT=5 copyWin=100.0% avgNotional=$1125 sources=existing,sports_tape
+0x6ac5bb06a9eb05641fd5e82640268b92f3ab4b6e # list=tape tier=C smart=100.00 bot=43.57 copyROI=96.1% copyPnL=$+1345.13 copyT=18 copyWin=94.4% avgNotional=$948 sources=existing,holder,sports_tape
+0xe9b710551dd82a44e79203c2394a2b10163ace7b # list=tape tier=C smart=100.00 bot=41.56 copyROI=66.5% copyPnL=$+1448.72 copyT=32 copyWin=96.9% avgNotional=$27890 sources=existing,sports_tape

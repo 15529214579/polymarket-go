@@ -1,13 +1,13 @@
 # Sports Alert Candidates
 
-**Generated:** 2026-10-25 00:10 +08
+**Generated:** 2026-10-26 00:10 +08
 
-- Recent BUY rows inspected: 26
+- Recent BUY rows inspected: 25
 - Diagnostic window: 6h0m0s
 - Alert window: 10m0s
 - Consensus alert window: 15m0s
-- Currently alertable unsent rows: 1
-- Eligible unsent rows in diagnostic window: 1
+- Currently alertable unsent rows: 0
+- Eligible unsent rows in diagnostic window: 0
 - Already sent rows in window: 0
 - Positive-edge required modes: CANDIDATE,PROBATION
 - Observe min notional: $3000
@@ -42,7 +42,8 @@
 
 | Wallet | List | Tier | Bot | Notional | Samples | Win | AvgPP | 5m | 15m | 1h | Gap | Market |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|
-| `0x1550...5481` | target | C | 43.6 | $4735 | 0 | 0.0% | +0.00 | +0.00 | +0.00 | +0.00 | no edge snapshots | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
+| `0x6ac5...4b6e` | target | C | 41.1 | $13822 | 0 | 0.0% | +0.00 | +0.00 | +0.00 | +0.00 | no edge snapshots | Raptors vs. Timberwolves |
+| `0x249e...4fa6` | target | C | 36.4 | $601 | 0 | 0.0% | +0.00 | +0.00 | +0.00 | +0.00 | no edge snapshots | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
 
 ## Negative-Edge Blocked Wallets
 
@@ -101,8 +102,7 @@
 
 | Status | Wallets | Trades | Total | VWAP | LastAge | Participants | Reason | Market |
 |---|---:|---:|---:|---:|---:|---|---|---|
-| consensus | 9 | 9 | $62298 | 0.520 | 2m | `0x074a...f0e0`, `0x0df2...5d51`, `0x2d8a...e818`, `0x479e...91c3`, `0x6bc7...c4a9`, `0xb5db...5800`, `0xbc56...8f28`, `0xcf0c...f2bb`, +1 more | consensus burst in diagnostic window | Will Chelsea FC win on 2026-10-24? |
-| consensus | 5 | 5 | $18325 | 0.666 | 3m | `0x00a9...36bb`, `0x1550...5481`, `0x4214...db99`, `0x5dfa...de9c`, `0xc5f0...40ec` | consensus burst in diagnostic window | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
+| consensus | 10 | 11 | $16566 | 0.826 | 8m | `0x23cb...80d0`, `0x36b3...a92a`, `0x36d7...c7ed`, `0x6d3d...51b8`, `0x6e55...68d0`, `0x8a36...4836`, `0x9055...756a`, `0x92dd...c5e5`, +2 more | consensus burst in diagnostic window | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
 
 ## Unknown Multi-Market Flow
 
@@ -132,29 +132,28 @@
 
 | Status | Mode | Wallet | List | Tier | Bot | Notional | Age | Reason | Market |
 |---|---|---|---|---|---:|---:|---:|---|---|
-| eligible | OBSERVE | `0x0df2...5d51` | - | - | 0.0 | $26101 | 7m | insider-scout huge whale | Will Chelsea FC win on 2026-10-24? |
-| blocked | OBSERVE | `0xcbc6...ec62` | - | D | 50.3 | $294000 | 6m | bot 50.3 > insider max 35.0 | Will Chelsea FC win on 2026-10-24? |
-| blocked | OBSERVE | `0xcf0c...f2bb` | - | - | 0.0 | $12804 | 7m | observe wallet unscored | Will Chelsea FC win on 2026-10-24? |
-| blocked | OBSERVE | `0x074a...f0e0` | - | - | 0.0 | $12804 | 7m | observe wallet unscored | Will Chelsea FC win on 2026-10-24? |
-| blocked | OBSERVE | `0x4214...db99` | - | - | 0.0 | $4792 | 5m | observe wallet unscored | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
-| blocked | EDGE-HOT | `0x1550...5481` | target | C | 43.6 | $4735 | 5m | edge-hot thresholds not met | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
-| blocked | OBSERVE | `0x5dfa...de9c` | - | - | 0.0 | $3810 | 3m | observe wallet unscored | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
-| blocked | OBSERVE | `0xf9d4...f843` | - | - | 0.0 | $3505 | 7m | observe wallet unscored | Will Chelsea FC win on 2026-10-24? |
-| blocked | OBSERVE | `0xc5f0...40ec` | - | - | 0.0 | $3120 | 7m | observe wallet unscored | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
-| blocked | OBSERVE | `0x00a9...36bb` | - | - | 0.0 | $1868 | 8m | observe wallet unscored | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
-| blocked | OBSERVE | `0xbc56...8f28` | - | - | 0.0 | $1800 | 6m | observe wallet unscored | Will Chelsea FC win on 2026-10-24? |
-| blocked | REVERSAL-RISK | `0xe907...cff6` | tape_reversal | BOT | 80.1 | $1619 | 6m | reversal risk disabled | Will Chelsea FC win on 2026-10-24? |
-| blocked | OBSERVE | `0xb5db...5800` | - | - | 0.0 | $1464 | 5m | observe wallet unscored | Will Chelsea FC win on 2026-10-24? |
-| blocked | EDGE-HOT | `0x1550...5481` | target | C | 43.6 | $1444 | 10m | edge-hot thresholds not met | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
-| blocked | OBSERVE | `0x479e...91c3` | - | - | 0.0 | $1410 | 8m | observe wallet unscored | Will Chelsea FC win on 2026-10-24? |
-| blocked | OBSERVE | `0x6bc7...c4a9` | - | - | 0.0 | $1408 | 7m | observe wallet unscored | Will Chelsea FC win on 2026-10-24? |
-| blocked | OBSERVE | `0x51be...12c2` | - | - | 0.0 | $1244 | 9m | observe wallet unscored | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
-| blocked | OBSERVE | `0x9697...18e9` | sports_holders_push | D | 54.7 | $1149 | 11m | bot 54.7 > 35.0 | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
-| blocked | OBSERVE | `0x2d8a...e818` | - | - | 0.0 | $1000 | 2m | observe wallet unscored | Will Chelsea FC win on 2026-10-24? |
-| blocked | OBSERVE | `0x36d7...c7ed` | - | - | 0.0 | $1000 | 3m | observe wallet unscored | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
-| blocked | OBSERVE | `0x3231...6e75` | - | - | 0.0 | $692 | 6m | observe wallet unscored | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
-| blocked | OBSERVE | `0x309c...e6fb` | - | - | 0.0 | $690 | 8m | observe wallet unscored | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
-| blocked | OBSERVE | `0x77d9...06ed` | - | - | 0.0 | $600 | 5m | observe wallet unscored | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
-| blocked | OBSERVE | `0x77d9...06ed` | - | - | 0.0 | $600 | 5m | observe wallet unscored | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
-| blocked | OBSERVE | `0x77d9...06ed` | - | - | 0.0 | $600 | 5m | observe wallet unscored | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
-| blocked | OBSERVE | `0x77d9...06ed` | - | - | 0.0 | $600 | 5m | observe wallet unscored | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
+| blocked | OBSERVE | `0xe9b7...ce7b` | - | C | 41.9 | $244803 | 10m | bot 41.9 > insider max 35.0 | Will Sunderland AFC win on 2026-10-25? |
+| blocked | EDGE-HOT | `0x6ac5...4b6e` | target | C | 41.1 | $13822 | 14m | edge-hot thresholds not met | Raptors vs. Timberwolves |
+| blocked | OBSERVE | `0x64ce...6015` | - | - | 0.0 | $3000 | 3m | observe wallet unscored | Pacers vs. Nets |
+| blocked | OBSERVE | `0x23cb...80d0` | consensus_research | - | 0.0 | $2222 | 9m | consensus research wallet requires consensus burst | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
+| blocked | OBSERVE | `0x36d7...c7ed` | consensus_research | - | 0.0 | $1999 | 11m | consensus research wallet requires consensus burst | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
+| blocked | OBSERVE | `0x36b3...a92a` | consensus_research | - | 0.0 | $1985 | 9m | consensus research wallet requires consensus burst | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
+| blocked | OBSERVE | `0x9055...756a` | consensus_research | - | 0.0 | $1600 | 14m | consensus research wallet requires consensus burst | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
+| blocked | OBSERVE | `0x6e55...68d0` | consensus_research | D | 54.4 | $1564 | 11m | consensus research wallet requires consensus burst | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
+| blocked | OBSERVE | `0xd5e4...2c05` | consensus_research | - | 0.0 | $1500 | 8m | consensus research wallet requires consensus burst | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
+| blocked | OBSERVE | `0x6e55...68d0` | consensus_research | D | 54.4 | $1300 | 11m | consensus research wallet requires consensus burst | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
+| blocked | OBSERVE | `0x8a36...4836` | consensus_research | - | 0.0 | $1238 | 10m | consensus research wallet requires consensus burst | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
+| blocked | OBSERVE | `0x6d3d...51b8` | consensus_research | - | 0.0 | $1158 | 9m | consensus research wallet requires consensus burst | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
+| blocked | OBSERVE | `0x92dd...c5e5` | consensus_research | - | 0.0 | $1000 | 8m | consensus research wallet requires consensus burst | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
+| blocked | OBSERVE | `0xed09...e314` | consensus_research | - | 0.0 | $1000 | 12m | consensus research wallet requires consensus burst | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
+| blocked | OBSERVE | `0xb26f...9536` | - | - | 0.0 | $998 | 6m | observe wallet unscored | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
+| blocked | OBSERVE | `0x36b3...a92a` | consensus_research | - | 0.0 | $993 | 9m | consensus research wallet requires consensus burst | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
+| blocked | OBSERVE | `0xb26f...9536` | - | - | 0.0 | $947 | 9m | observe wallet unscored | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
+| blocked | OBSERVE | `0xb26f...9536` | - | - | 0.0 | $944 | 9m | observe wallet unscored | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
+| blocked | OBSERVE | `0x2eff...5e83` | - | - | 0.0 | $774 | 8m | observe wallet unscored | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
+| blocked | OBSERVE | `0x2eff...5e83` | - | - | 0.0 | $744 | 8m | observe wallet unscored | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
+| blocked | OBSERVE | `0x5d92...da54` | - | - | 0.0 | $700 | 9m | observe wallet unscored | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
+| blocked | EDGE-HOT | `0x249e...4fa6` | target | C | 36.4 | $601 | 9m | edge-hot thresholds not met | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
+| blocked | OBSERVE | `0x4a77...e59d` | - | - | 0.0 | $597 | 11m | observe wallet unscored | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
+| blocked | OBSERVE | `0x63bc...92c5` | - | - | 0.0 | $500 | 14m | observe wallet unscored | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
+| blocked | OBSERVE | `0xfbc2...514c` | - | - | 0.0 | $500 | 14m | observe wallet unscored | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
