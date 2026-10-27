@@ -1,8 +1,8 @@
 # Sports Alert Candidates
 
-**Generated:** 2026-10-26 00:10 +08
+**Generated:** 2026-10-27 00:10 +08
 
-- Recent BUY rows inspected: 25
+- Recent BUY rows inspected: 18
 - Diagnostic window: 6h0m0s
 - Alert window: 10m0s
 - Consensus alert window: 15m0s
@@ -42,8 +42,7 @@
 
 | Wallet | List | Tier | Bot | Notional | Samples | Win | AvgPP | 5m | 15m | 1h | Gap | Market |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|
-| `0x6ac5...4b6e` | target | C | 41.1 | $13822 | 0 | 0.0% | +0.00 | +0.00 | +0.00 | +0.00 | no edge snapshots | Raptors vs. Timberwolves |
-| `0x249e...4fa6` | target | C | 36.4 | $601 | 0 | 0.0% | +0.00 | +0.00 | +0.00 | +0.00 | no edge snapshots | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
+| none |  |  | 0.0 | $0 | 0 | 0.0% | +0.00 | +0.00 | +0.00 | +0.00 |  |  |
 
 ## Negative-Edge Blocked Wallets
 
@@ -102,7 +101,7 @@
 
 | Status | Wallets | Trades | Total | VWAP | LastAge | Participants | Reason | Market |
 |---|---:|---:|---:|---:|---:|---|---|---|
-| consensus | 10 | 11 | $16566 | 0.826 | 8m | `0x23cb...80d0`, `0x36b3...a92a`, `0x36d7...c7ed`, `0x6d3d...51b8`, `0x6e55...68d0`, `0x8a36...4836`, `0x9055...756a`, `0x92dd...c5e5`, +2 more | consensus burst in diagnostic window | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
+| consensus | 7 | 9 | $21915 | 0.909 | 8m | `0x08c2...c023`, `0x6e55...68d0`, `0x8a36...4836`, `0x9055...756a`, `0xce58...0a21`, `0xd5e4...2c05`, `0xfa76...e588` | consensus burst in diagnostic window | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
 
 ## Unknown Multi-Market Flow
 
@@ -132,28 +131,21 @@
 
 | Status | Mode | Wallet | List | Tier | Bot | Notional | Age | Reason | Market |
 |---|---|---|---|---|---:|---:|---:|---|---|
-| blocked | OBSERVE | `0xe9b7...ce7b` | - | C | 41.9 | $244803 | 10m | bot 41.9 > insider max 35.0 | Will Sunderland AFC win on 2026-10-25? |
-| blocked | EDGE-HOT | `0x6ac5...4b6e` | target | C | 41.1 | $13822 | 14m | edge-hot thresholds not met | Raptors vs. Timberwolves |
-| blocked | OBSERVE | `0x64ce...6015` | - | - | 0.0 | $3000 | 3m | observe wallet unscored | Pacers vs. Nets |
-| blocked | OBSERVE | `0x23cb...80d0` | consensus_research | - | 0.0 | $2222 | 9m | consensus research wallet requires consensus burst | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
-| blocked | OBSERVE | `0x36d7...c7ed` | consensus_research | - | 0.0 | $1999 | 11m | consensus research wallet requires consensus burst | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
-| blocked | OBSERVE | `0x36b3...a92a` | consensus_research | - | 0.0 | $1985 | 9m | consensus research wallet requires consensus burst | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
-| blocked | OBSERVE | `0x9055...756a` | consensus_research | - | 0.0 | $1600 | 14m | consensus research wallet requires consensus burst | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
-| blocked | OBSERVE | `0x6e55...68d0` | consensus_research | D | 54.4 | $1564 | 11m | consensus research wallet requires consensus burst | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
-| blocked | OBSERVE | `0xd5e4...2c05` | consensus_research | - | 0.0 | $1500 | 8m | consensus research wallet requires consensus burst | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
-| blocked | OBSERVE | `0x6e55...68d0` | consensus_research | D | 54.4 | $1300 | 11m | consensus research wallet requires consensus burst | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
-| blocked | OBSERVE | `0x8a36...4836` | consensus_research | - | 0.0 | $1238 | 10m | consensus research wallet requires consensus burst | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
-| blocked | OBSERVE | `0x6d3d...51b8` | consensus_research | - | 0.0 | $1158 | 9m | consensus research wallet requires consensus burst | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
-| blocked | OBSERVE | `0x92dd...c5e5` | consensus_research | - | 0.0 | $1000 | 8m | consensus research wallet requires consensus burst | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
-| blocked | OBSERVE | `0xed09...e314` | consensus_research | - | 0.0 | $1000 | 12m | consensus research wallet requires consensus burst | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
-| blocked | OBSERVE | `0xb26f...9536` | - | - | 0.0 | $998 | 6m | observe wallet unscored | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
-| blocked | OBSERVE | `0x36b3...a92a` | consensus_research | - | 0.0 | $993 | 9m | consensus research wallet requires consensus burst | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
-| blocked | OBSERVE | `0xb26f...9536` | - | - | 0.0 | $947 | 9m | observe wallet unscored | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
-| blocked | OBSERVE | `0xb26f...9536` | - | - | 0.0 | $944 | 9m | observe wallet unscored | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
-| blocked | OBSERVE | `0x2eff...5e83` | - | - | 0.0 | $774 | 8m | observe wallet unscored | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
-| blocked | OBSERVE | `0x2eff...5e83` | - | - | 0.0 | $744 | 8m | observe wallet unscored | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
-| blocked | OBSERVE | `0x5d92...da54` | - | - | 0.0 | $700 | 9m | observe wallet unscored | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
-| blocked | EDGE-HOT | `0x249e...4fa6` | target | C | 36.4 | $601 | 9m | edge-hot thresholds not met | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
-| blocked | OBSERVE | `0x4a77...e59d` | - | - | 0.0 | $597 | 11m | observe wallet unscored | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
-| blocked | OBSERVE | `0x63bc...92c5` | - | - | 0.0 | $500 | 14m | observe wallet unscored | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
-| blocked | OBSERVE | `0xfbc2...514c` | - | - | 0.0 | $500 | 14m | observe wallet unscored | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
+| blocked | OBSERVE | `0x6e55...68d0` | consensus_research | D | 54.4 | $4100 | 9m | consensus research wallet requires consensus burst | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
+| blocked | OBSERVE | `0x6e55...68d0` | consensus_research | D | 54.4 | $4100 | 9m | consensus research wallet requires consensus burst | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
+| blocked | OBSERVE | `0xce58...0a21` | consensus_research | - | 0.0 | $2991 | 12m | consensus research wallet requires consensus burst | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
+| blocked | OBSERVE | `0x8a36...4836` | consensus_research | - | 0.0 | $2120 | 9m | consensus research wallet requires consensus burst | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
+| blocked | OBSERVE | `0x8a36...4836` | consensus_research | - | 0.0 | $2090 | 9m | consensus research wallet requires consensus burst | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
+| blocked | OBSERVE | `0xd5e4...2c05` | consensus_research | - | 0.0 | $2000 | 9m | consensus research wallet requires consensus burst | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
+| blocked | OBSERVE | `0x9055...756a` | consensus_research | - | 0.0 | $1580 | 8m | consensus research wallet requires consensus burst | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
+| blocked | OBSERVE | `0x08c2...c023` | consensus_research | - | 0.0 | $1510 | 13m | consensus research wallet requires consensus burst | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
+| blocked | OBSERVE | `0xfa76...e588` | consensus_research | - | 0.0 | $1425 | 8m | consensus research wallet requires consensus burst | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
+| blocked | OBSERVE | `0x36b3...a92a` | consensus_research | - | 0.0 | $997 | 9m | consensus research wallet requires consensus burst | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
+| blocked | OBSERVE | `0xb26f...9536` | - | BOT | 60.5 | $961 | 10m | BOT tier | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
+| blocked | OBSERVE | `0xb26f...9536` | - | BOT | 60.5 | $961 | 10m | BOT tier | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
+| blocked | OBSERVE | `0x87a3...5857` | - | - | 0.0 | $872 | 12m | observe wallet unscored | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
+| blocked | OBSERVE | `0xb517...434b` | - | - | 0.0 | $846 | 2m | observe wallet unscored | Dota 2: BetBoom Team vs LEGION (BO3) - PARI Universe Group B |
+| blocked | OBSERVE | `0x9155...32ef` | - | - | 0.0 | $597 | 9m | observe wallet unscored | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
+| blocked | OBSERVE | `0xf11e...b16a` | - | - | 0.0 | $555 | 10m | observe wallet unscored | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
+| blocked | OBSERVE | `0xf11e...b16a` | - | - | 0.0 | $555 | 10m | observe wallet unscored | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
+| blocked | OBSERVE | `0xa45e...8176` | - | - | 0.0 | $500 | 8m | observe wallet unscored | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |

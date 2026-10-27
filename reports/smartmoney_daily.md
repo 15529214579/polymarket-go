@@ -1,13 +1,13 @@
 # Smart Money Daily
 
-**Generated:** 2026-10-26 00:20:41 +08
+**Generated:** 2026-10-27 00:18:30 +08
 
 ## Pipeline
 
 - Status: learning
 - Reason: evaluated signals 0 below 10
 - Action: keep current push running and collect more signals
-- Log: `/Users/murphyma/work/polymarket-go/logs/smartmoney-daily-2026-10-26.log`
+- Log: `/Users/murphyma/work/polymarket-go/logs/smartmoney-daily-2026-10-27.log`
 - Discovery report: `/Users/murphyma/work/polymarket-go/reports/strategy_iteration.md`
 - Strategy report: `/Users/murphyma/work/polymarket-go/reports/strategy_lab.md`
 - Sports tape report: `/Users/murphyma/work/polymarket-go/reports/sports_tape.md`
@@ -29,7 +29,7 @@
 
 ## Wallet Lists
 
-- Core before count: 20
+- Core before count: 21
 - Core after count: 22
 - Watch after count: 20
 - Sports after count: 10
@@ -43,8 +43,8 @@
 - Tape follow-ready count: 0
 - Tape edge-hot count: 1
 - Tape reversal count: 8
-- Consensus research count: 20
-- Push before count: 58
+- Consensus research count: 23
+- Push before count: 61
 - Push after count: 60
 - Quarantine count: 3
 - Review-noise exclude count: 431
@@ -52,7 +52,7 @@
 - Sports tape alert sent: 5
 - Sports tape alert logged: 5
 - Sports tape shadow alert logged: 7
-- Sports consensus event history: 8
+- Sports consensus event history: 9
 - Sports consensus watch event history: 8
 - Sports alert eligible now: 0
 - Sports alert accumulation bursts: 0
@@ -65,9 +65,9 @@
 
 ## Backtest Filter
 
-- Closed copy trades: 2812
-- Copy ROI: 167.6%
-- Copy PnL: $+59301.36
+- Closed copy trades: 2834
+- Copy ROI: 167.9%
+- Copy PnL: $+59746.31
 - Copy win rate: 96.1%
 - Worst included CopyROI: 100.0%
 - Params: tier>=B bot<30 copyT>=15 copyROI>=100 copyPnL>=25 copyWin>=60 closedROI>=0 smart>=70
@@ -244,9 +244,9 @@
 - Marked to current midpoint: 1
 - Unmarked: 0
 - Win rate incl. midpoint marks: 100.0%
-- PnL incl. midpoint marks: $+2.10
-- ROI incl. midpoint marks: 21.0%
-- Avg price delta: +17.32pp
+- PnL incl. midpoint marks: $+1.00
+- ROI incl. midpoint marks: 10.0%
+- Avg price delta: +9.10pp
 
 ## Live Scout Performance
 

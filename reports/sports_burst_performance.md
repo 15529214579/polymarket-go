@@ -1,6 +1,6 @@
 # Sports Burst Performance
 
-**Generated:** 2026-10-26 00:10 +08
+**Generated:** 2026-10-27 00:10 +08
 
 - Tape: `/Users/murphyma/work/polymarket-go/db/strategy_iteration/sports_tape.jsonl`
 - Fixed paper stake: $10.00 per burst
@@ -16,9 +16,9 @@
 - Marked to current midpoint: 1
 - Unmarked: 0
 - Win rate incl. midpoint marks: 100.0%
-- PnL incl. midpoint marks: $+2.10
-- ROI incl. midpoint marks: 21.0%
-- Avg price delta: +17.32pp
+- PnL incl. midpoint marks: $+1.00
+- ROI incl. midpoint marks: 10.0%
+- Avg price delta: +9.10pp
 
 ## Mode Gates
 
@@ -27,7 +27,7 @@
 
 | Key | Bursts | Marked | Win | ROI | PnL | Action |
 |---|---:|---:|---:|---:|---:|---|
-| `CONSENSUS` | 1 | 1 | 100.0% | 21.0% | $+2.10 | COLLECT_POSITIVE |
+| `CONSENSUS` | 1 | 1 | 100.0% | 10.0% | $+1.00 | COLLECT_POSITIVE |
 
 ## Scope Gates
 
@@ -36,7 +36,7 @@
 
 | Key | Bursts | Marked | Win | ROI | PnL | Action |
 |---|---:|---:|---:|---:|---:|---|
-| `consensus` | 1 | 1 | 100.0% | 21.0% | $+2.10 | COLLECT_POSITIVE |
+| `consensus` | 1 | 1 | 100.0% | 10.0% | $+1.00 | COLLECT_POSITIVE |
 
 ## Wallet Gates
 
@@ -45,7 +45,7 @@
 
 | Key | Bursts | Marked | Win | ROI | PnL | Action |
 |---|---:|---:|---:|---:|---:|---|
-| `multi:10` | 1 | 1 | 100.0% | 21.0% | $+2.10 | COLLECT_POSITIVE |
+| `multi:7` | 1 | 1 | 100.0% | 10.0% | $+1.00 | COLLECT_POSITIVE |
 
 ## Consensus Participants
 
@@ -53,16 +53,13 @@
 
 | Wallet | Signals | Marked | Win | ROI | PnL | TotalNotional | AvgDeltaPP |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| `0x23cb...80d0` | 1 | 1 | 100.0% | 21.0% | $+2.10 | $16566 | +17.32 |
-| `0x36b3...a92a` | 1 | 1 | 100.0% | 21.0% | $+2.10 | $16566 | +17.32 |
-| `0x36d7...c7ed` | 1 | 1 | 100.0% | 21.0% | $+2.10 | $16566 | +17.32 |
-| `0x6d3d...51b8` | 1 | 1 | 100.0% | 21.0% | $+2.10 | $16566 | +17.32 |
-| `0x6e55...68d0` | 1 | 1 | 100.0% | 21.0% | $+2.10 | $16566 | +17.32 |
-| `0x8a36...4836` | 1 | 1 | 100.0% | 21.0% | $+2.10 | $16566 | +17.32 |
-| `0x9055...756a` | 1 | 1 | 100.0% | 21.0% | $+2.10 | $16566 | +17.32 |
-| `0x92dd...c5e5` | 1 | 1 | 100.0% | 21.0% | $+2.10 | $16566 | +17.32 |
-| `0xd5e4...2c05` | 1 | 1 | 100.0% | 21.0% | $+2.10 | $16566 | +17.32 |
-| `0xed09...e314` | 1 | 1 | 100.0% | 21.0% | $+2.10 | $16566 | +17.32 |
+| `0x08c2...c023` | 1 | 1 | 100.0% | 10.0% | $+1.00 | $21915 | +9.10 |
+| `0x6e55...68d0` | 1 | 1 | 100.0% | 10.0% | $+1.00 | $21915 | +9.10 |
+| `0x8a36...4836` | 1 | 1 | 100.0% | 10.0% | $+1.00 | $21915 | +9.10 |
+| `0x9055...756a` | 1 | 1 | 100.0% | 10.0% | $+1.00 | $21915 | +9.10 |
+| `0xce58...0a21` | 1 | 1 | 100.0% | 10.0% | $+1.00 | $21915 | +9.10 |
+| `0xd5e4...2c05` | 1 | 1 | 100.0% | 10.0% | $+1.00 | $21915 | +9.10 |
+| `0xfa76...e588` | 1 | 1 | 100.0% | 10.0% | $+1.00 | $21915 | +9.10 |
 
 ## Research-Only Consensus Watch
 
@@ -82,16 +79,17 @@
 ## Durable Consensus Event History
 
 - Rule: persisted CONSENSUS events imported from live and shadow alert logs; this survives tape-window rollover
-- Events: 8
-- Marked to current midpoint/settlement: 8
+- Events: 9
+- Marked to current midpoint/settlement: 9
 - Marked samples still needed for promotion review: 0
-- Win rate incl. midpoint marks: 50.0%
-- PnL incl. midpoint marks: $+2.21
-- ROI incl. midpoint marks: 2.8%
+- Win rate incl. midpoint marks: 55.6%
+- PnL incl. midpoint marks: $+3.22
+- ROI incl. midpoint marks: 3.6%
 - Gate action: COLLECT_POSITIVE
 
 | Last | Category | Wallets | Trades | Total | VWAP | Mid | ROI | Market |
 |---|---|---:|---:|---:|---:|---:|---:|---|
+| 10-27 00:01 | esports | 7 | 9 | $21915 | 0.909 | 1.000 | 10.0% | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
 | 10-26 00:02 | esports | 10 | 11 | $16566 | 0.826 | 1.000 | 21.0% | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
 | 10-25 00:08 | soccer | 9 | 9 | $62298 | 0.520 | 0.515 | -1.0% | Will Chelsea FC win on 2026-10-24? |
 | 10-25 00:07 | esports | 5 | 5 | $18325 | 0.666 | 0.565 | -15.1% | Dota 2: Team Spirit vs BetBoom Team - Game 2 Winner |
@@ -114,17 +112,20 @@
 | `0x7af7...4c89` | - | 0.0 | 1 | 1 | 100.0% | 59.0% | $+5.90 | $17277 | +37.09 |
 | `0x93bd...bbc5` | D | 55.0 | 1 | 1 | 100.0% | 32.6% | $+3.26 | $10336 | +24.58 |
 | `0x9679...9315` | D | 56.3 | 1 | 1 | 100.0% | 32.6% | $+3.26 | $10336 | +24.58 |
-| `0x23cb...80d0` | - | 0.0 | 1 | 1 | 100.0% | 21.0% | $+2.10 | $16566 | +17.32 |
+| `0x23cb...80d0` | D | 57.1 | 1 | 1 | 100.0% | 21.0% | $+2.10 | $16566 | +17.32 |
 | `0x36b3...a92a` | - | 0.0 | 1 | 1 | 100.0% | 21.0% | $+2.10 | $16566 | +17.32 |
 | `0x36d7...c7ed` | - | 0.0 | 1 | 1 | 100.0% | 21.0% | $+2.10 | $16566 | +17.32 |
-| `0x6d3d...51b8` | - | 0.0 | 1 | 1 | 100.0% | 21.0% | $+2.10 | $16566 | +17.32 |
-| `0x6e55...68d0` | D | 54.4 | 1 | 1 | 100.0% | 21.0% | $+2.10 | $16566 | +17.32 |
-| `0x8a36...4836` | - | 0.0 | 1 | 1 | 100.0% | 21.0% | $+2.10 | $16566 | +17.32 |
-| `0x9055...756a` | - | 0.0 | 1 | 1 | 100.0% | 21.0% | $+2.10 | $16566 | +17.32 |
+| `0x6d3d...51b8` | A | 22.4 | 1 | 1 | 100.0% | 21.0% | $+2.10 | $16566 | +17.32 |
 | `0x92dd...c5e5` | - | 0.0 | 1 | 1 | 100.0% | 21.0% | $+2.10 | $16566 | +17.32 |
-| `0xd5e4...2c05` | - | 0.0 | 1 | 1 | 100.0% | 21.0% | $+2.10 | $16566 | +17.32 |
 | `0xed09...e314` | - | 0.0 | 1 | 1 | 100.0% | 21.0% | $+2.10 | $16566 | +17.32 |
 | `0x7120...7c4e` | D | 57.2 | 1 | 1 | 100.0% | 13.8% | $+1.38 | $11047 | +11.68 |
+| `0x08c2...c023` | - | 0.0 | 1 | 1 | 100.0% | 10.0% | $+1.00 | $21915 | +9.10 |
+| `0x6e55...68d0` | D | 54.4 | 1 | 1 | 100.0% | 10.0% | $+1.00 | $21915 | +9.10 |
+| `0x8a36...4836` | - | 0.0 | 1 | 1 | 100.0% | 10.0% | $+1.00 | $21915 | +9.10 |
+| `0x9055...756a` | - | 0.0 | 1 | 1 | 100.0% | 10.0% | $+1.00 | $21915 | +9.10 |
+| `0xce58...0a21` | - | 0.0 | 1 | 1 | 100.0% | 10.0% | $+1.00 | $21915 | +9.10 |
+| `0xd5e4...2c05` | - | 0.0 | 1 | 1 | 100.0% | 10.0% | $+1.00 | $21915 | +9.10 |
+| `0xfa76...e588` | - | 0.0 | 1 | 1 | 100.0% | 10.0% | $+1.00 | $21915 | +9.10 |
 | `0x689f...259c` | BOT | 61.5 | 1 | 1 | 100.0% | 3.5% | $+0.35 | $10994 | +1.50 |
 | `0xbcc3...ac9c` | D | 53.8 | 1 | 1 | 100.0% | 3.5% | $+0.35 | $10994 | +1.50 |
 
@@ -132,5 +133,5 @@
 
 | Last | Scope | Mode | Actor | Participants | Wallets | Trades | Total | VWAP | Mid | ROI | Market |
 |---|---|---|---|---|---:|---:|---:|---:|---:|---:|---|
-| 8m | consensus | CONSENSUS | `multi:10` | `0x23cb...80d0`, `0x36b3...a92a`, `0x36d7...c7ed`, `0x6d3d...51b8`, `0x6e55...68d0`, `0x8a36...4836`, `0x9055...756a`, `0x92dd...c5e5`, +2 more | 10 | 11 | $16566 | 0.826 | 1.000 | 21.0% | Dota 2: Team Spirit vs Astra Invicta - Game 1 Winner |
+| 8m | consensus | CONSENSUS | `multi:7` | `0x08c2...c023`, `0x6e55...68d0`, `0x8a36...4836`, `0x9055...756a`, `0xce58...0a21`, `0xd5e4...2c05`, `0xfa76...e588` | 7 | 9 | $21915 | 0.909 | 1.000 | 10.0% | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
 
