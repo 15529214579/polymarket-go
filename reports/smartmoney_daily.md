@@ -1,13 +1,13 @@
 # Smart Money Daily
 
-**Generated:** 2026-10-27 00:18:30 +08
+**Generated:** 2026-10-28 00:18:27 +08
 
 ## Pipeline
 
 - Status: learning
 - Reason: evaluated signals 0 below 10
 - Action: keep current push running and collect more signals
-- Log: `/Users/murphyma/work/polymarket-go/logs/smartmoney-daily-2026-10-27.log`
+- Log: `/Users/murphyma/work/polymarket-go/logs/smartmoney-daily-2026-10-28.log`
 - Discovery report: `/Users/murphyma/work/polymarket-go/reports/strategy_iteration.md`
 - Strategy report: `/Users/murphyma/work/polymarket-go/reports/strategy_lab.md`
 - Sports tape report: `/Users/murphyma/work/polymarket-go/reports/sports_tape.md`
@@ -29,14 +29,14 @@
 
 ## Wallet Lists
 
-- Core before count: 21
-- Core after count: 22
+- Core before count: 23
+- Core after count: 24
 - Watch after count: 20
 - Sports after count: 10
 - Scout after count: 0
 - Target after count: 10
-- Flow after count: 0
-- Tape after count: 1
+- Flow after count: 1
+- Tape after count: 0
 - Tape observe count: 0
 - Tape probation count: 0
 - Tape candidate count: 0
@@ -45,7 +45,7 @@
 - Tape reversal count: 8
 - Consensus research count: 23
 - Push before count: 61
-- Push after count: 60
+- Push after count: 63
 - Quarantine count: 3
 - Review-noise exclude count: 431
 - Edge snapshots: 1282
@@ -56,8 +56,8 @@
 - Sports consensus watch event history: 8
 - Sports alert eligible now: 0
 - Sports alert accumulation bursts: 0
-- Sports alert consensus bursts: 1
-- Selected core wallets: 22
+- Sports alert consensus bursts: 0
+- Selected core wallets: 24
 - Core list changed: yes
 - Push list changed: yes
 - Restart needed: no
@@ -65,10 +65,10 @@
 
 ## Backtest Filter
 
-- Closed copy trades: 2834
-- Copy ROI: 167.9%
-- Copy PnL: $+59746.31
-- Copy win rate: 96.1%
+- Closed copy trades: 2961
+- Copy ROI: 168.5%
+- Copy PnL: $+61768.46
+- Copy win rate: 96.3%
 - Worst included CopyROI: 100.0%
 - Params: tier>=B bot<30 copyT>=15 copyROI>=100 copyPnL>=25 copyWin>=60 closedROI>=0 smart>=70
 
@@ -240,13 +240,13 @@
 
 ## Sports Burst Performance
 
-- Bursts: 1
-- Marked to current midpoint: 1
+- Bursts: 0
+- Marked to current midpoint: 0
 - Unmarked: 0
-- Win rate incl. midpoint marks: 100.0%
-- PnL incl. midpoint marks: $+1.00
-- ROI incl. midpoint marks: 10.0%
-- Avg price delta: +9.10pp
+- Win rate incl. midpoint marks: 0.0%
+- PnL incl. midpoint marks: $+0.00
+- ROI incl. midpoint marks: 0.0%
+- Avg price delta: +0.00pp
 
 ## Live Scout Performance
 

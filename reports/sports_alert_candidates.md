@@ -1,8 +1,8 @@
 # Sports Alert Candidates
 
-**Generated:** 2026-10-27 00:10 +08
+**Generated:** 2026-10-28 00:10 +08
 
-- Recent BUY rows inspected: 18
+- Recent BUY rows inspected: 2
 - Diagnostic window: 6h0m0s
 - Alert window: 10m0s
 - Consensus alert window: 15m0s
@@ -101,7 +101,7 @@
 
 | Status | Wallets | Trades | Total | VWAP | LastAge | Participants | Reason | Market |
 |---|---:|---:|---:|---:|---:|---|---|---|
-| consensus | 7 | 9 | $21915 | 0.909 | 8m | `0x08c2...c023`, `0x6e55...68d0`, `0x8a36...4836`, `0x9055...756a`, `0xce58...0a21`, `0xd5e4...2c05`, `0xfa76...e588` | consensus burst in diagnostic window | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
+| none | 0 | 0 | $0 | 0.000 |  |  |  |  |
 
 ## Unknown Multi-Market Flow
 
@@ -131,21 +131,5 @@
 
 | Status | Mode | Wallet | List | Tier | Bot | Notional | Age | Reason | Market |
 |---|---|---|---|---|---:|---:|---:|---|---|
-| blocked | OBSERVE | `0x6e55...68d0` | consensus_research | D | 54.4 | $4100 | 9m | consensus research wallet requires consensus burst | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
-| blocked | OBSERVE | `0x6e55...68d0` | consensus_research | D | 54.4 | $4100 | 9m | consensus research wallet requires consensus burst | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
-| blocked | OBSERVE | `0xce58...0a21` | consensus_research | - | 0.0 | $2991 | 12m | consensus research wallet requires consensus burst | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
-| blocked | OBSERVE | `0x8a36...4836` | consensus_research | - | 0.0 | $2120 | 9m | consensus research wallet requires consensus burst | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
-| blocked | OBSERVE | `0x8a36...4836` | consensus_research | - | 0.0 | $2090 | 9m | consensus research wallet requires consensus burst | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
-| blocked | OBSERVE | `0xd5e4...2c05` | consensus_research | - | 0.0 | $2000 | 9m | consensus research wallet requires consensus burst | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
-| blocked | OBSERVE | `0x9055...756a` | consensus_research | - | 0.0 | $1580 | 8m | consensus research wallet requires consensus burst | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
-| blocked | OBSERVE | `0x08c2...c023` | consensus_research | - | 0.0 | $1510 | 13m | consensus research wallet requires consensus burst | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
-| blocked | OBSERVE | `0xfa76...e588` | consensus_research | - | 0.0 | $1425 | 8m | consensus research wallet requires consensus burst | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
-| blocked | OBSERVE | `0x36b3...a92a` | consensus_research | - | 0.0 | $997 | 9m | consensus research wallet requires consensus burst | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
-| blocked | OBSERVE | `0xb26f...9536` | - | BOT | 60.5 | $961 | 10m | BOT tier | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
-| blocked | OBSERVE | `0xb26f...9536` | - | BOT | 60.5 | $961 | 10m | BOT tier | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
-| blocked | OBSERVE | `0x87a3...5857` | - | - | 0.0 | $872 | 12m | observe wallet unscored | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
-| blocked | OBSERVE | `0xb517...434b` | - | - | 0.0 | $846 | 2m | observe wallet unscored | Dota 2: BetBoom Team vs LEGION (BO3) - PARI Universe Group B |
-| blocked | OBSERVE | `0x9155...32ef` | - | - | 0.0 | $597 | 9m | observe wallet unscored | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
-| blocked | OBSERVE | `0xf11e...b16a` | - | - | 0.0 | $555 | 10m | observe wallet unscored | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
-| blocked | OBSERVE | `0xf11e...b16a` | - | - | 0.0 | $555 | 10m | observe wallet unscored | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
-| blocked | OBSERVE | `0xa45e...8176` | - | - | 0.0 | $500 | 8m | observe wallet unscored | Dota 2: Team Yandex vs Team Liquid (BO3) - PARI Universe Group A |
+| blocked | OBSERVE | `0xca01...20e4` | - | - | 0.0 | $1020 | 6m | observe wallet unscored | Nets vs. Celtics |
+| blocked | OBSERVE | `0x0ada...2dbf` | - | - | 0.0 | $1000 | 7m | observe wallet unscored | Dota 2: BetBoom Team vs LEGION (BO1) - PARI Universe Group B |
