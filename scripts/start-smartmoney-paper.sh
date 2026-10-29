@@ -16,6 +16,14 @@ if [ -z "$GO_BIN" ]; then
 fi
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+if [ -f "$ROOT/db/smartmoney-paper.disabled" ]; then
+  case "${1:-status}" in
+    start|restart|run)
+      printf 'smartmoney-paper.disabled: stopped by user\n'
+      exit 0
+      ;;
+  esac
+fi
 SCRIPT="$ROOT/scripts/start-smartmoney-paper.sh"
 STATE_DIR="$ROOT/db/smartmoney-paper"
 PIDFILE="$STATE_DIR/pid"

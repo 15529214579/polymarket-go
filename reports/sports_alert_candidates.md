@@ -1,8 +1,8 @@
 # Sports Alert Candidates
 
-**Generated:** 2026-10-28 00:10 +08
+**Generated:** 2026-10-29 00:10 +08
 
-- Recent BUY rows inspected: 2
+- Recent BUY rows inspected: 5
 - Diagnostic window: 6h0m0s
 - Alert window: 10m0s
 - Consensus alert window: 15m0s
@@ -131,5 +131,8 @@
 
 | Status | Mode | Wallet | List | Tier | Bot | Notional | Age | Reason | Market |
 |---|---|---|---|---|---:|---:|---:|---|---|
-| blocked | OBSERVE | `0xca01...20e4` | - | - | 0.0 | $1020 | 6m | observe wallet unscored | Nets vs. Celtics |
-| blocked | OBSERVE | `0x0ada...2dbf` | - | - | 0.0 | $1000 | 7m | observe wallet unscored | Dota 2: BetBoom Team vs LEGION (BO1) - PARI Universe Group B |
+| blocked | OBSERVE | `0x51be...12c2` | - | - | 0.0 | $1600 | 4m | observe wallet unscored | Dota 2: Team Yandex vs Astra Invicta (BO3) - PARI Universe Playoffs |
+| blocked | OBSERVE | `0x8495...550e` | - | - | 0.0 | $593 | 7m | observe wallet unscored | Dota 2: Team Yandex vs Astra Invicta (BO3) - PARI Universe Playoffs |
+| blocked | OBSERVE | `0x8495...550e` | - | - | 0.0 | $593 | 7m | observe wallet unscored | Dota 2: Team Yandex vs Astra Invicta (BO3) - PARI Universe Playoffs |
+| blocked | OBSERVE | `0x61b4...e1b3` | - | - | 0.0 | $588 | 5m | observe wallet unscored | Dota 2: Team Yandex vs Astra Invicta (BO3) - PARI Universe Playoffs |
+| blocked | OBSERVE | `0x530b...244f` | - | - | 0.0 | $526 | 2m | observe wallet unscored | Heat vs. Hawks |

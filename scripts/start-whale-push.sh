@@ -3,6 +3,10 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+if [ -f "$ROOT/db/whale-push.disabled" ]; then
+  printf 'whale-push.disabled: stopped by user; remove db/whale-push.disabled to resume\n'
+  exit 0
+fi
 LOG="$ROOT/db/agent.log"
 ERR="$ROOT/db/agent.err"
 WRAPPER_PIDFILE="$ROOT/db/whale-push.pid"

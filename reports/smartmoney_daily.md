@@ -1,13 +1,13 @@
 # Smart Money Daily
 
-**Generated:** 2026-10-28 00:18:27 +08
+**Generated:** 2026-10-29 00:18:23 +08
 
 ## Pipeline
 
 - Status: learning
 - Reason: evaluated signals 0 below 10
 - Action: keep current push running and collect more signals
-- Log: `/Users/murphyma/work/polymarket-go/logs/smartmoney-daily-2026-10-28.log`
+- Log: `/Users/murphyma/work/polymarket-go/logs/smartmoney-daily-2026-10-29.log`
 - Discovery report: `/Users/murphyma/work/polymarket-go/reports/strategy_iteration.md`
 - Strategy report: `/Users/murphyma/work/polymarket-go/reports/strategy_lab.md`
 - Sports tape report: `/Users/murphyma/work/polymarket-go/reports/sports_tape.md`
@@ -29,13 +29,13 @@
 
 ## Wallet Lists
 
-- Core before count: 23
-- Core after count: 24
+- Core before count: 26
+- Core after count: 27
 - Watch after count: 20
 - Sports after count: 10
 - Scout after count: 0
 - Target after count: 10
-- Flow after count: 1
+- Flow after count: 0
 - Tape after count: 0
 - Tape observe count: 0
 - Tape probation count: 0
@@ -44,8 +44,8 @@
 - Tape edge-hot count: 1
 - Tape reversal count: 8
 - Consensus research count: 23
-- Push before count: 61
-- Push after count: 63
+- Push before count: 63
+- Push after count: 64
 - Quarantine count: 3
 - Review-noise exclude count: 431
 - Edge snapshots: 1282
@@ -57,7 +57,7 @@
 - Sports alert eligible now: 0
 - Sports alert accumulation bursts: 0
 - Sports alert consensus bursts: 0
-- Selected core wallets: 24
+- Selected core wallets: 27
 - Core list changed: yes
 - Push list changed: yes
 - Restart needed: no
@@ -65,12 +65,12 @@
 
 ## Backtest Filter
 
-- Closed copy trades: 2961
-- Copy ROI: 168.5%
-- Copy PnL: $+61768.46
-- Copy win rate: 96.3%
+- Closed copy trades: 2291
+- Copy ROI: 152.9%
+- Copy PnL: $+43988.06
+- Copy win rate: 95.5%
 - Worst included CopyROI: 100.0%
-- Params: tier>=B bot<30 copyT>=15 copyROI>=100 copyPnL>=25 copyWin>=60 closedROI>=0 smart>=70
+- Params: tier>=B bot<30 copyT>=8 copyROI>=100 copyPnL>=25 copyWin>=60 closedROI>=0 smart>=70
 
 ## Live Core Performance
 
